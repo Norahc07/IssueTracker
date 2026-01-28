@@ -79,8 +79,8 @@ export default function Login() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Issue Tracker</h1>
-          <p className="text-sm sm:text-base text-gray-600">Administrator & Lead Portal</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">KTI Portal</h1>
+          <p className="text-sm sm:text-base text-gray-600">Unified IT Operations & Management Hub</p>
         </div>
 
         {/* Login Card */}
@@ -165,18 +165,8 @@ export default function Login() {
 
           <div className="px-4 sm:px-8 pb-4 sm:pb-6">
             <div className="border-t border-gray-200 pt-4 sm:pt-6">
-              <div className="text-center">
-                <Link
-                  to="/report"
-                  className="text-sm font-medium text-blue-600 hover:text-blue-700 inline-flex items-center"
-                >
-                  <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Report an Issue (Public)
-                </Link>
-              </div>
-              <p className="mt-2 sm:mt-3 text-xs text-center text-gray-500">
+              
+              <p className="text-xs text-center text-gray-500">
                 Only administrators and team leads can access this portal
               </p>
             </div>
