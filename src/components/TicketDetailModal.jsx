@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
+import { permissions } from '../utils/rolePermissions.js';
 
 export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate }) {
   const { supabase, user, userRole } = useSupabase();
@@ -173,10 +174,11 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
   if (!isOpen || !ticket) return null;
 
   const currentAssignedTo = assignedTo || ticket.assigned_to;
-  const canAssign = userRole === 'admin' || userRole === 'lead';
+  const canAssign = permissions.canAssignTickets(userRole);
   const canStart = canAssign && ticket.status === 'open' && currentAssignedTo;
   const canComplete = (canAssign || currentAssignedTo) && ticket.status === 'in-progress';
-  const canDelete = userRole === 'admin' && ticket.status === 'closed';
+  const canDelete = permissions.canDeleteTickets(userRole) && ticket.status === 'closed';
+  const canResolve = permissions.canResolveIssues(userRole, ticket.department);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" onClick={onClose}>
@@ -223,7 +225,7 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
               </div>
 
               {/* Assignment Section */}
-              {canAssign && (
+              {(canAssign || canResolve) && (
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Assign To
@@ -270,6 +272,15 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
                     className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
                   >
                     {completing ? 'Completing...' : 'Mark as Done'}
+                  </button>
+                )}
+                {canResolve && ticket.status !== 'closed' && (
+                  <button
+                    onClick={handleComplete}
+                    disabled={completing}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                  >
+                    {completing ? 'Resolving...' : 'Resolve Issue'}
                   </button>
                 )}
                 {canDelete && (

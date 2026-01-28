@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
+import { ROLES, getRoleDisplayName } from '../utils/rolePermissions.js';
 
 export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
   const { supabase } = useSupabase();
@@ -9,6 +10,7 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
     password: '',
     role: 'intern',
     fullName: '',
+    team: '', // For TL/VTL
   });
   const [loading, setLoading] = useState(false);
 
@@ -27,6 +29,7 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
         user_metadata: {
           full_name: formData.fullName,
           role: formData.role,
+          team: formData.team || null,
         },
       });
 
@@ -39,6 +42,7 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
             data: {
               full_name: formData.fullName,
               role: formData.role,
+              team: formData.team || null,
             },
           },
         });
@@ -56,6 +60,7 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
                 email: formData.email,
                 role: formData.role,
                 full_name: formData.fullName,
+                team: formData.team || null,
               });
 
             if (userError) {
@@ -78,6 +83,7 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
                 email: formData.email,
                 role: formData.role,
                 full_name: formData.fullName,
+                team: formData.team || null,
               });
 
             if (userError) {
@@ -91,7 +97,7 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
       }
 
       toast.success('Account created successfully!');
-      setFormData({ email: '', password: '', role: 'intern', fullName: '' });
+      setFormData({ email: '', password: '', role: 'intern', fullName: '', team: '' });
       onSuccess?.();
       onClose();
     } catch (error) {
@@ -168,14 +174,38 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
                       <select
                         id="role"
                         value={formData.role}
-                        onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                        onChange={(e) => setFormData({ ...formData, role: e.target.value, team: '' })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="intern">Intern</option>
-                        <option value="lead">Lead</option>
                         <option value="admin">Admin</option>
+                        <option value="tla">Team Lead Assistant (TLA)</option>
+                        <option value="monitoring_team">Monitoring Team</option>
+                        <option value="pat1">PAT1</option>
+                        <option value="tl">Team Lead (TL)</option>
+                        <option value="vtl">Vice Team Lead (VTL)</option>
                       </select>
                     </div>
+
+                    {(formData.role === 'tl' || formData.role === 'vtl') && (
+                      <div>
+                        <label htmlFor="team" className="block text-sm font-medium text-gray-700 mb-1">
+                          Team
+                        </label>
+                        <select
+                          id="team"
+                          value={formData.team}
+                          onChange={(e) => setFormData({ ...formData, team: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          required
+                        >
+                          <option value="">Select team...</option>
+                          <option value="tla">TLA</option>
+                          <option value="monitoring">Monitoring</option>
+                          <option value="pat1">PAT1</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

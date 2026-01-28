@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useSupabase } from '../context/supabase.jsx';
+import { getRoleDisplayName, getRoleColor, permissions } from '../utils/rolePermissions.js';
 
 export default function Navbar() {
   const { user, userRole, supabase } = useSupabase();
@@ -18,15 +19,13 @@ export default function Navbar() {
   };
 
   const getDashboardPath = () => {
-    if (userRole === 'admin') return '/admin/dashboard';
-    if (userRole === 'lead') return '/lead/dashboard';
+    if (userRole === 'admin' || userRole === 'tla') return '/admin/dashboard';
+    if (userRole === 'lead' || userRole === 'tl' || userRole === 'vtl' || userRole === 'monitoring_team' || userRole === 'pat1') return '/lead/dashboard';
     return '/intern/dashboard';
   };
 
   const getRoleLabel = () => {
-    if (userRole === 'admin') return 'Admin';
-    if (userRole === 'lead') return 'Lead';
-    return 'Intern';
+    return getRoleDisplayName(userRole) || 'Intern';
   };
 
   const closeMobileMenu = () => {
@@ -65,7 +64,7 @@ export default function Navbar() {
           {/* Logo and Desktop Navigation */}
           <div className="flex items-center space-x-8">
             <Link to={getDashboardPath()} className="text-xl font-bold text-gray-900">
-              Issue Tracker
+              KTI Portal
             </Link>
             <div className="hidden md:flex space-x-1">
               <Link
@@ -77,6 +76,16 @@ export default function Navbar() {
                 }`}
               >
                 Dashboard
+              </Link>
+              <Link
+                to="/report"
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  location.pathname === '/report'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+              >
+                Report Issue
               </Link>
               <Link
                 to="/kanban"
@@ -98,6 +107,52 @@ export default function Navbar() {
               >
                 Organized Tickets
               </Link>
+              {/* Tasks - All users can access */}
+              <Link
+                to="/tasks"
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  location.pathname === '/tasks'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+              >
+                Tasks
+              </Link>
+              {/* Repository - All users can view */}
+              <Link
+                to="/repository"
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  location.pathname === '/repository'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+              >
+                Repository
+              </Link>
+              {/* Credentials - All users can view */}
+              <Link
+                to="/credentials"
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  location.pathname === '/credentials'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+              >
+                Credentials
+              </Link>
+              {/* Role Permissions - Admin/TLA only */}
+              {(userRole === 'admin' || userRole === 'tla') && (
+                <Link
+                  to="/role-permissions"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    location.pathname === '/role-permissions'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  Permissions
+                </Link>
+              )}
             </div>
           </div>
           
@@ -105,7 +160,7 @@ export default function Navbar() {
           {user && (
             <div className="hidden md:flex items-center space-x-4">
               <div className="flex items-center space-x-3">
-                <span className="text-xs font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-700">
+                <span className={`text-xs font-medium px-2 py-1 rounded-full ${getRoleColor(userRole)}`}>
                   {getRoleLabel()}
                 </span>
                 <span className="text-sm text-gray-600">
@@ -172,6 +227,17 @@ export default function Navbar() {
               Dashboard
             </Link>
             <Link
+              to="/report"
+              onClick={closeMobileMenu}
+              className={`block px-3 py-2 rounded-md text-base font-medium ${
+                location.pathname === '/report'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+            >
+              Report Issue
+            </Link>
+            <Link
               to="/kanban"
               onClick={closeMobileMenu}
               className={`block px-3 py-2 rounded-md text-base font-medium ${
@@ -193,6 +259,52 @@ export default function Navbar() {
             >
               Organized Tickets
             </Link>
+            <Link
+              to="/tasks"
+              onClick={closeMobileMenu}
+              className={`block px-3 py-2 rounded-md text-base font-medium ${
+                location.pathname === '/tasks'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+            >
+              Tasks
+            </Link>
+            <Link
+              to="/repository"
+              onClick={closeMobileMenu}
+              className={`block px-3 py-2 rounded-md text-base font-medium ${
+                location.pathname === '/repository'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+            >
+              Repository
+            </Link>
+            <Link
+              to="/credentials"
+              onClick={closeMobileMenu}
+              className={`block px-3 py-2 rounded-md text-base font-medium ${
+                location.pathname === '/credentials'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+            >
+              Credentials
+            </Link>
+            {(userRole === 'admin' || userRole === 'tla') && (
+              <Link
+                to="/role-permissions"
+                onClick={closeMobileMenu}
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  location.pathname === '/role-permissions'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+              >
+                Permissions
+              </Link>
+            )}
 
             {/* Sign Out Button */}
             <button

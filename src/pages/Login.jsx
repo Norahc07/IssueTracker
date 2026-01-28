@@ -47,17 +47,13 @@ export default function Login() {
           role = user.user_metadata?.role || 'intern';
         }
         
-        // Only allow admin and lead to login
-        if (role !== 'admin' && role !== 'lead') {
-          await supabase.auth.signOut();
-          throw new Error('Access denied. Only administrators and leads can access this system.');
-        }
-        
         // Navigate based on role
-        if (role === 'admin') {
+        if (role === 'admin' || role === 'tla') {
           navigate('/admin/dashboard');
-        } else if (role === 'lead') {
+        } else if (role === 'lead' || role === 'tl' || role === 'vtl' || role === 'monitoring_team' || role === 'pat1') {
           navigate('/lead/dashboard');
+        } else if (role === 'intern' || !role) {
+          navigate('/intern/dashboard');
         } else {
           navigate('/login');
         }

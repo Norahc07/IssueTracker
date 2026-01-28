@@ -3,6 +3,8 @@ import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import CreateAccountModal from '../components/CreateAccountModal.jsx';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
+import { Link } from 'react-router-dom';
+import { permissions } from '../utils/rolePermissions.js';
 
 export default function AdminDashboard() {
   const { user, supabase, userRole } = useSupabase();
@@ -20,7 +22,7 @@ export default function AdminDashboard() {
   });
 
   useEffect(() => {
-    if (userRole === 'admin') {
+    if (userRole === 'admin' || userRole === 'tla') {
       fetchData();
     }
   }, [user, userRole, supabase]);
@@ -84,12 +86,22 @@ export default function AdminDashboard() {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
           <p className="mt-1 text-sm sm:text-base text-gray-600">Manage users, tickets, and system settings</p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm sm:text-base"
-        >
-          Create Account
-        </button>
+        <div className="flex gap-2">
+          {permissions.canCreateAccounts(userRole) && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm sm:text-base"
+            >
+              Create Account
+            </button>
+          )}
+          <Link
+            to="/role-permissions"
+            className="w-full sm:w-auto px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-sm sm:text-base text-center"
+          >
+            View Permissions
+          </Link>
+        </div>
       </div>
 
       {/* Stats Grid */}

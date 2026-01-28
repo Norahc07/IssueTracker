@@ -11,12 +11,16 @@ import Login from './pages/Login';
 import Kanban from './pages/Kanban';
 import ReportIssue from './pages/ReportIssue';
 import OrganizedTickets from './pages/OrganizedTickets';
+import TaskAssignmentLog from './pages/TaskAssignmentLog';
+import CentralizedRepository from './pages/CentralizedRepository';
+import CredentialVault from './pages/CredentialVault';
+import RolePermissions from './pages/RolePermissions';
 
 function AppContent() {
   const { user, userRole, loading } = useSupabase();
   const location = useLocation();
   
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/report';
+  const isAuthPage = location.pathname === '/login';
 
   if (loading) {
     return (
@@ -31,9 +35,9 @@ function AppContent() {
 
   // Role-based dashboard routing
   const getDashboardRoute = () => {
-    if (!user) return '/report';
-    if (userRole === 'admin') return '/admin/dashboard';
-    if (userRole === 'lead') return '/lead/dashboard';
+    if (!user) return '/login';
+    if (userRole === 'admin' || userRole === 'tla') return '/admin/dashboard';
+    if (userRole === 'lead' || userRole === 'tl' || userRole === 'vtl' || userRole === 'monitoring_team' || userRole === 'pat1') return '/lead/dashboard';
     return '/intern/dashboard';
   };
 
@@ -44,19 +48,19 @@ function AppContent() {
         <Routes>
           <Route
             path="/"
-            element={<Navigate to="/report" replace />}
+            element={<Navigate to="/login" replace />}
           />
           <Route
             path="/report"
-            element={<ReportIssue />}
+            element={user ? <ReportIssue /> : <Navigate to="/login" />}
           />
           <Route
             path="/admin/dashboard"
-            element={user && userRole === 'admin' ? <AdminDashboard /> : <Navigate to="/login" />}
+            element={user && (userRole === 'admin' || userRole === 'tla') ? <AdminDashboard /> : <Navigate to="/login" />}
           />
           <Route
             path="/lead/dashboard"
-            element={user && userRole === 'lead' ? <LeadDashboard /> : <Navigate to="/login" />}
+            element={user && (userRole === 'lead' || userRole === 'tl' || userRole === 'vtl' || userRole === 'monitoring_team' || userRole === 'pat1') ? <LeadDashboard /> : <Navigate to="/login" />}
           />
           <Route
             path="/intern/dashboard"
@@ -73,6 +77,22 @@ function AppContent() {
           <Route
             path="/organized-tickets"
             element={user ? <OrganizedTickets /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/tasks"
+            element={user ? <TaskAssignmentLog /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/repository"
+            element={user ? <CentralizedRepository /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/credentials"
+            element={user ? <CredentialVault /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/role-permissions"
+            element={user && (userRole === 'admin' || userRole === 'tla') ? <RolePermissions /> : <Navigate to="/login" />}
           />
           <Route
             path="/login"

@@ -18,7 +18,7 @@ export default function LeadDashboard() {
   });
 
   useEffect(() => {
-    if (userRole === 'lead') {
+    if (userRole === 'lead' || userRole === 'tl' || userRole === 'vtl' || userRole === 'monitoring_team' || userRole === 'pat1') {
       fetchTickets();
     }
   }, [user, userRole, supabase]);
