@@ -5,6 +5,7 @@ import CreateAccountModal from '../components/CreateAccountModal.jsx';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
 import { Link } from 'react-router-dom';
 import { permissions } from '../utils/rolePermissions.js';
+import { queryCache } from '../utils/queryCache.js';
 
 export default function AdminDashboard() {
   const { user, supabase, userRole } = useSupabase();
@@ -27,9 +28,28 @@ export default function AdminDashboard() {
     }
   }, [user, userRole, supabase]);
 
-  const fetchData = async () => {
+  const fetchData = async (bypassCache = false) => {
+    if (!bypassCache) {
+      const cachedTickets = queryCache.get('admin:tickets');
+      const cachedUsers = queryCache.get('admin:users');
+      if (cachedTickets != null && cachedUsers != null) {
+        setTickets(cachedTickets);
+        setUsers(cachedUsers);
+        const openTickets = cachedTickets.filter(t => t.status === 'open').length;
+        const inProgressTickets = cachedTickets.filter(t => t.status === 'in-progress').length;
+        const closedTickets = cachedTickets.filter(t => t.status === 'closed').length;
+        setStats({
+          totalTickets: cachedTickets.length,
+          openTickets,
+          inProgressTickets,
+          closedTickets,
+          totalUsers: cachedUsers.length,
+        });
+        setLoading(false);
+        return;
+      }
+    }
     try {
-      // Fetch tickets
       const { data: ticketsData, error: ticketsError } = await supabase
         .from('tickets')
         .select('*')
@@ -37,30 +57,26 @@ export default function AdminDashboard() {
 
       if (ticketsError) throw ticketsError;
 
-      // Fetch users
       const { data: usersData, error: usersError } = await supabase
         .from('users')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (usersError) {
-        console.warn('Could not fetch users:', usersError);
-      }
+      if (usersError) console.warn('Could not fetch users:', usersError);
 
-      setTickets(ticketsData || []);
-      setUsers(usersData || []);
+      const tickets = ticketsData || [];
+      const users = usersData || [];
+      queryCache.set('admin:tickets', tickets);
+      queryCache.set('admin:users', users);
 
-      // Calculate stats
-      const openTickets = (ticketsData || []).filter(t => t.status === 'open').length;
-      const inProgressTickets = (ticketsData || []).filter(t => t.status === 'in-progress').length;
-      const closedTickets = (ticketsData || []).filter(t => t.status === 'closed').length;
-
+      setTickets(tickets);
+      setUsers(users);
       setStats({
-        totalTickets: ticketsData?.length || 0,
-        openTickets,
-        inProgressTickets,
-        closedTickets,
-        totalUsers: usersData?.length || 0,
+        totalTickets: tickets.length,
+        openTickets: tickets.filter(t => t.status === 'open').length,
+        inProgressTickets: tickets.filter(t => t.status === 'in-progress').length,
+        closedTickets: tickets.filter(t => t.status === 'closed').length,
+        totalUsers: users.length,
       });
     } catch (error) {
       toast.error('Error loading data');
@@ -218,7 +234,7 @@ export default function AdminDashboard() {
         <CreateAccountModal
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
-          onSuccess={fetchData}
+          onSuccess={() => fetchData(true)}
         />
       )}
 
@@ -228,7 +244,7 @@ export default function AdminDashboard() {
           onClose={() => setSelectedTicket(null)}
           ticket={selectedTicket}
           onUpdate={() => {
-            fetchData();
+            fetchData(true);
             setSelectedTicket(null);
           }}
         />

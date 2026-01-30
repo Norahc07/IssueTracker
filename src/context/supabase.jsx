@@ -1,6 +1,7 @@
 // client/src/context/supabase.jsx
 import { createContext, useContext, useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { queryCache } from '../utils/queryCache.js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -16,6 +17,8 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   },
 });
 
+const ROLE_CACHE_TTL = 10 * 60 * 1000; // 10 min
+
 const SupabaseContext = createContext();
 
 export function SupabaseProvider({ children }) {
@@ -30,8 +33,14 @@ export function SupabaseProvider({ children }) {
       return;
     }
 
+    const cacheKey = `role:${userId}`;
+    const cached = queryCache.get(cacheKey);
+    if (cached != null) {
+      setUserRole(cached);
+      return;
+    }
+
     try {
-      // First try to get role from users table
       const { data, error } = await supabase
         .from('users')
         .select('role')
@@ -39,21 +48,22 @@ export function SupabaseProvider({ children }) {
         .single();
 
       if (!error && data) {
-        setUserRole(data.role || 'intern');
+        const role = data.role || 'intern';
+        queryCache.set(cacheKey, role, ROLE_CACHE_TTL);
+        setUserRole(role);
         return;
       }
 
-      // If users table doesn't exist, check user metadata
       if (userMetadata?.role) {
+        queryCache.set(cacheKey, userMetadata.role, ROLE_CACHE_TTL);
         setUserRole(userMetadata.role);
         return;
       }
 
-      // Default to intern if no role found
       console.warn('Could not fetch user role, defaulting to intern');
       setUserRole('intern');
+      queryCache.set(cacheKey, 'intern', ROLE_CACHE_TTL);
     } catch (error) {
-      // If table doesn't exist, try user metadata
       if (userMetadata?.role) {
         setUserRole(userMetadata.role);
       } else {
@@ -73,13 +83,14 @@ export function SupabaseProvider({ children }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
         await fetchUserRole(session.user.id, session.user.user_metadata);
       } else {
         setUserRole(null);
+        if (event === 'SIGNED_OUT') queryCache.clearAll();
       }
       setLoading(false);
     });

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { getRoleDisplayName, getRoleColor, permissions } from '../utils/rolePermissions.js';
+import { queryCache } from '../utils/queryCache.js';
 
 export default function Navbar() {
   const { user, userRole, supabase } = useSupabase();
@@ -12,10 +13,11 @@ export default function Navbar() {
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
-  const handleSignOut = async () => {
+  const handleLogout = async () => {
+    queryCache.clearAll();
     await supabase.auth.signOut();
-    navigate('/login');
     setMobileMenuOpen(false);
+    navigate('/login', { replace: true });
   };
 
   const getDashboardPath = () => {
@@ -306,12 +308,12 @@ export default function Navbar() {
               </Link>
             )}
 
-            {/* Sign Out Button */}
+            {/* Logout Button */}
             <button
-              onClick={handleSignOut}
+              onClick={handleLogout}
               className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-gray-200 mt-2"
             >
-              Sign Out
+              Logout
             </button>
           </div>
         </div>

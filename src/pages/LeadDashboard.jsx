@@ -3,6 +3,7 @@ import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import CreateAccountModal from '../components/CreateAccountModal.jsx';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
+import { queryCache } from '../utils/queryCache.js';
 
 export default function LeadDashboard() {
   const { user, supabase, userRole } = useSupabase();
@@ -23,7 +24,21 @@ export default function LeadDashboard() {
     }
   }, [user, userRole, supabase]);
 
-  const fetchTickets = async () => {
+  const fetchTickets = async (bypassCache = false) => {
+    if (!bypassCache) {
+      const cached = queryCache.get('lead:tickets');
+      if (cached != null) {
+        setTickets(cached);
+        setStats({
+          totalTickets: cached.length,
+          openTickets: cached.filter(t => t.status === 'open').length,
+          inProgressTickets: cached.filter(t => t.status === 'in-progress').length,
+          closedTickets: cached.filter(t => t.status === 'closed').length,
+        });
+        setLoading(false);
+        return;
+      }
+    }
     try {
       const { data, error } = await supabase
         .from('tickets')
@@ -32,17 +47,14 @@ export default function LeadDashboard() {
 
       if (error) throw error;
 
-      setTickets(data || []);
-
-      const openTickets = (data || []).filter(t => t.status === 'open').length;
-      const inProgressTickets = (data || []).filter(t => t.status === 'in-progress').length;
-      const closedTickets = (data || []).filter(t => t.status === 'closed').length;
-
+      const tickets = data || [];
+      queryCache.set('lead:tickets', tickets);
+      setTickets(tickets);
       setStats({
-        totalTickets: data?.length || 0,
-        openTickets,
-        inProgressTickets,
-        closedTickets,
+        totalTickets: tickets.length,
+        openTickets: tickets.filter(t => t.status === 'open').length,
+        inProgressTickets: tickets.filter(t => t.status === 'in-progress').length,
+        closedTickets: tickets.filter(t => t.status === 'closed').length,
       });
     } catch (error) {
       toast.error('Error loading tickets');
@@ -130,7 +142,7 @@ export default function LeadDashboard() {
         <CreateAccountModal
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
-          onSuccess={fetchTickets}
+          onSuccess={() => fetchTickets(true)}
         />
       )}
 
@@ -140,7 +152,7 @@ export default function LeadDashboard() {
           onClose={() => setSelectedTicket(null)}
           ticket={selectedTicket}
           onUpdate={() => {
-            fetchTickets();
+            fetchTickets(true);
             setSelectedTicket(null);
           }}
         />

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { permissions } from '../utils/rolePermissions.js';
+import { queryCache } from '../utils/queryCache.js';
 
 export default function CredentialVault() {
   const { supabase, user, userRole } = useSupabase();
@@ -14,7 +15,15 @@ export default function CredentialVault() {
     fetchCredentials();
   }, [supabase]);
 
-  const fetchCredentials = async () => {
+  const fetchCredentials = async (bypassCache = false) => {
+    if (!bypassCache) {
+      const cached = queryCache.get('credential_vault');
+      if (cached != null) {
+        setCredentials(cached);
+        setLoading(false);
+        return;
+      }
+    }
     try {
       const { data, error } = await supabase
         .from('credential_vault')
@@ -25,7 +34,9 @@ export default function CredentialVault() {
         console.warn('Credential vault table may not exist:', error);
         setCredentials([]);
       } else {
-        setCredentials(data || []);
+        const creds = data || [];
+        queryCache.set('credential_vault', creds);
+        setCredentials(creds);
       }
     } catch (error) {
       console.error('Error fetching credentials:', error);

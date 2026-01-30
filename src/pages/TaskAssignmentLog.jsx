@@ -3,6 +3,7 @@ import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { logAction } from '../utils/auditTrail.js';
 import { permissions, ROLES } from '../utils/rolePermissions.js';
+import { queryCache } from '../utils/queryCache.js';
 
 const TASK_STATUSES = {
   'to-do': 'To Do',
@@ -22,7 +23,15 @@ export default function TaskAssignmentLog() {
     fetchTasks();
   }, [supabase, user]);
 
-  const fetchTasks = async () => {
+  const fetchTasks = async (bypassCache = false) => {
+    if (!bypassCache) {
+      const cached = queryCache.get('tasks');
+      if (cached != null) {
+        setTasks(cached);
+        setLoading(false);
+        return;
+      }
+    }
     try {
       const { data, error } = await supabase
         .from('tasks')
@@ -31,10 +40,11 @@ export default function TaskAssignmentLog() {
 
       if (error) throw error;
 
-      setTasks(data || []);
+      const tasks = data || [];
+      queryCache.set('tasks', tasks);
+      setTasks(tasks);
     } catch (error) {
       console.error('Error fetching tasks:', error);
-      // If table doesn't exist, initialize with empty array
       setTasks([]);
     } finally {
       setLoading(false);
@@ -75,7 +85,7 @@ export default function TaskAssignmentLog() {
       }, user.id);
 
       toast.success('Task claimed successfully!');
-      fetchTasks();
+      fetchTasks(true);
     } catch (error) {
       console.error('Error claiming task:', error);
       toast.error('Failed to claim task. Please try again.');
@@ -103,7 +113,7 @@ export default function TaskAssignmentLog() {
       }, user.id);
 
       toast.success('Task status updated');
-      fetchTasks();
+      fetchTasks(true);
     } catch (error) {
       console.error('Error updating status:', error);
       toast.error('Failed to update status');

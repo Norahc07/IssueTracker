@@ -3,6 +3,7 @@ import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { logAction } from '../utils/auditTrail.js';
 import { permissions } from '../utils/rolePermissions.js';
+import { queryCache } from '../utils/queryCache.js';
 
 export default function CentralizedRepository() {
   const { supabase, user, userRole } = useSupabase();
@@ -16,7 +17,15 @@ export default function CentralizedRepository() {
     fetchDocuments();
   }, [supabase]);
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = async (bypassCache = false) => {
+    if (!bypassCache) {
+      const cached = queryCache.get('repository_documents');
+      if (cached != null) {
+        setDocuments(cached);
+        setLoading(false);
+        return;
+      }
+    }
     try {
       const { data, error } = await supabase
         .from('repository_documents')
@@ -25,10 +34,11 @@ export default function CentralizedRepository() {
 
       if (error) {
         console.warn('Repository table may not exist:', error);
-        // Initialize with sample data structure
         setDocuments([]);
       } else {
-        setDocuments(data || []);
+        const docs = data || [];
+        queryCache.set('repository_documents', docs);
+        setDocuments(docs);
       }
     } catch (error) {
       console.error('Error fetching documents:', error);

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
-import { toast } from 'react-hot-toast';
 import {
   ROLES,
   permissions,
@@ -8,6 +7,7 @@ import {
   getRoleDescription,
   getRoleColor,
 } from '../utils/rolePermissions.js';
+import { queryCache } from '../utils/queryCache.js';
 
 export default function RolePermissions() {
   const { supabase, userRole } = useSupabase();
@@ -20,7 +20,15 @@ export default function RolePermissions() {
     }
   }, [supabase, userRole]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (bypassCache = false) => {
+    if (!bypassCache) {
+      const cached = queryCache.get('role:users');
+      if (cached != null) {
+        setUsers(cached);
+        setLoading(false);
+        return;
+      }
+    }
     try {
       const { data, error } = await supabase
         .from('users')
@@ -31,7 +39,9 @@ export default function RolePermissions() {
         console.warn('Could not fetch users:', error);
         setUsers([]);
       } else {
-        setUsers(data || []);
+        const list = data || [];
+        queryCache.set('role:users', list);
+        setUsers(list);
       }
     } catch (error) {
       console.error('Error fetching users:', error);

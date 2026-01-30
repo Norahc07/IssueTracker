@@ -6,6 +6,7 @@ import { useSupabase } from '../context/supabase.jsx';
 import { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
+import { queryCache } from '../utils/queryCache.js';
 
 function SortableItem({ id, ticket, onTicketClick }) {
   const {
@@ -81,7 +82,15 @@ const Kanban = () => {
     fetchTickets();
   }, [supabase]);
 
-  const fetchTickets = async () => {
+  const fetchTickets = async (bypassCache = false) => {
+    if (!bypassCache) {
+      const cached = queryCache.get('kanban:tickets');
+      if (cached != null) {
+        setTickets(cached);
+        setLoading(false);
+        return;
+      }
+    }
     try {
       const { data, error } = await supabase
         .from('tickets')
@@ -89,7 +98,9 @@ const Kanban = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setTickets(data || []);
+      const tickets = data || [];
+      queryCache.set('kanban:tickets', tickets);
+      setTickets(tickets);
     } catch (error) {
       toast.error('Error loading tickets');
       console.error('Error:', error);
@@ -239,7 +250,7 @@ const Kanban = () => {
           onClose={() => setSelectedTicket(null)}
           ticket={selectedTicket}
           onUpdate={() => {
-            fetchTickets();
+            fetchTickets(true);
             setSelectedTicket(null);
           }}
         />

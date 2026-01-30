@@ -3,6 +3,7 @@ import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
 import { Link } from 'react-router-dom';
+import { queryCache } from '../utils/queryCache.js';
 
 export default function InternDashboard() {
   const { user, supabase, userRole } = useSupabase();
@@ -28,61 +29,66 @@ export default function InternDashboard() {
     }
   }, [user, userRole, supabase]);
 
-  const fetchData = async () => {
+  const fetchData = async (bypassCache = false) => {
+    const cacheKeyTasks = user?.id ? `intern:tasks:${user.id}` : null;
+    if (!bypassCache) {
+      const cachedTickets = queryCache.get('intern:tickets');
+      const cachedTasks = cacheKeyTasks ? queryCache.get(cacheKeyTasks) : null;
+      if (cachedTickets != null && (cachedTasks != null || !user?.id)) {
+        const ticketsData = cachedTickets;
+        const tasksData = cachedTasks || [];
+        setTickets(ticketsData);
+        setTasks(tasksData);
+        const today = new Date().toDateString();
+        setStats({
+          myTickets: ticketsData.length,
+          openTickets: ticketsData.filter(t => t.status === 'open').length,
+          inProgressTickets: ticketsData.filter(t => t.status === 'in-progress').length,
+          completedTickets: ticketsData.filter(t => t.status === 'closed').length,
+          myTasks: tasksData.length,
+          tasksInProgress: tasksData.filter(t => t.status === 'in-progress').length,
+          tasksDone: tasksData.filter(t => t.status === 'done').length,
+          tasksPending: tasksData.filter(t => t.status === 'to-do' || t.status === 'review').length,
+          updatedToday: tasksData.filter(t => t.updated_at && new Date(t.updated_at).toDateString() === today).length,
+        });
+        setLoading(false);
+        return;
+      }
+    }
     try {
-      // Fetch tickets
       const { data: ticketsData, error: ticketsError } = await supabase
         .from('tickets')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (ticketsError) {
-        console.warn('Error fetching tickets:', ticketsError);
-      }
+      if (ticketsError) console.warn('Error fetching tickets:', ticketsError);
 
-      // Fetch tasks
       const { data: tasksData, error: tasksError } = await supabase
         .from('tasks')
         .select('*')
         .eq('assigned_to', user?.id)
         .order('created_at', { ascending: false });
 
-      if (tasksError) {
-        console.warn('Error fetching tasks:', tasksError);
-      }
+      if (tasksError) console.warn('Error fetching tasks:', tasksError);
 
-      setTickets(ticketsData || []);
-      setTasks(tasksData || []);
+      const tickets = ticketsData || [];
+      const tasks = tasksData || [];
+      queryCache.set('intern:tickets', tickets);
+      if (cacheKeyTasks) queryCache.set(cacheKeyTasks, tasks);
 
-      // Calculate ticket stats
-      const myTickets = (ticketsData || []).length;
-      const openTickets = (ticketsData || []).filter(t => t.status === 'open').length;
-      const inProgressTickets = (ticketsData || []).filter(t => t.status === 'in-progress').length;
-      const completedTickets = (ticketsData || []).filter(t => t.status === 'closed').length;
-
-      // Calculate task stats
-      const myTasks = (tasksData || []).length;
-      const tasksInProgress = (tasksData || []).filter(t => t.status === 'in-progress').length;
-      const tasksDone = (tasksData || []).filter(t => t.status === 'done').length;
-      const tasksPending = (tasksData || []).filter(t => t.status === 'to-do' || t.status === 'review').length;
-      
-      // Calculate updated today
+      setTickets(tickets);
+      setTasks(tasks);
       const today = new Date().toDateString();
-      const updatedToday = (tasksData || []).filter(t => {
-        if (!t.updated_at) return false;
-        return new Date(t.updated_at).toDateString() === today;
-      }).length;
-
       setStats({
-        myTickets,
-        openTickets,
-        inProgressTickets,
-        completedTickets,
-        myTasks,
-        tasksInProgress,
-        tasksDone,
-        tasksPending,
-        updatedToday,
+        myTickets: tickets.length,
+        openTickets: tickets.filter(t => t.status === 'open').length,
+        inProgressTickets: tickets.filter(t => t.status === 'in-progress').length,
+        completedTickets: tickets.filter(t => t.status === 'closed').length,
+        myTasks: tasks.length,
+        tasksInProgress: tasks.filter(t => t.status === 'in-progress').length,
+        tasksDone: tasks.filter(t => t.status === 'done').length,
+        tasksPending: tasks.filter(t => t.status === 'to-do' || t.status === 'review').length,
+        updatedToday: tasks.filter(t => t.updated_at && new Date(t.updated_at).toDateString() === today).length,
       });
     } catch (error) {
       toast.error('Error loading data');
@@ -301,7 +307,7 @@ export default function InternDashboard() {
           onClose={() => setSelectedTicket(null)}
           ticket={selectedTicket}
           onUpdate={() => {
-            fetchData();
+            fetchData(true);
             setSelectedTicket(null);
           }}
         />

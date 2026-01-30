@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
+import { queryCache } from '../utils/queryCache.js';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -20,7 +21,15 @@ export default function OrganizedTickets() {
     fetchTickets();
   }, [supabase]);
 
-  const fetchTickets = async () => {
+  const fetchTickets = async (bypassCache = false) => {
+    if (!bypassCache) {
+      const cached = queryCache.get('organized:tickets');
+      if (cached != null) {
+        setTickets(cached);
+        setLoading(false);
+        return;
+      }
+    }
     try {
       const { data, error } = await supabase
         .from('tickets')
@@ -29,7 +38,9 @@ export default function OrganizedTickets() {
 
       if (error) throw error;
 
-      setTickets(data || []);
+      const tickets = data || [];
+      queryCache.set('organized:tickets', tickets);
+      setTickets(tickets);
     } catch (error) {
       toast.error('Error loading tickets');
       console.error('Error:', error);
@@ -235,7 +246,7 @@ export default function OrganizedTickets() {
           onClose={() => setSelectedTicket(null)}
           ticket={selectedTicket}
           onUpdate={() => {
-            fetchTickets();
+            fetchTickets(true);
             setSelectedTicket(null);
           }}
         />
