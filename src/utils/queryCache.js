@@ -3,7 +3,7 @@
  * Cache is cleared on logout so next login gets fresh data.
  */
 
-const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes for list data
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes for list data - fewer refetches
 const store = new Map();
 
 function get(key) {

@@ -74,20 +74,33 @@ export function SupabaseProvider({ children }) {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchUserRole(session.user.id, session.user.user_metadata);
-      }
-      setLoading(false);
-    });
+    const AUTH_TIMEOUT_MS = 5000;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+    }, AUTH_TIMEOUT_MS);
+
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        clearTimeout(timeoutId);
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+        if (session?.user) {
+          fetchUserRole(session.user.id, session.user.user_metadata);
+        }
+      })
+      .catch((err) => {
+        clearTimeout(timeoutId);
+        console.warn('Auth getSession error:', err);
+        setLoading(false);
+      });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        await fetchUserRole(session.user.id, session.user.user_metadata);
+        fetchUserRole(session.user.id, session.user.user_metadata);
       } else {
         setUserRole(null);
         if (event === 'SIGNED_OUT') queryCache.clearAll();
@@ -95,7 +108,10 @@ export function SupabaseProvider({ children }) {
       setLoading(false);
     });
 
-    return () => subscription?.unsubscribe();
+    return () => {
+      clearTimeout(timeoutId);
+      subscription?.unsubscribe();
+    };
   }, []);
 
   return (

@@ -13,6 +13,18 @@ export default defineConfig({
       }
     }
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          supabase: ['@supabase/supabase-js'],
+          toast: ['react-hot-toast'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
+  },
   esbuild: {
     loader: 'jsx',
     include: /src\/.*\.[jt]sx?$/,
