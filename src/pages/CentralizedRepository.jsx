@@ -97,8 +97,8 @@ export default function CentralizedRepository() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Centralized Repository</h1>
-          <p className="mt-1 text-sm sm:text-base text-gray-600">Access SOPs, guides, and resources</p>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Centralized Repository</h1>
+          <p className="mt-1 text-sm text-gray-600">Access SOPs, guides, and resources</p>
         </div>
         {permissions.canUploadRepository(userRole) && (
           <button

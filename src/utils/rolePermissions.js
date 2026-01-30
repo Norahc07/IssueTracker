@@ -150,8 +150,9 @@ export const getRoleDisplayName = (role) => {
     [ROLES.TL]: 'Team Lead',
     [ROLES.VTL]: 'Vice Team Lead',
     [ROLES.INTERN]: 'Intern',
+    lead: 'Lead',
   };
-  return roleNames[role] || 'Intern';
+  return roleNames[role] || (role ? String(role) : 'Intern');
 };
 
 // Get role description
@@ -183,6 +184,7 @@ export const getRoleColor = (role) => {
     [ROLES.TL]: 'bg-yellow-100 text-yellow-800',
     [ROLES.VTL]: 'bg-orange-100 text-orange-800',
     [ROLES.INTERN]: 'bg-gray-100 text-gray-800',
+    lead: 'bg-cyan-100 text-cyan-800',
   };
   return colors[role] || 'bg-gray-100 text-gray-800';
 };

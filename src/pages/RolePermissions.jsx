@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import {
   ROLES,
@@ -7,49 +7,9 @@ import {
   getRoleDescription,
   getRoleColor,
 } from '../utils/rolePermissions.js';
-import { queryCache } from '../utils/queryCache.js';
 
 export default function RolePermissions() {
-  const { supabase, userRole } = useSupabase();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (userRole === 'admin' || userRole === 'tla') {
-      fetchUsers();
-    }
-  }, [supabase, userRole]);
-
-  const fetchUsers = async (bypassCache = false) => {
-    if (!bypassCache) {
-      const cached = queryCache.get('role:users');
-      if (cached != null) {
-        setUsers(cached);
-        setLoading(false);
-        return;
-      }
-    }
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('email', { ascending: true });
-
-      if (error) {
-        console.warn('Could not fetch users:', error);
-        setUsers([]);
-      } else {
-        const list = data || [];
-        queryCache.set('role:users', list);
-        setUsers(list);
-      }
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      setUsers([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { userRole } = useSupabase();
 
   const getPermissionSummary = (role) => {
     return {
@@ -87,14 +47,6 @@ export default function RolePermissions() {
     };
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-gray-600">Loading role permissions...</div>
-      </div>
-    );
-  }
-
   if (userRole !== 'admin' && userRole !== 'tla') {
     return (
       <div className="flex items-center justify-center py-12">
@@ -109,8 +61,8 @@ export default function RolePermissions() {
     <div className="w-full space-y-4 sm:space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Role Permissions</h1>
-        <p className="mt-1 text-sm sm:text-base text-gray-600">
+        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Role Permissions</h1>
+        <p className="mt-1 text-sm text-gray-600">
           Overview of permissions for each role in the KTI Portal
         </p>
       </div>
@@ -307,36 +259,9 @@ export default function RolePermissions() {
         })}
       </div>
 
-      {/* Users by Role */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Users by Role</h2>
-        <div className="space-y-4">
-          {Object.values(ROLES).map((role) => {
-            const roleUsers = users.filter(u => u.role === role);
-            return (
-              <div key={role} className="border-b border-gray-200 pb-4 last:border-b-0 last:pb-0">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold text-gray-700">
-                    {getRoleDisplayName(role)}
-                  </h3>
-                  <span className="text-xs text-gray-500">{roleUsers.length} users</span>
-                </div>
-                {roleUsers.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
-                    {roleUsers.map((user) => (
-                      <div key={user.id} className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
-                        {user.email || user.full_name || 'N/A'}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-400 mt-2">No users with this role</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <p className="text-sm text-gray-500">
+        To view and edit users by role, go to <Link to="/user-management" className="font-medium underline" style={{ color: PRIMARY }}>User Management</Link> (Admin, Team Lead, Vice Team Lead).
+      </p>
     </div>
   );
 }

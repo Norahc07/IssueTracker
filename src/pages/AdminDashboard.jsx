@@ -30,23 +30,39 @@ export default function AdminDashboard() {
     if (userRole === 'admin' || userRole === 'tla') fetchData();
   }, [user, userRole, supabase]);
 
+  const normalizeUser = (row) => {
+    if (!row || typeof row !== 'object') return null;
+    return {
+      id: row.id,
+      email: row.email ?? row.email_address ?? null,
+      role: row.role ?? 'intern',
+      full_name: row.full_name ?? row.fullname ?? row.name ?? null,
+      team: row.team ?? null,
+      created_at: row.created_at ?? null,
+    };
+  };
+
   const fetchData = async (bypassCache = false) => {
-    if (!bypassCache) {
-      const cachedTickets = queryCache.get('admin:tickets');
-      const cachedUsers = queryCache.get('admin:users');
-      if (cachedTickets != null && cachedUsers != null) {
-        setTickets(cachedTickets);
-        setUsers(cachedUsers);
-        setStats({
-          totalTickets: cachedTickets.length,
-          openTickets: cachedTickets.filter(t => t.status === 'open').length,
-          inProgressTickets: cachedTickets.filter(t => t.status === 'in-progress').length,
-          closedTickets: cachedTickets.filter(t => t.status === 'closed').length,
-          totalUsers: cachedUsers.length,
-        });
-        setLoading(false);
-        return;
-      }
+    const cachedTickets = queryCache.get('admin:tickets');
+    const cachedUsers = queryCache.get('admin:users');
+    const hasCachedUsers = Array.isArray(cachedUsers) && cachedUsers.length > 0;
+    const useCache =
+      !bypassCache &&
+      cachedTickets != null &&
+      cachedUsers != null &&
+      hasCachedUsers;
+    if (useCache) {
+      setTickets(cachedTickets);
+      setUsers(cachedUsers);
+      setStats({
+        totalTickets: cachedTickets.length,
+        openTickets: cachedTickets.filter(t => t.status === 'open').length,
+        inProgressTickets: cachedTickets.filter(t => t.status === 'in-progress').length,
+        closedTickets: cachedTickets.filter(t => t.status === 'closed').length,
+        totalUsers: cachedUsers.length,
+      });
+      setLoading(false);
+      return;
     }
     try {
       const { data: ticketsData, error: ticketsError } = await supabase.from('tickets').select('*').order('created_at', { ascending: false });
@@ -54,7 +70,8 @@ export default function AdminDashboard() {
       const { data: usersData, error: usersError } = await supabase.from('users').select('*').order('created_at', { ascending: false });
       if (usersError) console.warn('Could not fetch users:', usersError);
       const ticketsList = ticketsData || [];
-      const usersList = usersData || [];
+      const rawUsers = Array.isArray(usersData) ? usersData : [];
+      const usersList = rawUsers.map(normalizeUser).filter(Boolean);
       queryCache.set('admin:tickets', ticketsList);
       queryCache.set('admin:users', usersList);
       setTickets(ticketsList);

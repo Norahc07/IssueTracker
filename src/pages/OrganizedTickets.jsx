@@ -110,8 +110,8 @@ export default function OrganizedTickets() {
     <div className="w-full space-y-4 sm:space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Organized Tickets</h1>
-        <p className="mt-1 text-sm sm:text-base text-gray-600">Browse tickets by year and month</p>
+        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Organized Tickets</h1>
+        <p className="mt-1 text-sm text-gray-600">Browse tickets by year and month</p>
       </div>
 
       {/* Year Tabs */}

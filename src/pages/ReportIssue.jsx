@@ -187,7 +187,7 @@ export default function ReportIssue() {
         {/* Header */}
         <div className="text-center mb-6 sm:mb-8">
           <Link to="/" className="inline-block mb-3 sm:mb-4">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">Issue Tracker</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900" style={{ color: '#6795BE' }}>Report an Issue</h1>
           </Link>
           <p className="text-base sm:text-lg text-gray-600">
             Report an issue or request assistance
@@ -196,9 +196,9 @@ export default function ReportIssue() {
 
         {/* Form Card */}
         <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 sm:px-8 py-4 sm:py-6">
-            <h2 className="text-xl sm:text-2xl font-bold text-white">Report an Issue</h2>
-            <p className="text-blue-100 mt-1 text-sm sm:text-base">Fill out the form below to submit your issue</p>
+          <div className="px-4 sm:px-8 py-4 sm:py-6" style={{ backgroundColor: '#6795BE' }}>
+            <h2 className="text-xl sm:text-2xl font-bold text-white">Submit your issue</h2>
+            <p className="text-white/90 mt-1 text-sm">Fill out the form below to submit your issue</p>
           </div>
 
           <form onSubmit={handleSubmit} className="p-4 sm:p-6 lg:p-8 space-y-4 sm:space-y-6">

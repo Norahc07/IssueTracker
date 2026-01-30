@@ -77,6 +77,17 @@ export default function SidebarLayout() {
               </Link>
             );
           })}
+          {(userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl') && (
+            <Link
+              to="/user-management"
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                location.pathname === '/user-management' ? 'bg-white/20 text-white' : 'text-white/90 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <Icon path="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" className="h-5 w-5 flex-shrink-0" />
+              <span>User Management</span>
+            </Link>
+          )}
           {(userRole === 'admin' || userRole === 'tla') && (
             <Link
               to="/role-permissions"

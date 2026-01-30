@@ -72,8 +72,8 @@ export default function CredentialVault() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex-1">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Credential Vault</h1>
-          <p className="mt-1 text-sm sm:text-base text-gray-600">View-only access to required tools and login instructions</p>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Credential Vault</h1>
+          <p className="mt-1 text-sm text-gray-600">View-only access to required tools and login instructions</p>
           <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
             <p className="text-sm text-yellow-800">
               <strong>Note:</strong> This is a view-only list. Passwords are not stored in the system. Contact your supervisor for access credentials.

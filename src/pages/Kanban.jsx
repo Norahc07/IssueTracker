@@ -191,8 +191,8 @@ const Kanban = () => {
   return (
     <div className="w-full">
       <div className="mb-4 sm:mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Kanban Board</h1>
-        <p className="text-sm sm:text-base text-gray-600">Drag and drop tickets to organize your workflow</p>
+        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Kanban Board</h1>
+        <p className="mt-1 text-sm text-gray-600">Drag and drop tickets to organize your workflow</p>
       </div>
       
       <DndContext

@@ -168,8 +168,8 @@ export default function TaskAssignmentLog() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Task Assignment Log</h1>
-          <p className="mt-1 text-sm sm:text-base text-gray-600">Claim and manage your assigned tasks</p>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Task Assignment Log</h1>
+          <p className="mt-1 text-sm text-gray-600">Claim and manage your assigned tasks</p>
         </div>
         <div className="flex gap-2">
           <button
