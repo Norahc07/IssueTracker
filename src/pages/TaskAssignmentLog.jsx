@@ -5,6 +5,7 @@ import { logAction } from '../utils/auditTrail.js';
 import { permissions, ROLES } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
 
+const PRIMARY = '#6795BE';
 const TASK_STATUSES = {
   'to-do': 'To Do',
   'in-progress': 'In Progress',

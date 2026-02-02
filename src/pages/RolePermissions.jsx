@@ -8,6 +8,8 @@ import {
   getRoleColor,
 } from '../utils/rolePermissions.js';
 
+const PRIMARY = '#6795BE';
+
 export default function RolePermissions() {
   const { userRole } = useSupabase();
 

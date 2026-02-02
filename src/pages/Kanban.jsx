@@ -8,6 +8,8 @@ import { toast } from 'react-hot-toast';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
 import { queryCache } from '../utils/queryCache.js';
 
+const PRIMARY = '#6795BE';
+
 function SortableItem({ id, ticket, onTicketClick }) {
   const {
     attributes,

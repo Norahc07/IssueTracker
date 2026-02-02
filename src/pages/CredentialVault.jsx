@@ -4,6 +4,8 @@ import { toast } from 'react-hot-toast';
 import { permissions } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
 
+const PRIMARY = '#6795BE';
+
 export default function CredentialVault() {
   const { supabase, user, userRole } = useSupabase();
   const [credentials, setCredentials] = useState([]);

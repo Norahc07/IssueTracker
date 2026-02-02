@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
 import { queryCache } from '../utils/queryCache.js';
 
+const PRIMARY = '#6795BE';
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'

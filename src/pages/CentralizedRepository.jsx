@@ -5,6 +5,8 @@ import { logAction } from '../utils/auditTrail.js';
 import { permissions } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
 
+const PRIMARY = '#6795BE';
+
 export default function CentralizedRepository() {
   const { supabase, user, userRole } = useSupabase();
   const [documents, setDocuments] = useState([]);
