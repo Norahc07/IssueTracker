@@ -93,6 +93,14 @@ export function SupabaseProvider({ children }) {
       .catch((err) => {
         clearTimeout(timeoutId);
         console.warn('Auth getSession error:', err);
+        const msg = err?.message || '';
+        if (msg.includes('Refresh Token') || msg.includes('Invalid') || msg.includes('JWT')) {
+          queryCache.clearAll();
+          supabase.auth.signOut();
+          setSession(null);
+          setUser(null);
+          setUserRole(null);
+        }
         setLoading(false);
       });
 

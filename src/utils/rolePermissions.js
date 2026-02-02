@@ -138,6 +138,14 @@ export const permissions = {
     if (taskAssignedTo === userId) return true;
     return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA, ROLES.TL, ROLES.VTL]);
   },
+
+  canDeleteTasks: (userRole) => {
+    return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA, ROLES.TL, ROLES.VTL]);
+  },
+
+  canManageDomains: (userRole) => {
+    return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA, ROLES.TL, ROLES.VTL]);
+  },
 };
 
 // Get role display name

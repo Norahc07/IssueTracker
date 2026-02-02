@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { logAction } from '../utils/auditTrail.js';
-import { permissions, ROLES } from '../utils/rolePermissions.js';
+import { permissions } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
 
 const PRIMARY = '#6795BE';
@@ -10,19 +11,110 @@ const TASK_STATUSES = {
   'to-do': 'To Do',
   'in-progress': 'In Progress',
   'review': 'Review',
-  'done': 'Done'
+  'done': 'Done',
 };
+
+const TASK_NAMES = [
+  'WordPress Plugin Updates',
+  'GSC Crawling',
+  'Doc Reorganization (internal documentation)',
+  'Assisting other teams',
+  'Daily report (indiv & team)',
+  'Udemy review',
+  'Course Price edit (not sure if existing task pa rin ito for interns)',
+];
+
+const SCANNING_OPTIONS = ['ok', 'move on', 'ongoing'];
+const SCANNING_LABELS = { ok: 'Ok', 'move on': 'Move on', ongoing: 'On-going' };
+const DOMAIN_ROW_STATUS_OPTIONS = ['done', 'need verification', 'blocked access'];
+const UPDATE_STATUS_OPTIONS = ['Updated', 'Skipped', 'Failed'];
+const POST_UPDATE_CHECK_OPTIONS = ['Ok', 'Issue Found'];
+
+function Modal({ open, onClose, children, zIndexClassName = 'z-[9999]' }) {
+  if (!open) return null;
+  return createPortal(
+    <div
+      className={`fixed inset-0 ${zIndexClassName} bg-black/60 backdrop-blur-sm`}
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+    >
+      <div className="min-h-[100dvh] w-full p-4 flex items-center justify-center">
+        {children}
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 export default function TaskAssignmentLog() {
   const { supabase, user, userRole } = useSupabase();
   const [tasks, setTasks] = useState([]);
+  const [domains, setDomains] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [claimingTaskId, setClaimingTaskId] = useState(null);
-  const [filter, setFilter] = useState('all'); // all, my-tasks, available
+  const [activeMainTab, setActiveMainTab] = useState('tasks'); // 'tasks' | 'domains'
+  const [taskFilter, setTaskFilter] = useState('all'); // 'all' | 'my-tasks'
+  const [domainTypeFilter, setDomainTypeFilter] = useState('old'); // 'old' | 'new'
+  const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
+  const [showCreateDomainModal, setShowCreateDomainModal] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [wpPluginRows, setWpPluginRows] = useState([]);
+  const [domainPasswordHistory, setDomainPasswordHistory] = useState({});
+  const [createTaskForm, setCreateTaskForm] = useState({
+    name: '',
+    domain_migration: '',
+    assigned_to: '',
+    status: 'to-do',
+  });
+  const [createDomainForm, setCreateDomainForm] = useState({
+    type: 'old',
+    country: '',
+    url: '',
+    status: '',
+    scanning_done_date: '',
+    scanning_date: '',
+    scanning_plugin: '',
+    scanning_2fa: '',
+    wp_username: '',
+    new_password: '',
+    recaptcha: false,
+    backup: false,
+  });
 
   useEffect(() => {
     fetchTasks();
-  }, [supabase, user]);
+    fetchDomains();
+    if (permissions.canCreateTasks(userRole)) fetchUsers();
+  }, [supabase, userRole]);
+
+  const isTaskFormValid = () => {
+    const name = (createTaskForm.name || '').trim();
+    const status = (createTaskForm.status || '').trim();
+    const assigned = (createTaskForm.assigned_to || '').trim();
+    if (!name || !status || !assigned) return false;
+    if (name === 'WordPress Plugin Updates' && !createTaskForm.domain_migration) return false;
+    return true;
+  };
+
+  const isDomainFormValid = () => {
+    const f = createDomainForm;
+    return Boolean(
+      (f.type || '').trim() &&
+      (f.country || '').trim() &&
+      (f.url || '').trim() &&
+      (f.status || '').trim() &&
+      (f.scanning_done_date || '').trim() &&
+      (f.scanning_date || '').trim() &&
+      (f.scanning_plugin || '').trim() &&
+      (f.scanning_2fa || '').trim() &&
+      (f.wp_username || '').trim() &&
+      (f.new_password || '').trim()
+    );
+  };
 
   const fetchTasks = async (bypassCache = false) => {
     if (!bypassCache) {
@@ -38,60 +130,206 @@ export default function TaskAssignmentLog() {
         .from('tasks')
         .select('*')
         .order('created_at', { ascending: false });
-
       if (error) throw error;
-
-      const tasks = data || [];
-      queryCache.set('tasks', tasks);
-      setTasks(tasks);
+      const list = data || [];
+      queryCache.set('tasks', list);
+      setTasks(list);
     } catch (error) {
       console.error('Error fetching tasks:', error);
       setTasks([]);
+      const code = error?.code || error?.status;
+      if (code === 403 || code === 'PGRST301') {
+        toast.error('Permission denied. Try logging out and back in, or ask an admin to run task_domains_migration.sql.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleClaimTask = async (task) => {
-    if (!user) {
-      toast.error('Please log in to claim tasks');
-      return;
+  const fetchDomains = async (bypassCache = false) => {
+    const key = 'domains';
+    if (!bypassCache) {
+      const cached = queryCache.get(key);
+      if (cached != null) {
+        setDomains(cached);
+        return;
+      }
     }
-
-    if (task.assigned_to && task.assigned_to !== user.id) {
-      toast.error('This task is already claimed by another user');
-      return;
-    }
-
-    setClaimingTaskId(task.id);
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ 
-          assigned_to: user.id,
-          assigned_to_name: user.email,
-          status: 'in-progress',
-          claimed_at: new Date().toISOString()
-        })
-        .eq('id', task.id);
-
-      if (error) throw error;
-
-      // Log action to audit trail
-      await logAction(supabase, 'task_claimed', {
-        task_id: task.id,
-        task_name: task.name,
-        user_id: user.id,
-        user_email: user.email
-      }, user.id);
-
-      toast.success('Task claimed successfully!');
-      fetchTasks(true);
+      const { data, error } = await supabase.from('domains').select('*').order('country', { ascending: true });
+      if (error) {
+        console.warn('Domains table may not exist:', error);
+        setDomains([]);
+        return;
+      }
+      const list = data || [];
+      queryCache.set(key, list);
+      setDomains(list);
     } catch (error) {
-      console.error('Error claiming task:', error);
-      toast.error('Failed to claim task. Please try again.');
+      console.error('Error fetching domains:', error);
+      setDomains([]);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const { data, error } = await supabase.from('users').select('id, email, full_name, role').order('email');
+      if (error) {
+        console.warn('Could not fetch users:', error);
+        setUsers([]);
+        const code = error?.code || error?.status;
+        if (code === 403 || code === 'PGRST301') {
+          toast.error('Permission denied for users table. Run users_table_rls.sql and fix_users_grants.sql in Supabase.');
+        }
+        return;
+      }
+      setUsers(data || []);
+    } catch (error) {
+      setUsers([]);
+    }
+  };
+
+  const fetchWpPluginRows = async (taskId) => {
+    try {
+      const { data, error } = await supabase
+        .from('task_plugin_update_rows')
+        .select('*')
+        .eq('task_id', taskId)
+        .order('created_at');
+      if (error) throw error;
+      setWpPluginRows(data || []);
+    } catch (error) {
+      console.warn('task_plugin_update_rows may not exist:', error);
+      setWpPluginRows([]);
+    }
+  };
+
+  const fetchDomainPasswordHistory = async (domainId) => {
+    try {
+      const { data, error } = await supabase
+        .from('domain_password_history')
+        .select('password, recorded_at')
+        .eq('domain_id', domainId)
+        .order('recorded_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: data || [] }));
+    } catch (error) {
+      setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: [] }));
+    }
+  };
+
+  const handleCreateTask = async (e) => {
+    e.preventDefault();
+    const { name, domain_migration, assigned_to, status } = createTaskForm;
+    if (!name) {
+      toast.error('Select a task name');
+      return;
+    }
+    const isWpPlugin = name === 'WordPress Plugin Updates';
+    if (isWpPlugin && !domain_migration) {
+      toast.error('Select Domain Migration (New or Old domain) for WordPress Plugin Updates');
+      return;
+    }
+    setClaimingTaskId('create');
+    try {
+      const payload = {
+        name,
+        type: 'task',
+        status: status || 'to-do',
+        assigned_to: assigned_to || null,
+        assigned_to_name: users.find((u) => u.id === assigned_to)?.full_name || users.find((u) => u.id === assigned_to)?.email || null,
+      };
+      if (isWpPlugin) payload.domain_migration = domain_migration;
+      const { data, error } = await supabase.from('tasks').insert(payload).select('id').single();
+      if (error) throw error;
+      await logAction(supabase, 'task_created', { task_id: data?.id, task_name: name }, user?.id);
+      queryCache.invalidate('tasks');
+      fetchTasks(true);
+      setShowCreateTaskModal(false);
+      setCreateTaskForm({ name: '', domain_migration: '', assigned_to: '', status: 'to-do' });
+      toast.success('Task created');
+    } catch (error) {
+      console.error('Error creating task:', error);
+      const code = error?.code || error?.status;
+      const msg = code === 403 || code === 'PGRST301'
+        ? 'Permission denied. Run task_domains_migration.sql and ensure your role (admin/tl/vtl) can insert tasks.'
+        : (error?.message || 'Failed to create task');
+      toast.error(msg);
     } finally {
       setClaimingTaskId(null);
+    }
+  };
+
+  const handleCreateDomain = async (e) => {
+    e.preventDefault();
+    const { type, country, url, status, scanning_done_date, scanning_date, scanning_plugin, scanning_2fa, wp_username, new_password, recaptcha, backup } = createDomainForm;
+    if (!country?.trim() || !url?.trim()) {
+      toast.error('Country and URL are required');
+      return;
+    }
+    try {
+      const payload = {
+        type: type || 'old',
+        country: country.trim(),
+        url: url.trim(),
+        status: status || null,
+        scanning_date: scanning_date || null,
+        scanning_plugin: scanning_plugin || null,
+        scanning_2fa: scanning_2fa || null,
+        wp_username: wp_username?.trim() || null,
+        new_password: new_password || null,
+        recaptcha: !!recaptcha,
+        backup: !!backup,
+      };
+      if (scanning_done_date) payload.scanning_done_date = scanning_done_date;
+      const { error } = await supabase.from('domains').insert(payload);
+      if (error) throw error;
+      queryCache.invalidate('domains');
+      fetchDomains(true);
+      setShowCreateDomainModal(false);
+      setCreateDomainForm({
+        type: 'old',
+        country: '',
+        url: '',
+        status: '',
+        scanning_done_date: '',
+        scanning_date: '',
+        scanning_plugin: '',
+        scanning_2fa: '',
+        wp_username: '',
+        new_password: '',
+        recaptcha: false,
+        backup: false,
+      });
+      toast.success('Domain added');
+    } catch (error) {
+      console.error('Error creating domain:', error);
+      const code = error?.code || error?.status;
+      const msg = code === 403 || code === 'PGRST301'
+        ? 'Permission denied or domains table missing. Run task_domains_migration.sql in Supabase.'
+        : (error?.message || 'Failed to add domain');
+      toast.error(msg);
+    }
+  };
+
+  const handleUpdateDomainPassword = async (domainId, newPassword) => {
+    try {
+      const domain = domains.find((d) => d.id === domainId);
+      if (domain?.new_password) {
+        await supabase.from('domain_password_history').insert({
+          domain_id: domainId,
+          password: domain.new_password,
+        });
+      }
+      const { error } = await supabase.from('domains').update({ new_password: newPassword }).eq('id', domainId);
+      if (error) throw error;
+      queryCache.invalidate('domains');
+      fetchDomains(true);
+      setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: undefined }));
+      toast.success('Password updated; old password saved to history');
+    } catch (error) {
+      toast.error(error.message || 'Failed to update password');
     }
   };
 
@@ -99,45 +337,102 @@ export default function TaskAssignmentLog() {
     try {
       const { error } = await supabase
         .from('tasks')
-        .update({ status: newStatus })
+        .update({
+          status: newStatus,
+          updated_by: user?.id,
+          updated_by_name: user?.email,
+        })
         .eq('id', task.id);
-
       if (error) throw error;
-
-      // Log action to audit trail
-      await logAction(supabase, 'task_status_changed', {
-        task_id: task.id,
-        task_name: task.name,
-        old_status: task.status,
-        new_status: newStatus,
-        user_id: user.id
-      }, user.id);
-
-      toast.success('Task status updated');
+      await logAction(supabase, 'task_status_changed', { task_id: task.id, new_status: newStatus }, user?.id);
+      queryCache.invalidate('tasks');
       fetchTasks(true);
+      if (selectedTask?.id === task.id) setSelectedTask((t) => (t ? { ...t, status: newStatus } : null));
+      toast.success('Status updated');
     } catch (error) {
-      console.error('Error updating status:', error);
-      toast.error('Failed to update status');
+      const code = error?.code || error?.status;
+      const msg = code === 403 || code === 'PGRST301'
+        ? 'Permission denied. Run task_domains_migration.sql so your role can update tasks.'
+        : (error?.message || 'Failed to update status');
+      toast.error(msg);
     }
+  };
+
+  const handleDeleteTask = async (task) => {
+    if (!window.confirm(`Delete task "${task.name}"?`)) return;
+    try {
+      const { error } = await supabase.from('tasks').delete().eq('id', task.id);
+      if (error) throw error;
+      queryCache.invalidate('tasks');
+      fetchTasks(true);
+      setSelectedTask(null);
+      toast.success('Task deleted');
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete task');
+    }
+  };
+
+  const handleSaveWpPluginRow = async (row) => {
+    try {
+      const payload = {
+        country: row.country,
+        admin_url: row.admin_url,
+        admin_username: row.admin_username,
+        admin_password: row.admin_password,
+        status: row.status,
+        plugin_names: row.plugin_names,
+        version_before: row.version_before,
+        version_after: row.version_after,
+        update_status: row.update_status,
+        post_update_check: row.post_update_check,
+        notes: row.notes,
+      };
+      if (row.id) {
+        const { error } = await supabase.from('task_plugin_update_rows').update(payload).eq('id', row.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('task_plugin_update_rows').insert({
+          task_id: selectedTask.id,
+          domain_id: row.domain_id || null,
+          ...payload,
+        });
+        if (error) throw error;
+      }
+      fetchWpPluginRows(selectedTask.id);
+      toast.success('Row saved');
+    } catch (error) {
+      toast.error(error.message || 'Failed to save row');
+    }
+  };
+
+  const handleAddDomainToWpTask = (domain) => {
+    const newRow = {
+      id: null,
+      domain_id: domain.id,
+      country: domain.country,
+      admin_url: domain.url,
+      admin_username: domain.wp_username,
+      admin_password: domain.new_password,
+      status: '',
+      plugin_names: '',
+      version_before: '',
+      version_after: '',
+      update_status: '',
+      post_update_check: '',
+      notes: '',
+    };
+    setWpPluginRows((prev) => [...prev, newRow]);
   };
 
   const getFilteredTasks = () => {
-    if (filter === 'my-tasks') {
-      return tasks.filter(t => t.assigned_to === user?.id);
-    }
-    if (filter === 'available') {
-      return tasks.filter(t => !t.assigned_to);
-    }
-    return tasks;
+    const list = taskFilter === 'my-tasks' ? tasks.filter((t) => t.assigned_to === user?.id) : tasks;
+    return list;
   };
 
-  const canClaim = (task) => {
-    return !task.assigned_to && permissions.canClaimTasks(userRole);
-  };
+  const getFilteredDomains = () => domains.filter((d) => d.type === domainTypeFilter);
 
-  const canUpdateStatus = (task) => {
-    return permissions.canUpdateTaskStatus(userRole, task.assigned_to, user?.id);
-  };
+  const canUpdateStatus = (task) =>
+    permissions.canUpdateTaskStatus(userRole, task.assigned_to, user?.id);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -154,7 +449,9 @@ export default function TaskAssignmentLog() {
     }
   };
 
-  if (loading) {
+  const isWpPluginTask = (task) => task?.name === 'WordPress Plugin Updates';
+
+  if (loading && tasks.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-gray-600">Loading tasks...</div>
@@ -163,143 +460,915 @@ export default function TaskAssignmentLog() {
   }
 
   const filteredTasks = getFilteredTasks();
+  const filteredDomains = getFilteredDomains();
 
   return (
     <div className="w-full space-y-4 sm:space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Task Assignment Log</h1>
-          <p className="mt-1 text-sm text-gray-600">Claim and manage your assigned tasks</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === 'all'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            All Tasks
-          </button>
-          <button
-            onClick={() => setFilter('my-tasks')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === 'my-tasks'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            My Tasks
-          </button>
-          <button
-            onClick={() => setFilter('available')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === 'available'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Available
-          </button>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+            Task Assignment Log
+          </h1>
+          <p className="mt-1 text-sm text-gray-600">Manage tasks and domains</p>
         </div>
       </div>
 
-      {/* Tasks Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Task Name
-                </th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Assigned To
-                </th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredTasks.length > 0 ? (
-                filteredTasks.map((task) => (
-                  <tr key={task.id} className="hover:bg-gray-50">
-                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{task.name}</div>
-                      {task.description && (
-                        <div className="text-xs text-gray-500 mt-1">{task.description}</div>
-                      )}
-                    </td>
-                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        task.type === 'domain' 
-                          ? 'bg-purple-100 text-purple-800'
-                          : 'bg-indigo-100 text-indigo-800'
-                      }`}>
-                        {task.type === 'domain' ? 'Domain' : 'Task'}
-                      </span>
-                    </td>
-                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                      {canUpdateStatus(task) ? (
-                        <select
-                          value={task.status || 'to-do'}
-                          onChange={(e) => handleStatusChange(task, e.target.value)}
-                          className={`px-2 py-1 text-xs font-medium rounded-full border-0 ${getStatusColor(task.status || 'to-do')} cursor-pointer`}
-                        >
-                          {Object.entries(TASK_STATUSES).map(([key, label]) => (
-                            <option key={key} value={key}>{label}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(task.status || 'to-do')}`}>
-                          {TASK_STATUSES[task.status] || 'To Do'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {task.assigned_to_name || task.assigned_to || 'Unassigned'}
-                    </td>
-                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      {canClaim(task) ? (
+      {/* Main tabs: Tasks | Domains */}
+      <div className="flex gap-2 border-b border-gray-200">
+        <button
+          type="button"
+          onClick={() => setActiveMainTab('tasks')}
+          className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+            activeMainTab === 'tasks' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+          style={activeMainTab === 'tasks' ? { borderTopColor: PRIMARY } : {}}
+        >
+          Tasks
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveMainTab('domains')}
+          className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+            activeMainTab === 'domains' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          Domains
+        </button>
+      </div>
+
+      {activeMainTab === 'tasks' && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setTaskFilter('all')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                taskFilter === 'all' ? 'text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+              style={taskFilter === 'all' ? { backgroundColor: PRIMARY } : {}}
+            >
+              All Tasks
+            </button>
+            <button
+              type="button"
+              onClick={() => setTaskFilter('my-tasks')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                taskFilter === 'my-tasks' ? 'text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+              style={taskFilter === 'my-tasks' ? { backgroundColor: PRIMARY } : {}}
+            >
+              My Tasks
+            </button>
+            {permissions.canCreateTasks(userRole) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateTaskModal(true);
+                  fetchUsers();
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                style={{ backgroundColor: PRIMARY }}
+              >
+                Add Task
+              </button>
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Task Name
+                    </th>
+                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Assigned To
+                    </th>
+                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                      Details
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredTasks.length > 0 ? (
+                    filteredTasks.map((task) => (
+                      <tr key={task.id} className="hover:bg-gray-50">
+                        <td className="px-4 sm:px-6 py-4">
+                          <div className="text-sm font-medium text-gray-900">{task.name}</div>
+                          {task.description && (
+                            <div className="text-xs text-gray-500 mt-1">{task.description}</div>
+                          )}
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                          {canUpdateStatus(task) ? (
+                            <select
+                              value={task.status || 'to-do'}
+                              onChange={(e) => handleStatusChange(task, e.target.value)}
+                              className={`min-w-[7rem] px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 ${getStatusColor(task.status || 'to-do')} cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:ring-offset-0`}
+                            >
+                              {Object.entries(TASK_STATUSES).map(([key, label]) => (
+                                <option key={key} value={key}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-lg ${getStatusColor(task.status || 'to-do')}`}>
+                              {TASK_STATUSES[task.status] || 'To Do'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {task.assigned_to_name || task.assigned_to || 'Unassigned'}
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTask(task);
+                              if (isWpPluginTask(task)) fetchWpPluginRows(task.id);
+                            }}
+                            className="text-xs font-medium px-2 py-1 rounded text-white hover:opacity-90 transition-opacity"
+                            style={{ backgroundColor: PRIMARY }}
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-4 sm:px-6 py-12 text-center text-sm text-gray-500">
+                        {taskFilter === 'my-tasks' ? 'You have no assigned tasks' : 'No tasks found'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeMainTab === 'domains' && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDomainTypeFilter('old')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                domainTypeFilter === 'old' ? 'text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+              style={domainTypeFilter === 'old' ? { backgroundColor: PRIMARY } : {}}
+            >
+              Old Domains
+            </button>
+            <button
+              type="button"
+              onClick={() => setDomainTypeFilter('new')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                domainTypeFilter === 'new' ? 'text-white' : 'bg-gray-100 text-gray-700'
+              }`}
+              style={domainTypeFilter === 'new' ? { backgroundColor: PRIMARY } : {}}
+            >
+              New Domains
+            </button>
+            {permissions.canManageDomains(userRole) && (
+              <button
+                type="button"
+                onClick={() => setShowCreateDomainModal(true)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                style={{ backgroundColor: PRIMARY }}
+              >
+                Add Domain
+              </button>
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Country</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scanning</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">2FA</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">WP Username</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">New Password</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Old Password</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredDomains.length > 0 ? (
+                  filteredDomains.map((domain) => (
+                    <tr key={domain.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm text-gray-900">{domain.country || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 break-all">{domain.url || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{domain.status || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_date || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_plugin || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_2fa || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{domain.wp_username || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {domain.new_password ? '••••••' : '—'}
+                        {permissions.canManageDomains(userRole) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newPass = window.prompt('Enter new password (current will be saved to history):');
+                              if (newPass != null && newPass !== '') handleUpdateDomainPassword(domain.id, newPass);
+                            }}
+                            className="ml-1 text-xs font-medium"
+                            style={{ color: PRIMARY }}
+                          >
+                            Update
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <input type="checkbox" checked={!!domain.recaptcha} readOnly className="rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input type="checkbox" checked={!!domain.backup} readOnly className="rounded" />
+                      </td>
+                      <td className="px-4 py-3">
                         <button
-                          onClick={() => handleClaimTask(task)}
-                          disabled={claimingTaskId === task.id}
-                          className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs font-medium"
+                          type="button"
+                          onClick={() => fetchDomainPasswordHistory(domain.id)}
+                          className="text-xs font-medium"
+                          style={{ color: PRIMARY }}
                         >
-                          {claimingTaskId === task.id ? 'Claiming...' : 'Claim'}
+                          View history
                         </button>
-                      ) : task.assigned_to ? (
-                        <span className="text-xs text-gray-500">Locked</span>
-                      ) : (
-                        <span className="text-xs text-gray-400">-</span>
-                      )}
+                        {domainPasswordHistory[domain.id]?.length > 0 && (
+                          <div className="mt-1 text-xs text-gray-500">
+                            {domainPasswordHistory[domain.id].map((h, i) => (
+                              <div key={i}>
+                                {new Date(h.recorded_at).toLocaleDateString()}: ••••••
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={12} className="px-4 py-12 text-center text-sm text-gray-500">
+                      No {domainTypeFilter} domains. Add one with &quot;Add Domain&quot;.
                     </td>
                   </tr>
-                ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* Create Task Modal */}
+      {showCreateTaskModal && (
+        <Modal open={showCreateTaskModal} onClose={() => setShowCreateTaskModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto border border-gray-100">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4" style={{ color: PRIMARY }}>
+                Add Task
+              </h2>
+              <form onSubmit={handleCreateTask} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Task Name</label>
+                  <select
+                    value={createTaskForm.name}
+                    onChange={(e) =>
+                      setCreateTaskForm((f) => ({ ...f, name: e.target.value, domain_migration: '' }))
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                    required
+                  >
+                    <option value="">Select task</option>
+                    {TASK_NAMES.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {createTaskForm.name === 'WordPress Plugin Updates' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Domain Migration</label>
+                    <select
+                      value={createTaskForm.domain_migration}
+                      onChange={(e) => setCreateTaskForm((f) => ({ ...f, domain_migration: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                    >
+                      <option value="">New or Old domain</option>
+                      <option value="new">New domain</option>
+                      <option value="old">Old domain</option>
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select
+                    value={createTaskForm.status}
+                    onChange={(e) => setCreateTaskForm((f) => ({ ...f, status: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                  >
+                    {Object.entries(TASK_STATUSES).map(([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To (Role - Name)</label>
+                  <select
+                    value={createTaskForm.assigned_to}
+                    onChange={(e) => setCreateTaskForm((f) => ({ ...f, assigned_to: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                  >
+                    <option value="">Unassigned</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.role || 'User'} - {u.full_name || u.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={claimingTaskId === 'create' || !isTaskFormValid()}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                    style={isTaskFormValid() ? { backgroundColor: PRIMARY } : {}}
+                  >
+                    {claimingTaskId === 'create' ? 'Creating...' : 'Create Task'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateTaskModal(false)}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-red-50 hover:text-red-700 hover:border-red-200 border border-transparent"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Create Domain Modal */}
+      {showCreateDomainModal && (
+        <Modal open={showCreateDomainModal} onClose={() => setShowCreateDomainModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto border border-gray-100">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4" style={{ color: PRIMARY }}>
+                Add Domain
+              </h2>
+              <form onSubmit={handleCreateDomain} className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                  <select
+                    value={createDomainForm.type}
+                    onChange={(e) => setCreateDomainForm((f) => ({ ...f, type: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="old">Old</option>
+                    <option value="new">New</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                  <input
+                    type="text"
+                    value={createDomainForm.country}
+                    onChange={(e) => setCreateDomainForm((f) => ({ ...f, country: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="Country"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
+                  <input
+                    type="url"
+                    value={createDomainForm.url}
+                    onChange={(e) => setCreateDomainForm((f) => ({ ...f, url: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="https://..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select
+                    value={createDomainForm.status}
+                    onChange={(e) => setCreateDomainForm((f) => ({ ...f, status: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                  >
+                    <option value="">—</option>
+                    {SCANNING_OPTIONS.map((o) => (
+                      <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <span className="block text-sm font-medium text-gray-700">Scanning</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Date (date of scanning)</label>
+                      <input
+                        type="date"
+                        value={createDomainForm.scanning_done_date}
+                        onChange={(e) => setCreateDomainForm((f) => ({ ...f, scanning_done_date: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Scanning status (ok / move on / on-going)</label>
+                      <select
+                        value={createDomainForm.scanning_date}
+                        onChange={(e) => setCreateDomainForm((f) => ({ ...f, scanning_date: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                      >
+                        <option value="">—</option>
+                        {SCANNING_OPTIONS.map((o) => (
+                          <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Plugin</label>
+                    <select
+                      value={createDomainForm.scanning_plugin}
+                      onChange={(e) => setCreateDomainForm((f) => ({ ...f, scanning_plugin: e.target.value }))}
+                      className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    >
+                      <option value="">—</option>
+                      {SCANNING_OPTIONS.map((o) => (
+                        <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">2FA</label>
+                    <select
+                      value={createDomainForm.scanning_2fa}
+                      onChange={(e) => setCreateDomainForm((f) => ({ ...f, scanning_2fa: e.target.value }))}
+                      className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    >
+                      <option value="">—</option>
+                      {SCANNING_OPTIONS.map((o) => (
+                        <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">WP Username</label>
+                  <input
+                    type="text"
+                    value={createDomainForm.wp_username}
+                    onChange={(e) => setCreateDomainForm((f) => ({ ...f, wp_username: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                  <input
+                    type="password"
+                    value={createDomainForm.new_password}
+                    onChange={(e) => setCreateDomainForm((f) => ({ ...f, new_password: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={createDomainForm.recaptcha}
+                      onChange={(e) => setCreateDomainForm((f) => ({ ...f, recaptcha: e.target.checked }))}
+                      className="rounded"
+                    />
+                    reCAPTCHA
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={createDomainForm.backup}
+                      onChange={(e) => setCreateDomainForm((f) => ({ ...f, backup: e.target.checked }))}
+                      className="rounded"
+                    />
+                    Backup
+                  </label>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={!isDomainFormValid()}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                    style={isDomainFormValid() ? { backgroundColor: PRIMARY } : {}}
+                  >
+                    Add Domain
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateDomainModal(false)}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-red-50 hover:text-red-700 hover:border-red-200 border border-transparent"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Task Detail Modal (generic or WordPress Plugin Update) */}
+      {selectedTask && (
+        <Modal open={!!selectedTask} onClose={() => setSelectedTask(null)} zIndexClassName="z-[10000]">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto border border-gray-100 flex flex-col">
+            <div className="p-6">
+              <div className="flex justify-between items-start mb-4">
+                <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                  {selectedTask.name}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTask(null)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {isWpPluginTask(selectedTask) ? (
+                <>
+                  {/* Top section: Date, Updated By, Status, New/Old Domain, Add domain */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <span className="text-xs font-medium text-gray-500">Date</span>
+                      <p className="text-sm text-gray-900">
+                        {selectedTask.created_at
+                          ? new Date(selectedTask.created_at).toLocaleString()
+                          : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium text-gray-500">Updated By</span>
+                      <p className="text-sm text-gray-900">{selectedTask.updated_by_name || '—'}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium text-gray-500">Status</span>
+                      <p className="text-sm">
+                        {canUpdateStatus(selectedTask) ? (
+                          <select
+                            value={selectedTask.status || 'to-do'}
+                            onChange={(e) => handleStatusChange(selectedTask, e.target.value)}
+                            className={`text-sm font-medium rounded ${getStatusColor(selectedTask.status || 'to-do')} border-0`}
+                          >
+                            {Object.entries(TASK_STATUSES).map(([k, v]) => (
+                              <option key={k} value={k}>{v}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className={getStatusColor(selectedTask.status || 'to-do')}>
+                            {TASK_STATUSES[selectedTask.status] || 'To Do'}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium text-gray-500">Domain Type</span>
+                      <p className="text-sm text-gray-900">
+                        {selectedTask.domain_migration === 'new'
+                          ? 'New Domain'
+                          : selectedTask.domain_migration === 'old'
+                          ? 'Old Domain'
+                          : '—'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    {permissions.canManageDomains(userRole) && (
+                      <>
+                        <span className="text-sm font-medium text-gray-700">Add domain from list:</span>
+                        <select
+                          className="rounded border border-gray-300 px-3 py-1.5 text-sm"
+                          onChange={(e) => {
+                            const id = e.target.value;
+                            e.target.value = '';
+                            if (!id) return;
+                            const domain = domains.find((d) => d.id === id);
+                            if (domain) handleAddDomainToWpTask(domain);
+                          }}
+                        >
+                          <option value="">Select domain to add...</option>
+                          {domains
+                            .filter((d) => d.type === selectedTask.domain_migration)
+                            .map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.country} - {d.url}
+                              </option>
+                            ))}
+                        </select>
+                      </>
+                    )}
+                    {permissions.canCreateTasks(userRole) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setWpPluginRows((prev) => [
+                            ...prev,
+                            {
+                              id: null,
+                              domain_id: null,
+                              country: '',
+                              admin_url: '',
+                              admin_username: '',
+                              admin_password: '',
+                              status: '',
+                              plugin_names: '',
+                              version_before: '',
+                              version_after: '',
+                              update_status: '',
+                              post_update_check: '',
+                              notes: '',
+                            },
+                          ])
+                        }
+                        className="px-3 py-1.5 text-sm font-medium text-white rounded-lg"
+                        style={{ backgroundColor: PRIMARY }}
+                      >
+                        Add row
+                      </button>
+                    )}
+                  </div>
+                  {/* Table: Domain (Country), Admin URL, Admin Username and Password, Status, Plugin Names, Version Before/After, Update Status, Post-Update Check, Notes, Save */}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Domain (Country)</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Admin URL</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Admin Username</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Password</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Status</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Plugin Names</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Version Before</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Version After</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Update Status</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Post-Update Check</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Notes</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {wpPluginRows.map((row, idx) => (
+                          <tr key={row.id || `new-${idx}`} className="hover:bg-gray-50">
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={row.country || ''}
+                                onChange={(e) =>
+                                  setWpPluginRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, country: e.target.value } : r
+                                    )
+                                  )
+                                }
+                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                                placeholder="Country"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={row.admin_url || ''}
+                                onChange={(e) =>
+                                  setWpPluginRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, admin_url: e.target.value } : r
+                                    )
+                                  )
+                                }
+                                className="w-32 rounded border border-gray-300 px-2 py-1 text-xs"
+                                placeholder="URL"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={row.admin_username || ''}
+                                onChange={(e) =>
+                                  setWpPluginRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, admin_username: e.target.value } : r
+                                    )
+                                  )
+                                }
+                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="password"
+                                value={row.admin_password || ''}
+                                onChange={(e) =>
+                                  setWpPluginRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, admin_password: e.target.value } : r
+                                    )
+                                  )
+                                }
+                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={row.status || ''}
+                                onChange={(e) =>
+                                  setWpPluginRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, status: e.target.value } : r
+                                    )
+                                  )
+                                }
+                                className="w-28 rounded border border-gray-300 px-2 py-1 text-xs"
+                              >
+                                <option value="">—</option>
+                                {DOMAIN_ROW_STATUS_OPTIONS.map((o) => (
+                                  <option key={o} value={o}>{o}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={row.plugin_names || ''}
+                                onChange={(e) =>
+                                  setWpPluginRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, plugin_names: e.target.value } : r
+                                    )
+                                  )
+                                }
+                                className="w-32 rounded border border-gray-300 px-2 py-1 text-xs"
+                                placeholder="Plugin names"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={row.version_before || ''}
+                                onChange={(e) =>
+                                  setWpPluginRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, version_before: e.target.value } : r
+                                    )
+                                  )
+                                }
+                                className="w-20 rounded border border-gray-300 px-2 py-1 text-xs"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={row.version_after || ''}
+                                onChange={(e) =>
+                                  setWpPluginRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, version_after: e.target.value } : r
+                                    )
+                                  )
+                                }
+                                className="w-20 rounded border border-gray-300 px-2 py-1 text-xs"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={row.update_status || ''}
+                                onChange={(e) =>
+                                  setWpPluginRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, update_status: e.target.value } : r
+                                    )
+                                  )
+                                }
+                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                              >
+                                <option value="">—</option>
+                                {UPDATE_STATUS_OPTIONS.map((o) => (
+                                  <option key={o} value={o}>{o}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={row.post_update_check || ''}
+                                onChange={(e) =>
+                                  setWpPluginRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, post_update_check: e.target.value } : r
+                                    )
+                                  )
+                                }
+                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                              >
+                                <option value="">—</option>
+                                {POST_UPDATE_CHECK_OPTIONS.map((o) => (
+                                  <option key={o} value={o}>{o}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={row.notes || ''}
+                                onChange={(e) =>
+                                  setWpPluginRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === idx ? { ...r, notes: e.target.value } : r
+                                    )
+                                  )
+                                }
+                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                                placeholder="Notes"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveWpPluginRow(row)}
+                                className="text-xs font-medium text-white px-2 py-1 rounded"
+                                style={{ backgroundColor: PRIMARY }}
+                              >
+                                Save
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {wpPluginRows.length === 0 && (
+                    <p className="text-sm text-gray-500 py-4">
+                      No domain rows yet. Add a domain from the dropdown above or add rows manually in the table (add first row by selecting a domain).
+                    </p>
+                  )}
+                </>
               ) : (
-                <tr>
-                  <td colSpan="5" className="px-4 sm:px-6 py-12 text-center text-sm text-gray-500">
-                    {filter === 'available' 
-                      ? 'No available tasks at the moment'
-                      : filter === 'my-tasks'
-                      ? 'You have no assigned tasks'
-                      : 'No tasks found'}
-                  </td>
-                </tr>
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Status:</span>{' '}
+                    {canUpdateStatus(selectedTask) ? (
+                      <select
+                        value={selectedTask.status || 'to-do'}
+                        onChange={(e) => handleStatusChange(selectedTask, e.target.value)}
+                        className={`rounded ${getStatusColor(selectedTask.status || 'to-do')} border-0 text-sm`}
+                      >
+                        {Object.entries(TASK_STATUSES).map(([k, v]) => (
+                          <option key={k} value={k}>{v}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      TASK_STATUSES[selectedTask.status] || 'To Do'
+                    )}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Assigned To:</span>{' '}
+                    {selectedTask.assigned_to_name || 'Unassigned'}
+                  </p>
+                  {permissions.canDeleteTasks(userRole) && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTask(selectedTask)}
+                      className="mt-2 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100"
+                    >
+                      Delete Task
+                    </button>
+                  )}
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
