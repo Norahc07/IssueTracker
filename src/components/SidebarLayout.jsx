@@ -26,7 +26,7 @@ function Icon({ path, className = 'w-5 h-5' }) {
 }
 
 export default function SidebarLayout() {
-  const { user, userRole, supabase } = useSupabase();
+  const { user, userRole, supabase, clearSession } = useSupabase();
   const location = useLocation();
   const navigate = useNavigate();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -42,10 +42,10 @@ export default function SidebarLayout() {
     return location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
   };
 
-  const handleLogout = async () => {
-    queryCache.clearAll();
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    clearSession();
     navigate('/login', { replace: true });
+    supabase.auth.signOut().catch(() => {});
   };
 
   return (

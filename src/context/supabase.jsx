@@ -10,16 +10,35 @@ if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase environment variables');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-  },
-});
+// Single shared client for the whole app (avoids "Multiple GoTrueClient instances")
+const SUPABASE_GLOBAL_KEY = '__kti_supabase_client';
+const supabase =
+  (typeof globalThis !== 'undefined' && globalThis[SUPABASE_GLOBAL_KEY]) ||
+  (() => {
+    const client = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+      },
+    });
+    if (typeof globalThis !== 'undefined') globalThis[SUPABASE_GLOBAL_KEY] = client;
+    return client;
+  })();
 
 const ROLE_CACHE_TTL = 10 * 60 * 1000; // 10 min
 
-const SupabaseContext = createContext();
+const noop = () => {};
+const defaultContext = {
+  supabase,
+  session: null,
+  user: null,
+  userRole: null,
+  loading: false,
+  clearSession: noop,
+};
+
+const SupabaseContext = createContext(defaultContext);
 
 export function SupabaseProvider({ children }) {
   const [session, setSession] = useState(null);
@@ -116,23 +135,59 @@ export function SupabaseProvider({ children }) {
       setLoading(false);
     });
 
+    // Periodically verify session (e.g. after invalid refresh token)
+    const checkSession = async () => {
+      try {
+        const { data: { session: s } } = await supabase.auth.getSession();
+        if (!s) {
+          setSession(null);
+          setUser(null);
+          setUserRole(null);
+          queryCache.clearAll();
+        }
+      } catch {
+        setSession(null);
+        setUser(null);
+        setUserRole(null);
+        queryCache.clearAll();
+      }
+    };
+    const interval = setInterval(checkSession, 60000);
+
     return () => {
       clearTimeout(timeoutId);
+      clearInterval(interval);
       subscription?.unsubscribe();
     };
   }, []);
 
+  const clearSession = () => {
+    setSession(null);
+    setUser(null);
+    setUserRole(null);
+    queryCache.clearAll();
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) keys.push(key);
+      }
+      keys.forEach((k) => localStorage.removeItem(k));
+    } catch (_) {}
+  };
+
   return (
-    <SupabaseContext.Provider value={{ supabase, session, user, userRole, loading }}>
+    <SupabaseContext.Provider value={{ supabase, session, user, userRole, loading, clearSession }}>
       {children}
     </SupabaseContext.Provider>
   );
 }
 
 export const useSupabase = () => {
-  const context = useContext(SupabaseContext);
-  if (context === undefined) {
-    throw new Error('useSupabase must be used within a SupabaseProvider');
+  try {
+    const context = useContext(SupabaseContext);
+    return context && typeof context.supabase === 'object' ? context : defaultContext;
+  } catch (_) {
+    return defaultContext;
   }
-  return context;
 };

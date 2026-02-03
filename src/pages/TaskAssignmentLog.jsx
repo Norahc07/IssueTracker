@@ -268,6 +268,7 @@ export default function TaskAssignmentLog() {
       toast.error('Country and URL are required');
       return;
     }
+    console.log('[Domain Create] User role:', userRole, 'User ID:', user?.id);
     try {
       const payload = {
         type: type || 'old',
@@ -306,10 +307,15 @@ export default function TaskAssignmentLog() {
     } catch (error) {
       console.error('Error creating domain:', error);
       const code = error?.code || error?.status;
-      const msg = code === 403 || code === 'PGRST301'
-        ? 'Permission denied or domains table missing. Run task_domains_migration.sql in Supabase.'
-        : (error?.message || 'Failed to add domain');
-      toast.error(msg);
+      if (code === 403 || code === 'PGRST301') {
+        const roleMsg = userRole ? `Your current role: ${userRole}` : 'No role detected';
+        toast.error(
+          `Permission denied (403). ${roleMsg}. Please: 1) Run reset_policies_grants.sql in Supabase SQL Editor, 2) Ensure your user has a row in public.users with id matching auth.uid() and role in (admin, tla, tl, vtl), 3) Log out and log back in.`,
+          { duration: 6000 }
+        );
+      } else {
+        toast.error(error?.message || 'Failed to add domain');
+      }
     }
   };
 

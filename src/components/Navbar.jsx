@@ -6,18 +6,18 @@ import { getRoleDisplayName, getRoleColor, permissions } from '../utils/rolePerm
 import { queryCache } from '../utils/queryCache.js';
 
 export default function Navbar() {
-  const { user, userRole, supabase } = useSupabase();
+  const { user, userRole, supabase, clearSession } = useSupabase();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
 
-  const handleLogout = async () => {
-    queryCache.clearAll();
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    clearSession();
     setMobileMenuOpen(false);
     navigate('/login', { replace: true });
+    supabase.auth.signOut().catch(() => {});
   };
 
   const getDashboardPath = () => {
