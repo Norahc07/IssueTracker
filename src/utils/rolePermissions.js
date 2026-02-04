@@ -146,6 +146,22 @@ export const permissions = {
   canManageDomains: (userRole) => {
     return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA, ROLES.TL, ROLES.VTL]);
   },
+
+  // Attendance: all authenticated users can time in/out & view their own hours
+  canUseAttendance: (_userRole) => true,
+
+  // Attendance: who can set *their own* official time frame
+  // - TLA can set own time frame
+  // - Monitoring TL/VTL can set own time frame
+  canEditOwnAttendanceSchedule: (userRole, userTeam) => {
+    if (userRole === ROLES.TLA) return true;
+    return isTeamLead(userRole) && userTeam === TEAMS.MONITORING;
+  },
+
+  // Attendance: who can set time frame for other users (Monitoring TL/VTL only)
+  canManageAttendanceSchedules: (userRole, userTeam) => {
+    return isTeamLead(userRole) && userTeam === TEAMS.MONITORING;
+  },
 };
 
 // Get role display name

@@ -6,11 +6,22 @@ import { Link } from 'react-router-dom';
 import { queryCache } from '../utils/queryCache.js';
 
 const PRIMARY = '#6795BE';
+const DEFAULT_OJT_REQUIRED_HOURS = 400;
+
+function minutesToHours(minutes) {
+  const m = Number(minutes) || 0;
+  return (m / 60).toFixed(2);
+}
 
 export default function LeadDashboard() {
   const { user, supabase, userRole } = useSupabase();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [ojt, setOjt] = useState({
+    scheduleSet: false,
+    requiredHours: DEFAULT_OJT_REQUIRED_HOURS,
+    renderedMinutes: 0,
+  });
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [ticketFilter, setTicketFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,8 +35,49 @@ export default function LeadDashboard() {
   useEffect(() => {
     if (userRole === 'lead' || userRole === 'tl' || userRole === 'vtl' || userRole === 'monitoring_team' || userRole === 'pat1') {
       fetchTickets();
+      fetchOjt();
     }
   }, [user, userRole, supabase]);
+
+  const fetchOjt = async (bypassCache = false) => {
+    if (!user?.id) return;
+    const cacheKey = `lead:ojt:${user.id}`;
+    if (!bypassCache) {
+      const cached = queryCache.get(cacheKey);
+      if (cached && typeof cached === 'object') {
+        setOjt(cached);
+        return;
+      }
+    }
+    try {
+      const { data: u, error: userErr } = await supabase
+        .from('users')
+        .select('total_ojt_hours_required, schedule_configured_at')
+        .eq('id', user.id)
+        .single();
+      if (userErr) console.warn('Lead OJT users fetch error:', userErr);
+      const requiredHours = Number(u?.total_ojt_hours_required) || DEFAULT_OJT_REQUIRED_HOURS;
+      const scheduleSet = u?.schedule_configured_at != null;
+
+      const { data: logs, error: logsErr } = await supabase
+        .from('attendance_logs')
+        .select('rendered_minutes')
+        .eq('user_id', user.id);
+      if (logsErr) {
+        console.warn('Lead OJT attendance_logs fetch error:', logsErr);
+        const next = { scheduleSet, requiredHours, renderedMinutes: 0 };
+        setOjt(next);
+        queryCache.set(cacheKey, next);
+        return;
+      }
+      const renderedMinutes = (Array.isArray(logs) ? logs : []).reduce((acc, row) => acc + (row?.rendered_minutes || 0), 0);
+      const next = { scheduleSet, requiredHours, renderedMinutes };
+      setOjt(next);
+      queryCache.set(cacheKey, next);
+    } catch (e) {
+      console.warn('Lead OJT fetch error:', e);
+    }
+  };
 
   const fetchTickets = async (bypassCache = false) => {
     if (!bypassCache) {
@@ -125,6 +177,32 @@ export default function LeadDashboard() {
           </div>
           <svg className="h-10 w-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
         </Link>
+      </div>
+
+      {/* OJT Hours (TLA/PAT1/Monitoring TL-VTL/Interns) */}
+      <div>
+        <h2 className="text-base font-semibold text-gray-900 mb-3">OJT Hours</h2>
+        {!ojt.scheduleSet && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800 mb-4">
+            Your official attendance schedule is not set yet. You can still time in/out in{' '}
+            <Link to="/attendance" className="font-semibold underline">
+              Attendance
+            </Link>
+            .
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Rendered hours</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">{minutesToHours(ojt.renderedMinutes)}</p>
+          </div>
+          <div className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Remaining hours</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">
+              {minutesToHours(Math.max(0, ojt.requiredHours * 60 - ojt.renderedMinutes))}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div>
