@@ -20,6 +20,7 @@ const CredentialVault = lazy(() => import('./pages/CredentialVault'));
 const RolePermissions = lazy(() => import('./pages/RolePermissions'));
 const UserManagement = lazy(() => import('./pages/UserManagement'));
 const Attendance = lazy(() => import('./pages/Attendance'));
+const OnboardingOffboarding = lazy(() => import('./pages/OnboardingOffboarding'));
 
 function PageFallback() {
   return (
@@ -80,6 +81,7 @@ function AppContent() {
                 <Route path="/role-permissions" element={(role === 'admin' || role === 'tla') ? <RolePermissions /> : <Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/user-management" element={(role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl') ? <UserManagement /> : <Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/attendance" element={<Attendance />} />
+                <Route path="/onboarding" element={<OnboardingOffboarding />} />
                 <Route path="/login" element={<Navigate to={getDashboardRoute()} replace />} />
               </Route>
             </Routes>

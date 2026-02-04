@@ -141,11 +141,6 @@ export default function UserManagement() {
     return matchRole && matchSearch;
   });
 
-  const usersByRole = ROLE_OPTIONS.map((role) => ({
-    role,
-    users: users.filter((u) => u.role === role),
-  }));
-
   if (!canAccessUserManagement(userRole)) {
     return (
       <div className="space-y-6">
@@ -312,33 +307,6 @@ export default function UserManagement() {
         </div>
       </div>
 
-      {/* Users by Role */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-          <h2 className="text-base font-semibold text-gray-900">Users by Role</h2>
-        </div>
-        <div className="p-4 sm:p-6 space-y-4">
-          {usersByRole.map(({ role, users: roleUsers }) => (
-            <div key={role} className="border-b border-gray-200 last:border-b-0 last:pb-0 pb-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-gray-700">{getRoleDisplayName(role)}</h3>
-                <span className="text-xs text-gray-500">{roleUsers.length} user(s)</span>
-              </div>
-              {roleUsers.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {roleUsers.map((u) => (
-                    <div key={u.id} className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-                      {u.email || u.full_name || 'N/A'}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-gray-400">No users with this role</p>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
