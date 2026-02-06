@@ -73,8 +73,9 @@ export default function InternDashboard() {
         .eq('user_id', user.id);
 
       if (logsErr) {
-        // attendance feature might not be migrated yet
-        console.warn('OJT attendance_logs fetch error:', logsErr);
+        // Most common: attendance feature not migrated yet OR missing RLS/GRANT → 403
+        const status = logsErr?.status;
+        if (status !== 403) console.warn('OJT attendance_logs fetch error:', logsErr);
         const next = { scheduleSet, requiredHours, renderedMinutes: 0 };
         setOjt(next);
         queryCache.set(cacheKey, next);

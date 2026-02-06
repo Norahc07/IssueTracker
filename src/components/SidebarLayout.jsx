@@ -54,15 +54,15 @@ export default function SidebarLayout() {
     <div className="flex min-h-screen bg-gray-50">
       {/* Sidebar */}
       <aside
-        className="fixed left-0 top-0 z-40 h-screen w-64 flex flex-col transition-transform duration-200 ease-out md:translate-x-0"
+        className="fixed left-0 top-0 z-40 h-screen w-64 lg:w-72 flex flex-col overflow-hidden transition-transform duration-200 ease-out md:translate-x-0"
         style={{ backgroundColor: PRIMARY }}
       >
-        <div className="flex h-30 items-center justify-center border-b border-white/20 px-4 pt-5">
+        <div className="flex shrink-0 h-38 items-center justify-center border-b border-white/20 px-4">
           <Link to={getDashboardPath()} className="flex items-center justify-center focus:outline-none">
-            <img src="/white-logo.png" alt="Knowles Training Institute" className="h-35 w-auto max-w-[350px] object-contain" />
+            <img src="/white-logo.png" alt="Knowles Training Institute" className="h-26 w-auto max-w-[340px] object-contain" />
           </Link>
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-5">
+        <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
           {navItems.map((item) => {
             const to = item.to === 'dashboard' ? getDashboardPath() : item.to;
             const active = isActive(item.to);
@@ -70,12 +70,13 @@ export default function SidebarLayout() {
               <Link
                 key={item.to}
                 to={to}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                title={item.label}
+                className={`flex min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   active ? 'bg-white/20 text-white' : 'text-white/90 hover:bg-white/10 hover:text-white'
                 }`}
               >
                 <Icon path={item.icon} className="h-5 w-5 flex-shrink-0" />
-                <span>{item.label}</span>
+                <span className="truncate">{item.label}</span>
               </Link>
             );
           })}
@@ -102,7 +103,7 @@ export default function SidebarLayout() {
             </Link>
           )}
         </nav>
-        <div className="border-t border-white/20 p-3">
+        <div className="shrink-0 border-t border-white/20 p-3">
           <button
             onClick={handleLogout}
             className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
@@ -115,7 +116,7 @@ export default function SidebarLayout() {
       </aside>
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col pl-64">
+      <div className="flex flex-1 flex-col pl-64 lg:pl-72">
         {/* Top header */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-end gap-3 border-b border-gray-200 bg-white px-4 sm:px-6 shadow-sm">
           <button

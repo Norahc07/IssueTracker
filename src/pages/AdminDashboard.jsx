@@ -67,7 +67,8 @@ export default function AdminDashboard() {
         .select('rendered_minutes')
         .eq('user_id', user.id);
       if (logsErr) {
-        console.warn('Admin/TLA OJT attendance_logs fetch error:', logsErr);
+        const status = logsErr?.status;
+        if (status !== 403) console.warn('Admin/TLA OJT attendance_logs fetch error:', logsErr);
         const next = { scheduleSet, requiredHours, renderedMinutes: 0 };
         setOjt(next);
         queryCache.set(cacheKey, next);
