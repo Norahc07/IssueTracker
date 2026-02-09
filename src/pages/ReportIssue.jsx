@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { Link } from 'react-router-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { compressImage } from '../utils/imageCompression.js';
 
@@ -29,7 +28,7 @@ export default function ReportIssue() {
     affectedSystem: '',
     title: '',
     description: '',
-    urgency: 'normal',
+    urgency: '',
     screenshot: null,
   });
   const [loading, setLoading] = useState(false);
@@ -137,7 +136,7 @@ export default function ReportIssue() {
         affectedSystem: '',
         title: '',
         description: '',
-        urgency: 'normal',
+        urgency: '',
         screenshot: null,
       });
     } catch (error) {
@@ -149,32 +148,33 @@ export default function ReportIssue() {
     }
   };
 
+  const PRIMARY = '#6795BE';
+
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center px-4">
-        <div className="max-w-md w-full">
-          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div className="mx-auto h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-              <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="w-full space-y-4 sm:space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Report an Issue</h1>
+          <p className="mt-1 text-sm text-gray-600">Submit an issue or request assistance</p>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6 sm:p-8 max-w-xl">
+          <div className="flex flex-col items-center text-center">
+            <div className="h-14 w-14 bg-green-100 rounded-full flex items-center justify-center mb-4">
+              <svg className="h-7 w-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Thank You!</h2>
-            <p className="text-gray-600 mb-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Thank You!</h2>
+            <p className="text-gray-600 mb-6 text-sm">
               Your issue has been reported successfully. Our team will review it and get back to you soon.
             </p>
             <button
               onClick={() => setSubmitted(false)}
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              className="px-5 py-2.5 rounded-lg font-medium text-white transition-colors hover:opacity-90"
+              style={{ backgroundColor: PRIMARY }}
             >
               Report Another Issue
             </button>
-            <Link
-              to="/login"
-              className="block mt-3 text-sm text-blue-600 hover:text-blue-700"
-            >
-              Admin Login →
-            </Link>
           </div>
         </div>
       </div>
@@ -182,27 +182,25 @@ export default function ReportIssue() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 py-6 sm:py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-6 sm:mb-8">
-          <Link to="/" className="inline-block mb-3 sm:mb-4">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900" style={{ color: '#6795BE' }}>Report an Issue</h1>
-          </Link>
-          <p className="text-base sm:text-lg text-gray-600">
-            Report an issue or request assistance
-          </p>
+    <div className="w-full space-y-4 sm:space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Report an Issue</h1>
+        <p className="mt-1 text-sm text-gray-600">
+          Submit an issue or request assistance
+        </p>
+      </div>
+
+      <div className="w-full rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-5 sm:px-8 py-4 border-b border-gray-100" style={{ backgroundColor: `${PRIMARY}08` }}>
+          <h2 className="text-lg font-semibold text-gray-900">Submit your issue</h2>
+          <p className="text-sm text-gray-600 mt-0.5">Fill out the form below</p>
         </div>
 
-        {/* Form Card */}
-        <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl overflow-hidden">
-          <div className="px-4 sm:px-8 py-4 sm:py-6" style={{ backgroundColor: '#6795BE' }}>
-            <h2 className="text-xl sm:text-2xl font-bold text-white">Submit your issue</h2>
-            <p className="text-white/90 mt-1 text-sm">Fill out the form below to submit your issue</p>
-          </div>
+        <form onSubmit={handleSubmit} className="p-5 sm:p-8 space-y-5 sm:space-y-6">
+          <p className="text-sm text-gray-600">Fill out the form below to submit your issue.</p>
 
-          <form onSubmit={handleSubmit} className="p-4 sm:p-6 lg:p-8 space-y-4 sm:space-y-6">
-            {/* Reported By */}
+          {/* Row 1: Reported By | Department */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             <div>
               <label htmlFor="reportedBy" className="block text-sm font-semibold text-gray-700 mb-2">
                 Reported By (Your Name) <span className="text-red-500">*</span>
@@ -213,12 +211,10 @@ export default function ReportIssue() {
                 required
                 value={formData.reportedBy}
                 onChange={(e) => setFormData({ ...formData, reportedBy: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all placeholder:text-gray-400"
                 placeholder="Enter your full name"
               />
             </div>
-
-            {/* Department */}
             <div>
               <label htmlFor="department" className="block text-sm font-semibold text-gray-700 mb-2">
                 Department <span className="text-red-500">*</span>
@@ -228,9 +224,9 @@ export default function ReportIssue() {
                 required
                 value={formData.department}
                 onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
+                className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all bg-white"
               >
-                <option value="">Select your department</option>
+                <option value="">Select your Department</option>
                 {DEPARTMENTS.map((dept) => (
                   <option key={dept} value={dept}>
                     {dept}
@@ -238,8 +234,10 @@ export default function ReportIssue() {
                 ))}
               </select>
             </div>
+          </div>
 
-            {/* Affected System/Process */}
+          {/* Row 2: Affected System/Process | Issue Title */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             <div>
               <label htmlFor="affectedSystem" className="block text-sm font-semibold text-gray-700 mb-2">
                 Affected System/Process <span className="text-red-500">*</span>
@@ -250,12 +248,10 @@ export default function ReportIssue() {
                 required
                 value={formData.affectedSystem}
                 onChange={(e) => setFormData({ ...formData, affectedSystem: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="e.g., Email System, Payroll System, Website, etc."
+                className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all placeholder:text-gray-400"
+                placeholder="e.g. WordPress System, Website, Payroll, etc."
               />
             </div>
-
-            {/* Issue Title */}
             <div>
               <label htmlFor="title" className="block text-sm font-semibold text-gray-700 mb-2">
                 Issue Title <span className="text-red-500">*</span>
@@ -266,78 +262,77 @@ export default function ReportIssue() {
                 required
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all placeholder:text-gray-400"
                 placeholder="Brief description of the issue"
               />
             </div>
+          </div>
 
-            {/* Detailed Description */}
-            <div>
-              <label htmlFor="description" className="block text-sm font-semibold text-gray-700 mb-2">
-                Detailed Description <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                id="description"
-                required
-                rows={6}
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
-                placeholder="Provide detailed information about the issue, including steps to reproduce if applicable..."
-              />
-            </div>
+          {/* Row 3: Detailed Description (full width) */}
+          <div>
+            <label htmlFor="description" className="block text-sm font-semibold text-gray-700 mb-2">
+              Detailed Description <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              id="description"
+              required
+              rows={6}
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all resize-none placeholder:text-gray-400"
+              placeholder="Provide detailed information about the issue, including steps to reproduce if applicable..."
+            />
+          </div>
 
-            {/* Urgency Level */}
-            <div>
-              <label htmlFor="urgency" className="block text-sm font-semibold text-gray-700 mb-2">
-                How Urgent Is This Issue? <span className="text-red-500">*</span>
-              </label>
-              <select
-                id="urgency"
-                required
-                value={formData.urgency}
-                onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
+          {/* Row 4: How Urgent (full width) */}
+          <div>
+            <label htmlFor="urgency" className="block text-sm font-semibold text-gray-700 mb-2">
+              How Urgent Is This Issue? <span className="text-red-500">*</span>
+            </label>
+            <select
+              id="urgency"
+              required
+              value={formData.urgency}
+              onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
+              className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all bg-white"
+            >
+              <option value="">Select Issue Priority</option>
+              {URGENCY_LEVELS.map((level) => (
+                <option key={level.value} value={level.value}>
+                  {level.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Upload Screenshot (optional) */}
+          <div>
+            <label htmlFor="screenshot" className="block text-sm font-semibold text-gray-700 mb-2">
+              Upload Screenshot or Evidence <span className="text-gray-500 text-xs font-normal">(Optional)</span>
+            </label>
+            <div className="mt-1">
+              <label
+                htmlFor="screenshot"
+                className="cursor-pointer flex flex-col items-center justify-center px-4 py-8 border-2 border-dashed border-blue-200 rounded-lg hover:border-[#6795BE] hover:bg-blue-50/50 transition-all w-full"
               >
-                {URGENCY_LEVELS.map((level) => (
-                  <option key={level.value} value={level.value}>
-                    {level.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Upload Screenshot */}
-            <div>
-              <label htmlFor="screenshot" className="block text-sm font-semibold text-gray-700 mb-2">
-                Upload Screenshot or Evidence <span className="text-gray-500 text-xs">(Optional)</span>
+                <svg className="h-10 w-10 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <span className="mt-2 block text-sm font-medium text-gray-700">
+                  {formData.screenshot ? formData.screenshot.name : 'Click to Upload or drag and drop'}
+                </span>
+                <span className="mt-1 block text-xs text-gray-500">
+                  PNG, JPG, GIF up to 5MB
+                </span>
+                <input
+                  id="screenshot"
+                  name="screenshot"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="sr-only"
+                />
               </label>
-              <div className="mt-1 flex items-center">
-                <label
-                  htmlFor="screenshot"
-                  className="cursor-pointer flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all w-full"
-                >
-                  <div className="text-center">
-                    <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                    <span className="mt-2 block text-sm font-medium text-gray-700">
-                      {formData.screenshot ? formData.screenshot.name : 'Click to upload or drag and drop'}
-                    </span>
-                    <span className="mt-1 block text-xs text-gray-500">
-                      PNG, JPG, GIF up to 5MB
-                    </span>
-                  </div>
-                  <input
-                    id="screenshot"
-                    name="screenshot"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="sr-only"
-                  />
-                </label>
-              </div>
               {formData.screenshot && (
                 <div className="mt-2 flex items-center space-x-2">
                   <span className="text-sm text-gray-600">{formData.screenshot.name}</span>
@@ -351,25 +346,21 @@ export default function ReportIssue() {
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Submit Button */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-0 pt-4">
-              <Link
-                to="/login"
-                className="text-center sm:text-left text-sm text-gray-600 hover:text-gray-900 font-medium"
-              >
-                Admin Login →
-              </Link>
+          {/* Submit Button */}
+          <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
               <button
                 type="submit"
                 disabled={loading || uploading}
-                className="w-full sm:w-auto px-6 sm:px-8 py-2.5 sm:py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-semibold text-sm sm:text-base shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                className="px-5 py-2.5 rounded-lg font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                style={{ backgroundColor: PRIMARY }}
               >
                 {loading || uploading ? (
-                  <span className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
                     {uploading ? 'Uploading...' : 'Submitting...'}
                   </span>
@@ -377,26 +368,22 @@ export default function ReportIssue() {
                   'Submit Issue'
                 )}
               </button>
-            </div>
-          </form>
+          </div>
+        </form>
         </div>
 
-        {/* Info Box */}
-        <div className="mt-4 sm:mt-6 bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+        <div className="w-full rounded-xl border border-blue-200 bg-blue-50/80 p-4 sm:p-5">
+          <div className="flex gap-3">
+            <div className="flex-shrink-0 text-blue-500">
+              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
               </svg>
             </div>
-            <div className="ml-3">
-              <p className="text-sm text-blue-700">
-                <strong>Note:</strong> All submitted issues will be reviewed by our team. You will be contacted via email if we need additional information.
-              </p>
-            </div>
+            <p className="text-sm text-gray-700">
+              <strong>Note:</strong> All submitted issues will be reviewed by our team. You will be contacted via email if we need additional information.
+            </p>
           </div>
         </div>
-      </div>
     </div>
   );
 }

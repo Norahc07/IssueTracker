@@ -17,4 +17,9 @@
     font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
       monospace;
   }
+
+  /* Dropdown/select: extra right padding so the chevron icon has margin from the edge (applies to all selects) */
+  select {
+    padding-right: 3rem !important;
+  }
 }

@@ -64,6 +64,13 @@ export default function TaskAssignmentLog() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [wpPluginRows, setWpPluginRows] = useState([]);
   const [domainPasswordHistory, setDomainPasswordHistory] = useState({});
+  const [selectedDomainForAccounts, setSelectedDomainForAccounts] = useState(null);
+  const [defaultAccounts, setDefaultAccounts] = useState({ intern: { username: '', password: '' }, sg: { username: '', password: '' } });
+  const [showDefaultPassword, setShowDefaultPassword] = useState({ intern: false, sg: false });
+  const [editDefaultAccount, setEditDefaultAccount] = useState(null); // 'intern' | 'sg' | null
+  const [defaultAccountEditForm, setDefaultAccountEditForm] = useState({ username: '', password: '' });
+  const [savingDefaultAccount, setSavingDefaultAccount] = useState(false);
+  const [showEditModalPassword, setShowEditModalPassword] = useState(false);
   const [createTaskForm, setCreateTaskForm] = useState({
     name: '',
     domain_migration: '',
@@ -81,6 +88,8 @@ export default function TaskAssignmentLog() {
     scanning_2fa: '',
     wp_username: '',
     new_password: '',
+    sg_username: '',
+    sg_password: '',
     recaptcha: false,
     backup: false,
   });
@@ -90,6 +99,10 @@ export default function TaskAssignmentLog() {
     fetchDomains();
     if (permissions.canCreateTasks(userRole)) fetchUsers();
   }, [supabase, userRole]);
+
+  useEffect(() => {
+    if (activeMainTab === 'domains' && domainTypeFilter === 'old') fetchDefaultAccounts();
+  }, [activeMainTab, domainTypeFilter, supabase]);
 
   const isTaskFormValid = () => {
     const name = (createTaskForm.name || '').trim();
@@ -102,17 +115,24 @@ export default function TaskAssignmentLog() {
 
   const isDomainFormValid = () => {
     const f = createDomainForm;
-    return Boolean(
-      (f.type || '').trim() &&
+    const base =
       (f.country || '').trim() &&
       (f.url || '').trim() &&
       (f.status || '').trim() &&
       (f.scanning_done_date || '').trim() &&
       (f.scanning_date || '').trim() &&
       (f.scanning_plugin || '').trim() &&
-      (f.scanning_2fa || '').trim() &&
+      (f.scanning_2fa || '').trim();
+    if (f.type === 'new') {
+      return Boolean((f.type || '').trim() && base && (f.wp_username || '').trim() && (f.new_password || '').trim());
+    }
+    return Boolean(
+      (f.type || '').trim() &&
+      base &&
       (f.wp_username || '').trim() &&
-      (f.new_password || '').trim()
+      (f.new_password || '').trim() &&
+      (f.sg_username || '').trim() &&
+      (f.sg_password || '').trim()
     );
   };
 
@@ -219,6 +239,73 @@ export default function TaskAssignmentLog() {
     }
   };
 
+  const fetchDefaultAccounts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('old_domain_default_accounts')
+        .select('account_type, username, password');
+      if (error) throw error;
+      const list = data || [];
+      const next = { intern: { username: '', password: '' }, sg: { username: '', password: '' } };
+      list.forEach((row) => {
+        if (row.account_type === 'intern' || row.account_type === 'sg') {
+          next[row.account_type] = { username: row.username || '', password: row.password || '' };
+        }
+      });
+      setDefaultAccounts(next);
+    } catch (err) {
+      console.warn('fetchDefaultAccounts:', err);
+      setDefaultAccounts({ intern: { username: '', password: '' }, sg: { username: '', password: '' } });
+    }
+  };
+
+  const copyToClipboard = (value, label) => {
+    if (!value) return;
+    navigator.clipboard.writeText(value).then(
+      () => toast.success(`${label} copied to clipboard`),
+      () => toast.error('Failed to copy')
+    );
+  };
+
+  const copyPasswordToClipboard = (password, label) => copyToClipboard(password, label);
+  const copyUsernameToClipboard = (username, label) => copyToClipboard(username, label);
+
+  const handleSaveDefaultAccount = async (e) => {
+    e.preventDefault();
+    if (!editDefaultAccount) return;
+    setSavingDefaultAccount(true);
+    try {
+      const { data: existing } = await supabase
+        .from('old_domain_default_accounts')
+        .select('id')
+        .eq('account_type', editDefaultAccount)
+        .maybeSingle();
+      const payload = {
+        account_type: editDefaultAccount,
+        username: (defaultAccountEditForm.username || '').trim() || null,
+        password: (defaultAccountEditForm.password || '').trim() || null,
+      };
+      if (existing?.id) {
+        const { error } = await supabase.from('old_domain_default_accounts').update(payload).eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('old_domain_default_accounts').insert(payload);
+        if (error) throw error;
+      }
+      setDefaultAccounts((prev) => ({
+        ...prev,
+        [editDefaultAccount]: { username: payload.username || '', password: payload.password || '' },
+      }));
+      setEditDefaultAccount(null);
+      setDefaultAccountEditForm({ username: '', password: '' });
+      toast.success('Default account updated');
+    } catch (err) {
+      toast.error(err?.message || 'Failed to save');
+    } finally {
+      setSavingDefaultAccount(false);
+    }
+  };
+
   const handleCreateTask = async (e) => {
     e.preventDefault();
     const { name, domain_migration, assigned_to, status } = createTaskForm;
@@ -283,6 +370,10 @@ export default function TaskAssignmentLog() {
         recaptcha: !!recaptcha,
         backup: !!backup,
       };
+      if (type === 'old') {
+        payload.sg_username = createDomainForm.sg_username?.trim() || null;
+        payload.sg_password = createDomainForm.sg_password?.trim() || null;
+      }
       if (scanning_done_date) payload.scanning_done_date = scanning_done_date;
       const { error } = await supabase.from('domains').insert(payload);
       if (error) throw error;
@@ -300,6 +391,8 @@ export default function TaskAssignmentLog() {
         scanning_2fa: '',
         wp_username: '',
         new_password: '',
+        sg_username: '',
+        sg_password: '',
         recaptcha: false,
         backup: false,
       });
@@ -504,27 +597,29 @@ export default function TaskAssignmentLog() {
 
       {activeMainTab === 'tasks' && (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setTaskFilter('all')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                taskFilter === 'all' ? 'text-white' : 'bg-gray-100 text-gray-700'
-              }`}
-              style={taskFilter === 'all' ? { backgroundColor: PRIMARY } : {}}
-            >
-              All Tasks
-            </button>
-            <button
-              type="button"
-              onClick={() => setTaskFilter('my-tasks')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                taskFilter === 'my-tasks' ? 'text-white' : 'bg-gray-100 text-gray-700'
-              }`}
-              style={taskFilter === 'my-tasks' ? { backgroundColor: PRIMARY } : {}}
-            >
-              My Tasks
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setTaskFilter('all')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                  taskFilter === 'all' ? 'text-white' : 'bg-gray-100 text-gray-700'
+                }`}
+                style={taskFilter === 'all' ? { backgroundColor: PRIMARY } : {}}
+              >
+                All Tasks
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskFilter('my-tasks')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                  taskFilter === 'my-tasks' ? 'text-white' : 'bg-gray-100 text-gray-700'
+                }`}
+                style={taskFilter === 'my-tasks' ? { backgroundColor: PRIMARY } : {}}
+              >
+                My Tasks
+              </button>
+            </div>
             {permissions.canCreateTasks(userRole) && (
               <button
                 type="button"
@@ -532,9 +627,12 @@ export default function TaskAssignmentLog() {
                   setShowCreateTaskModal(true);
                   fetchUsers();
                 }}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
                 style={{ backgroundColor: PRIMARY }}
               >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
                 Add Task
               </button>
             )}
@@ -622,124 +720,502 @@ export default function TaskAssignmentLog() {
 
       {activeMainTab === 'domains' && (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setDomainTypeFilter('old')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                domainTypeFilter === 'old' ? 'text-white' : 'bg-gray-100 text-gray-700'
-              }`}
-              style={domainTypeFilter === 'old' ? { backgroundColor: PRIMARY } : {}}
-            >
-              Old Domains
-            </button>
-            <button
-              type="button"
-              onClick={() => setDomainTypeFilter('new')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                domainTypeFilter === 'new' ? 'text-white' : 'bg-gray-100 text-gray-700'
-              }`}
-              style={domainTypeFilter === 'new' ? { backgroundColor: PRIMARY } : {}}
-            >
-              New Domains
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDomainTypeFilter('old')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                  domainTypeFilter === 'old' ? 'text-white' : 'bg-gray-100 text-gray-700'
+                }`}
+                style={domainTypeFilter === 'old' ? { backgroundColor: PRIMARY } : {}}
+              >
+                Old Domains
+              </button>
+              <button
+                type="button"
+                onClick={() => setDomainTypeFilter('new')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                  domainTypeFilter === 'new' ? 'text-white' : 'bg-gray-100 text-gray-700'
+                }`}
+                style={domainTypeFilter === 'new' ? { backgroundColor: PRIMARY } : {}}
+              >
+                New Domains
+              </button>
+            </div>
             {permissions.canManageDomains(userRole) && (
               <button
                 type="button"
                 onClick={() => setShowCreateDomainModal(true)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
                 style={{ backgroundColor: PRIMARY }}
               >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
                 Add Domain
               </button>
             )}
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Country</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scanning</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">2FA</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">WP Username</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">New Password</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Old Password</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredDomains.length > 0 ? (
-                  filteredDomains.map((domain) => (
-                    <tr key={domain.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-900">{domain.country || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 break-all">{domain.url || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{domain.status || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_date || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_plugin || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_2fa || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{domain.wp_username || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {domain.new_password ? '••••••' : '—'}
-                        {permissions.canManageDomains(userRole) && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newPass = window.prompt('Enter new password (current will be saved to history):');
-                              if (newPass != null && newPass !== '') handleUpdateDomainPassword(domain.id, newPass);
-                            }}
-                            className="ml-1 text-xs font-medium"
-                            style={{ color: PRIMARY }}
-                          >
-                            Update
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <input type="checkbox" checked={!!domain.recaptcha} readOnly className="rounded" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <input type="checkbox" checked={!!domain.backup} readOnly className="rounded" />
-                      </td>
-                      <td className="px-4 py-3">
+          {/* Note for Old Domains only: default accounts (editable) used for WordPress plugin updates */}
+          {domainTypeFilter === 'old' && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50/80 p-4 text-sm text-gray-800">
+              <p className="font-semibold text-gray-900 mb-2">Default accounts for old domains (Intern Account WordPress &amp; SG Domain WordPress)</p>
+              <p className="mb-3 text-gray-700">These two accounts are the default credentials used for WordPress plugin updates on old domains. You can view and update the values below.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+                <div className="bg-white/70 rounded-lg p-3 border border-blue-100 relative">
+                  <p className="font-medium text-gray-900 mb-2">Intern Account WordPress</p>
+                  <p className="text-gray-800 flex items-center gap-1 flex-wrap">
+                    <span>Admin Username:</span>
+                    {defaultAccounts.intern?.username ? (
+                      <>
+                        <span className="font-mono text-xs break-all">{defaultAccounts.intern.username}</span>
                         <button
                           type="button"
-                          onClick={() => fetchDomainPasswordHistory(domain.id)}
-                          className="text-xs font-medium"
-                          style={{ color: PRIMARY }}
+                          onClick={() => copyUsernameToClipboard(defaultAccounts.intern?.username, 'Username')}
+                          className="p-1 rounded text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                          title="Copy username"
                         >
-                          View history
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
                         </button>
-                        {domainPasswordHistory[domain.id]?.length > 0 && (
-                          <div className="mt-1 text-xs text-gray-500">
-                            {domainPasswordHistory[domain.id].map((h, i) => (
-                              <div key={i}>
-                                {new Date(h.recorded_at).toLocaleDateString()}: ••••••
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                      </>
+                    ) : '—'}
+                  </p>
+                  <p className="text-gray-800 flex items-center gap-1 flex-wrap">
+                    <span>Admin Password:</span>
+                    {defaultAccounts.intern?.password ? (
+                      <>
+                        <span className="font-mono text-xs break-all">
+                          {showDefaultPassword.intern ? defaultAccounts.intern.password : '••••••••••••'}
+                        </span>
+                        <span className="flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setShowDefaultPassword((s) => ({ ...s, intern: !s.intern }))}
+                            className="p-1 rounded text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                            title={showDefaultPassword.intern ? 'Hide password' : 'Show password'}
+                          >
+                            {showDefaultPassword.intern ? (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            )}
+                          </button>
+                          {showDefaultPassword.intern && (
+                            <button
+                              type="button"
+                              onClick={() => copyPasswordToClipboard(defaultAccounts.intern?.password, 'Password')}
+                              className="p-1 rounded text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                              title="Copy password"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </button>
+                          )}
+                        </span>
+                      </>
+                    ) : '—'}
+                  </p>
+                  {permissions.canManageDomains(userRole) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditDefaultAccount('intern');
+                        setDefaultAccountEditForm({
+                          username: defaultAccounts.intern?.username || '',
+                          password: defaultAccounts.intern?.password || '',
+                        });
+                      }}
+                      className="mt-2 flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium text-white hover:opacity-90"
+                      style={{ backgroundColor: PRIMARY }}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                      Edit
+                    </button>
+                  )}
+                </div>
+                <div className="bg-white/70 rounded-lg p-3 border border-amber-100 relative">
+                  <p className="font-medium text-gray-900 mb-2">SG Domain WordPress</p>
+                  <p className="text-gray-800 flex items-center gap-1 flex-wrap">
+                    <span>Admin username:</span>
+                    {defaultAccounts.sg?.username ? (
+                      <>
+                        <span className="font-mono text-xs break-all">{defaultAccounts.sg.username}</span>
+                        <button
+                          type="button"
+                          onClick={() => copyUsernameToClipboard(defaultAccounts.sg?.username, 'Username')}
+                          className="p-1 rounded text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                          title="Copy username"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </button>
+                      </>
+                    ) : '—'}
+                  </p>
+                  <p className="text-gray-800 flex items-center gap-1 flex-wrap">
+                    <span>Admin Password:</span>
+                    {defaultAccounts.sg?.password ? (
+                      <>
+                        <span className="font-mono text-xs break-all">
+                          {showDefaultPassword.sg ? defaultAccounts.sg.password : '••••••••••••'}
+                        </span>
+                        <span className="flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setShowDefaultPassword((s) => ({ ...s, sg: !s.sg }))}
+                            className="p-1 rounded text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                            title={showDefaultPassword.sg ? 'Hide password' : 'Show password'}
+                          >
+                            {showDefaultPassword.sg ? (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            )}
+                          </button>
+                          {showDefaultPassword.sg && (
+                            <button
+                              type="button"
+                              onClick={() => copyPasswordToClipboard(defaultAccounts.sg?.password, 'Password')}
+                              className="p-1 rounded text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                              title="Copy password"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </button>
+                          )}
+                        </span>
+                      </>
+                    ) : '—'}
+                  </p>
+                  {permissions.canManageDomains(userRole) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditDefaultAccount('sg');
+                        setDefaultAccountEditForm({
+                          username: defaultAccounts.sg?.username || '',
+                          password: defaultAccounts.sg?.password || '',
+                        });
+                      }}
+                      className="mt-2 flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium text-white hover:opacity-90 bg-amber-600"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                      Edit
+                    </button>
+                  )}
+                  <p className="mt-2 text-xs font-medium text-amber-800">For SG Domain DO NOT CHANGE the password unless required.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm overflow-x-auto">
+            {domainTypeFilter === 'old' ? (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Country</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scanning</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">2FA</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Credentials</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredDomains.length > 0 ? (
+                    filteredDomains.map((domain) => (
+                      <tr key={domain.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900">{domain.country || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.status || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 break-all">{domain.url || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_date || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_plugin || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_2fa || '—'}</td>
+                        <td className="px-4 py-3">
+                          <input type="checkbox" checked={!!domain.recaptcha} readOnly className="rounded" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input type="checkbox" checked={!!domain.backup} readOnly className="rounded" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDomainForAccounts(domain)}
+                            className="text-xs font-medium"
+                            style={{ color: PRIMARY }}
+                          >
+                            View accounts
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => fetchDomainPasswordHistory(domain.id)}
+                            className="block mt-0.5 text-xs text-gray-500 hover:underline"
+                          >
+                            Password history
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-12 text-center text-sm text-gray-500">
+                        No old domains. Add one with &quot;Add Domain&quot;.
                       </td>
                     </tr>
-                  ))
-                ) : (
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center text-sm text-gray-500">
-                      No {domainTypeFilter} domains. Add one with &quot;Add Domain&quot;.
-                    </td>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Country</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scanning</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">2FA</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">WP Username</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">New Password</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Old Password</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredDomains.length > 0 ? (
+                    filteredDomains.map((domain) => (
+                      <tr key={domain.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900">{domain.country || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 break-all">{domain.url || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.status || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_date || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_plugin || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_2fa || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.wp_username || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {domain.new_password ? '••••••' : '—'}
+                          {permissions.canManageDomains(userRole) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newPass = window.prompt('Enter new password (current will be saved to history):');
+                                if (newPass != null && newPass !== '') handleUpdateDomainPassword(domain.id, newPass);
+                              }}
+                              className="ml-1 text-xs font-medium"
+                              style={{ color: PRIMARY }}
+                            >
+                              Update
+                            </button>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <input type="checkbox" checked={!!domain.recaptcha} readOnly className="rounded" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input type="checkbox" checked={!!domain.backup} readOnly className="rounded" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => fetchDomainPasswordHistory(domain.id)}
+                            className="text-xs font-medium"
+                            style={{ color: PRIMARY }}
+                          >
+                            View history
+                          </button>
+                          {domainPasswordHistory[domain.id]?.length > 0 && (
+                            <div className="mt-1 text-xs text-gray-500">
+                              {domainPasswordHistory[domain.id].map((h, i) => (
+                                <div key={i}>
+                                  {new Date(h.recorded_at).toLocaleDateString()}: ••••••
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={12} className="px-4 py-12 text-center text-sm text-gray-500">
+                        No new domains. Add one with &quot;Add Domain&quot;.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
+
+          {/* View Old Domain Accounts modal (Intern + SG; update Intern only) */}
+          {selectedDomainForAccounts && (
+            <Modal open={!!selectedDomainForAccounts} onClose={() => setSelectedDomainForAccounts(null)}>
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md border border-gray-200">
+                <div className="p-5">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                      Accounts — {selectedDomainForAccounts.country || selectedDomainForAccounts.url || 'Domain'}
+                    </h3>
+                    <button type="button" onClick={() => setSelectedDomainForAccounts(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Intern Account WordPress</p>
+                      <p className="text-sm">Admin Username: {selectedDomainForAccounts.wp_username || '—'}</p>
+                      <p className="text-sm">Admin Password: {selectedDomainForAccounts.new_password ? '••••••••' : '—'}</p>
+                      {permissions.canManageDomains(userRole) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newPass = window.prompt('Enter new password (current will be saved to history):');
+                            if (newPass != null && newPass !== '') {
+                              handleUpdateDomainPassword(selectedDomainForAccounts.id, newPass);
+                              setSelectedDomainForAccounts((d) => (d ? { ...d, new_password: newPass } : null));
+                            }
+                          }}
+                          className="mt-2 text-xs font-medium"
+                          style={{ color: PRIMARY }}
+                        >
+                          Update Intern password
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => fetchDomainPasswordHistory(selectedDomainForAccounts.id)}
+                        className="block mt-1 text-xs text-gray-500 hover:underline"
+                      >
+                        View password history
+                      </button>
+                      {domainPasswordHistory[selectedDomainForAccounts.id]?.length > 0 && (
+                        <div className="mt-2 text-xs text-gray-500">
+                          {domainPasswordHistory[selectedDomainForAccounts.id].slice(0, 5).map((h, i) => (
+                            <div key={i}>{new Date(h.recorded_at).toLocaleDateString()}: ••••••</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="rounded-lg border border-amber-200 p-3 bg-amber-50/50">
+                      <p className="text-xs font-semibold text-amber-800 uppercase mb-2">SG Domain WordPress</p>
+                      <p className="text-sm">Admin username: {selectedDomainForAccounts.sg_username || '—'}</p>
+                      <p className="text-sm">Admin Password: {selectedDomainForAccounts.sg_password ? '••••••••' : '—'}</p>
+                      <p className="text-xs font-medium text-amber-800 mt-1">DO NOT CHANGE the password.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Modal>
+          )}
+
+          {/* Edit Default Account modal (Intern or SG) */}
+          {editDefaultAccount && (
+            <Modal open={!!editDefaultAccount} onClose={() => { setEditDefaultAccount(null); setDefaultAccountEditForm({ username: '', password: '' }); setShowEditModalPassword(false); }}>
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md border border-gray-200">
+                <div className="p-5">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                      Edit {editDefaultAccount === 'intern' ? 'Intern Account WordPress' : 'SG Domain WordPress'}
+                    </h3>
+                    <button type="button" onClick={() => { setEditDefaultAccount(null); setDefaultAccountEditForm({ username: '', password: '' }); setShowEditModalPassword(false); }} className="text-gray-400 hover:text-gray-600">✕</button>
+                  </div>
+                  <form onSubmit={handleSaveDefaultAccount} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Admin Username</label>
+                      <input
+                        type="text"
+                        value={defaultAccountEditForm.username}
+                        onChange={(e) => setDefaultAccountEditForm((f) => ({ ...f, username: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                        placeholder="Username"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Admin Password</label>
+                      <div className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white focus-within:ring-2 focus-within:ring-[#6795BE] focus-within:border-transparent">
+                        <input
+                          type={showEditModalPassword ? 'text' : 'password'}
+                          value={defaultAccountEditForm.password}
+                          onChange={(e) => setDefaultAccountEditForm((f) => ({ ...f, password: e.target.value }))}
+                          className="flex-1 min-w-0 rounded-lg border-0 px-3 py-2 text-sm focus:ring-0 focus:outline-none"
+                          placeholder="Password"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowEditModalPassword((v) => !v)}
+                          className="p-2 rounded text-gray-500 hover:bg-gray-100 hover:text-gray-700 shrink-0"
+                          title={showEditModalPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showEditModalPassword ? (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                      {editDefaultAccount === 'sg' && (
+                        <p className="mt-1 text-xs text-amber-700">For SG Domain DO NOT CHANGE the password unless required.</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        type="submit"
+                        disabled={savingDefaultAccount}
+                        className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                        style={{ backgroundColor: PRIMARY }}
+                      >
+                        {savingDefaultAccount ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setEditDefaultAccount(null); setDefaultAccountEditForm({ username: '', password: '' }); setShowEditModalPassword(false); }}
+                        className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </Modal>
+          )}
         </>
       )}
 
@@ -945,16 +1421,21 @@ export default function TaskAssignmentLog() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">WP Username</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {createDomainForm.type === 'old' ? 'Intern Account — WP Username' : 'WP Username'}
+                  </label>
                   <input
                     type="text"
                     value={createDomainForm.wp_username}
                     onChange={(e) => setCreateDomainForm((f) => ({ ...f, wp_username: e.target.value }))}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder={createDomainForm.type === 'old' ? 'Admin username' : ''}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {createDomainForm.type === 'old' ? 'Intern Account — Admin Password' : 'New Password'}
+                  </label>
                   <input
                     type="password"
                     value={createDomainForm.new_password}
@@ -962,6 +1443,29 @@ export default function TaskAssignmentLog() {
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   />
                 </div>
+                {createDomainForm.type === 'old' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">SG Domain WordPress — Admin username</label>
+                      <input
+                        type="text"
+                        value={createDomainForm.sg_username}
+                        onChange={(e) => setCreateDomainForm((f) => ({ ...f, sg_username: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        placeholder="SG Domain username"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">SG Domain WordPress — Admin Password</label>
+                      <input
+                        type="password"
+                        value={createDomainForm.sg_password}
+                        onChange={(e) => setCreateDomainForm((f) => ({ ...f, sg_password: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="flex gap-4">
                   <label className="flex items-center gap-2 text-sm">
                     <input
