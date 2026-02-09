@@ -54,15 +54,21 @@ export default function SidebarLayout() {
     <div className="flex min-h-screen bg-gray-50">
       {/* Sidebar */}
       <aside
-        className="fixed left-0 top-0 z-40 h-screen w-64 lg:w-72 flex flex-col overflow-hidden transition-transform duration-200 ease-out md:translate-x-0"
-        style={{ backgroundColor: PRIMARY }}
+        className="fixed left-0 top-0 z-40 w-64 lg:w-72 flex flex-col transition-transform duration-200 ease-out md:translate-x-0"
+        style={{
+          backgroundColor: PRIMARY,
+          height: '100vh',
+          height: '100dvh',
+          overflow: 'hidden',
+        }}
       >
-        <div className="flex shrink-0 h-38 items-center justify-center border-b border-white/20 px-4">
-          <Link to={getDashboardPath()} className="flex items-center justify-center focus:outline-none">
-            <img src="/white-logo.png" alt="Knowles Training Institute" className="h-26 w-auto max-w-[340px] object-contain" />
-          </Link>
-        </div>
-        <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="flex shrink-0 h-28 items-center justify-center border-b border-white/20 px-4">
+            <Link to={getDashboardPath()} className="flex items-center justify-center focus:outline-none">
+              <img src="/white-logo.png" alt="Knowles Training Institute" className="h-24 w-auto max-w-[280px] object-contain" />
+            </Link>
+          </div>
+          <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-0.5" style={{ WebkitOverflowScrolling: 'touch' }}>
           {navItems.map((item) => {
             const to = item.to === 'dashboard' ? getDashboardPath() : item.to;
             const active = isActive(item.to);
@@ -103,6 +109,7 @@ export default function SidebarLayout() {
             </Link>
           )}
         </nav>
+        </div>
         <div className="shrink-0 border-t border-white/20 p-3">
           <button
             onClick={handleLogout}
