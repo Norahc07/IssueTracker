@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
@@ -64,6 +64,7 @@ export default function TaskAssignmentLog() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [wpPluginRows, setWpPluginRows] = useState([]);
   const [domainPasswordHistory, setDomainPasswordHistory] = useState({});
+  const [passwordHistoryModalDomain, setPasswordHistoryModalDomain] = useState(null);
   const [selectedDomainForAccounts, setSelectedDomainForAccounts] = useState(null);
   const [defaultAccounts, setDefaultAccounts] = useState({ intern: { username: '', password: '' }, sg: { username: '', password: '' } });
   const [showDefaultPassword, setShowDefaultPassword] = useState({ intern: false, sg: false });
@@ -71,6 +72,7 @@ export default function TaskAssignmentLog() {
   const [defaultAccountEditForm, setDefaultAccountEditForm] = useState({ username: '', password: '' });
   const [savingDefaultAccount, setSavingDefaultAccount] = useState(false);
   const [showEditModalPassword, setShowEditModalPassword] = useState(false);
+  const [domainUpdates, setDomainUpdates] = useState([]);
   const [createTaskForm, setCreateTaskForm] = useState({
     name: '',
     domain_migration: '',
@@ -104,6 +106,12 @@ export default function TaskAssignmentLog() {
     if (activeMainTab === 'domains' && domainTypeFilter === 'old') fetchDefaultAccounts();
   }, [activeMainTab, domainTypeFilter, supabase]);
 
+  useEffect(() => {
+    if (activeMainTab === 'domains') {
+      fetchDomainUpdates();
+    }
+  }, [activeMainTab, supabase]);
+
   const isTaskFormValid = () => {
     const name = (createTaskForm.name || '').trim();
     const status = (createTaskForm.status || '').trim();
@@ -115,24 +123,15 @@ export default function TaskAssignmentLog() {
 
   const isDomainFormValid = () => {
     const f = createDomainForm;
-    const base =
+    return Boolean(
+      (f.type || '').trim() &&
       (f.country || '').trim() &&
       (f.url || '').trim() &&
       (f.status || '').trim() &&
       (f.scanning_done_date || '').trim() &&
       (f.scanning_date || '').trim() &&
       (f.scanning_plugin || '').trim() &&
-      (f.scanning_2fa || '').trim();
-    if (f.type === 'new') {
-      return Boolean((f.type || '').trim() && base && (f.wp_username || '').trim() && (f.new_password || '').trim());
-    }
-    return Boolean(
-      (f.type || '').trim() &&
-      base &&
-      (f.wp_username || '').trim() &&
-      (f.new_password || '').trim() &&
-      (f.sg_username || '').trim() &&
-      (f.sg_password || '').trim()
+      (f.scanning_2fa || '').trim()
     );
   };
 
@@ -236,6 +235,20 @@ export default function TaskAssignmentLog() {
       setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: data || [] }));
     } catch (error) {
       setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: [] }));
+    }
+  };
+
+  const fetchDomainUpdates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('task_plugin_update_rows')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setDomainUpdates(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('task_plugin_update_rows fetch error:', err);
+      setDomainUpdates([]);
     }
   };
 
@@ -350,7 +363,7 @@ export default function TaskAssignmentLog() {
 
   const handleCreateDomain = async (e) => {
     e.preventDefault();
-    const { type, country, url, status, scanning_done_date, scanning_date, scanning_plugin, scanning_2fa, wp_username, new_password, recaptcha, backup } = createDomainForm;
+    const { type, country, url, status, scanning_done_date, scanning_date, scanning_plugin, scanning_2fa, recaptcha, backup } = createDomainForm;
     if (!country?.trim() || !url?.trim()) {
       toast.error('Country and URL are required');
       return;
@@ -365,15 +378,9 @@ export default function TaskAssignmentLog() {
         scanning_date: scanning_date || null,
         scanning_plugin: scanning_plugin || null,
         scanning_2fa: scanning_2fa || null,
-        wp_username: wp_username?.trim() || null,
-        new_password: new_password || null,
         recaptcha: !!recaptcha,
         backup: !!backup,
       };
-      if (type === 'old') {
-        payload.sg_username = createDomainForm.sg_username?.trim() || null;
-        payload.sg_password = createDomainForm.sg_password?.trim() || null;
-      }
       if (scanning_done_date) payload.scanning_done_date = scanning_done_date;
       const { error } = await supabase.from('domains').insert(payload);
       if (error) throw error;
@@ -549,6 +556,44 @@ export default function TaskAssignmentLog() {
   };
 
   const isWpPluginTask = (task) => task?.name === 'WordPress Plugin Updates';
+
+  const latestUpdateByDomainId = useMemo(() => {
+    const map = {};
+    domainUpdates.forEach((row) => {
+      if (!row?.domain_id) return;
+      const existing = map[row.domain_id];
+      if (!existing) {
+        map[row.domain_id] = row;
+        return;
+      }
+      const existingDate = existing.created_at ? new Date(existing.created_at) : null;
+      const rowDate = row.created_at ? new Date(row.created_at) : null;
+      if (!existingDate || (rowDate && rowDate > existingDate)) {
+        map[row.domain_id] = row;
+      }
+    });
+    return map;
+  }, [domainUpdates]);
+
+  const getDomainPluginSummary = (domain) => {
+    const u = latestUpdateByDomainId[domain.id];
+    if (!u) return 'Not updated';
+
+    // New domains can have row-level status (done / need verification / blocked access)
+    if (u.status === 'blocked access') return 'Blocked access';
+    if (u.status === 'need verification') return 'Needs verification';
+    if (u.status === 'done' && u.update_status === 'Updated' && u.post_update_check === 'Ok') {
+      return 'OK / Updated';
+    }
+
+    if (u.update_status === 'Failed') return 'Failed';
+    if (u.post_update_check === 'Issue Found') return 'Issue found';
+    if (u.update_status === 'Updated' && u.post_update_check === 'Ok') return 'OK / Updated';
+
+    if (u.update_status === 'Skipped') return 'Skipped';
+
+    return u.update_status || 'Pending';
+  };
 
   if (loading && tasks.length === 0) {
     return (
@@ -937,6 +982,7 @@ export default function TaskAssignmentLog() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Country</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin Updates</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scanning</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
@@ -953,7 +999,21 @@ export default function TaskAssignmentLog() {
                       <tr key={domain.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm text-gray-900">{domain.country || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{domain.status || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 break-all">{domain.url || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{getDomainPluginSummary(domain)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 break-all">
+                          {domain.url ? (
+                            <a
+                              href={domain.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[#6795BE] hover:underline break-all"
+                            >
+                              {domain.url}
+                            </a>
+                          ) : (
+                            <span>—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_date || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'}
@@ -987,7 +1047,7 @@ export default function TaskAssignmentLog() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={10} className="px-4 py-12 text-center text-sm text-gray-500">
+                      <td colSpan={11} className="px-4 py-12 text-center text-sm text-gray-500">
                         No old domains. Add one with &quot;Add Domain&quot;.
                       </td>
                     </tr>
@@ -1001,6 +1061,7 @@ export default function TaskAssignmentLog() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Country</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin Updates</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scanning</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin</th>
@@ -1017,30 +1078,74 @@ export default function TaskAssignmentLog() {
                     filteredDomains.map((domain) => (
                       <tr key={domain.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm text-gray-900">{domain.country || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 break-all">{domain.url || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 break-all">
+                          {domain.url ? (
+                            <a
+                              href={domain.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[#6795BE] hover:underline break-all"
+                            >
+                              {domain.url}
+                            </a>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{domain.status || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{getDomainPluginSummary(domain)}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_date || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_plugin || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_2fa || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.wp_username || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">
-                          {domain.new_password ? '••••••' : '—'}
-                          {permissions.canManageDomains(userRole) && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newPass = window.prompt('Enter new password (current will be saved to history):');
-                                if (newPass != null && newPass !== '') handleUpdateDomainPassword(domain.id, newPass);
-                              }}
-                              className="ml-1 text-xs font-medium"
-                              style={{ color: PRIMARY }}
-                            >
-                              Update
-                            </button>
-                          )}
+                          <span className="inline-flex items-center gap-1">
+                            <span>{domain.wp_username || '—'}</span>
+                            {domain.wp_username && (
+                              <button
+                                type="button"
+                                onClick={() => copyUsernameToClipboard(domain.wp_username, 'WP Username')}
+                                className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                                title="Copy WP username"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                              </button>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          <span className="inline-flex items-center gap-1">
+                            <span>{domain.new_password ? '••••••' : '—'}</span>
+                            {domain.new_password && (
+                              <button
+                                type="button"
+                                onClick={() => copyPasswordToClipboard(domain.new_password, 'WP Password')}
+                                className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                                title="Copy password"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                              </button>
+                            )}
+                            {permissions.canManageDomains(userRole) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newPass = window.prompt('Enter new password (current will be saved to history):');
+                                  if (newPass != null && newPass !== '') handleUpdateDomainPassword(domain.id, newPass);
+                                }}
+                                className="ml-1 text-xs font-medium"
+                                style={{ color: PRIMARY }}
+                              >
+                                Update
+                              </button>
+                            )}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           <input type="checkbox" checked={!!domain.recaptcha} readOnly className="rounded" />
@@ -1051,27 +1156,21 @@ export default function TaskAssignmentLog() {
                         <td className="px-4 py-3">
                           <button
                             type="button"
-                            onClick={() => fetchDomainPasswordHistory(domain.id)}
+                            onClick={async () => {
+                              await fetchDomainPasswordHistory(domain.id);
+                              setPasswordHistoryModalDomain(domain);
+                            }}
                             className="text-xs font-medium"
                             style={{ color: PRIMARY }}
                           >
                             View history
                           </button>
-                          {domainPasswordHistory[domain.id]?.length > 0 && (
-                            <div className="mt-1 text-xs text-gray-500">
-                              {domainPasswordHistory[domain.id].map((h, i) => (
-                                <div key={i}>
-                                  {new Date(h.recorded_at).toLocaleDateString()}: ••••••
-                                </div>
-                              ))}
-                            </div>
-                          )}
                         </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={12} className="px-4 py-12 text-center text-sm text-gray-500">
+                      <td colSpan={13} className="px-4 py-12 text-center text-sm text-gray-500">
                         No new domains. Add one with &quot;Add Domain&quot;.
                       </td>
                     </tr>
@@ -1115,18 +1214,14 @@ export default function TaskAssignmentLog() {
                       )}
                       <button
                         type="button"
-                        onClick={() => fetchDomainPasswordHistory(selectedDomainForAccounts.id)}
+                        onClick={async () => {
+                          await fetchDomainPasswordHistory(selectedDomainForAccounts.id);
+                          setPasswordHistoryModalDomain(selectedDomainForAccounts);
+                        }}
                         className="block mt-1 text-xs text-gray-500 hover:underline"
                       >
                         View password history
                       </button>
-                      {domainPasswordHistory[selectedDomainForAccounts.id]?.length > 0 && (
-                        <div className="mt-2 text-xs text-gray-500">
-                          {domainPasswordHistory[selectedDomainForAccounts.id].slice(0, 5).map((h, i) => (
-                            <div key={i}>{new Date(h.recorded_at).toLocaleDateString()}: ••••••</div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                     <div className="rounded-lg border border-amber-200 p-3 bg-amber-50/50">
                       <p className="text-xs font-semibold text-amber-800 uppercase mb-2">SG Domain WordPress</p>
@@ -1134,6 +1229,51 @@ export default function TaskAssignmentLog() {
                       <p className="text-sm">Admin Password: {selectedDomainForAccounts.sg_password ? '••••••••' : '—'}</p>
                       <p className="text-xs font-medium text-amber-800 mt-1">DO NOT CHANGE the password.</p>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </Modal>
+          )}
+
+          {/* Password history modal for a specific domain */}
+          {passwordHistoryModalDomain && (
+            <Modal open={!!passwordHistoryModalDomain} onClose={() => setPasswordHistoryModalDomain(null)}>
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md border border-gray-200">
+                <div className="p-5">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                      Password history — {passwordHistoryModalDomain.country || passwordHistoryModalDomain.url || 'Domain'}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setPasswordHistoryModalDomain(null)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-80 overflow-y-auto text-sm text-gray-800">
+                    {(() => {
+                      const history = domainPasswordHistory[passwordHistoryModalDomain.id] || [];
+                      if (!history.length) {
+                        return <p className="text-sm text-gray-500">No password history recorded yet for this domain.</p>;
+                      }
+                      return history.map((h, idx) => {
+                        const date = new Date(h.recorded_at);
+                        const label = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+                        return (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between rounded border border-gray-100 bg-gray-50 px-3 py-2"
+                          >
+                            <div>
+                              <div className="text-xs font-medium text-gray-500 uppercase">{label}</div>
+                              <div className="font-mono text-sm break-all">{h.password || '—'}</div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1420,52 +1560,6 @@ export default function TaskAssignmentLog() {
                     </select>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {createDomainForm.type === 'old' ? 'Intern Account — WP Username' : 'WP Username'}
-                  </label>
-                  <input
-                    type="text"
-                    value={createDomainForm.wp_username}
-                    onChange={(e) => setCreateDomainForm((f) => ({ ...f, wp_username: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    placeholder={createDomainForm.type === 'old' ? 'Admin username' : ''}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {createDomainForm.type === 'old' ? 'Intern Account — Admin Password' : 'New Password'}
-                  </label>
-                  <input
-                    type="password"
-                    value={createDomainForm.new_password}
-                    onChange={(e) => setCreateDomainForm((f) => ({ ...f, new_password: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                {createDomainForm.type === 'old' && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">SG Domain WordPress — Admin username</label>
-                      <input
-                        type="text"
-                        value={createDomainForm.sg_username}
-                        onChange={(e) => setCreateDomainForm((f) => ({ ...f, sg_username: e.target.value }))}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                        placeholder="SG Domain username"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">SG Domain WordPress — Admin Password</label>
-                      <input
-                        type="password"
-                        value={createDomainForm.sg_password}
-                        onChange={(e) => setCreateDomainForm((f) => ({ ...f, sg_password: e.target.value }))}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                      />
-                    </div>
-                  </>
-                )}
                 <div className="flex gap-4">
                   <label className="flex items-center gap-2 text-sm">
                     <input

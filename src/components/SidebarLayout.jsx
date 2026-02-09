@@ -15,6 +15,7 @@ const navItems = [
   { to: '/kanban', label: 'Kanban', icon: 'M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2v10a2 2 0 002 2z' },
   { to: '/organized-tickets', label: 'Organize Tickets', icon: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z' },
   { to: '/tasks', label: 'Tasks', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
+  { to: '/domain-updates', label: 'Domain Updates', icon: 'M3 7h18M3 12h18M3 17h12' },
   { to: '/repository', label: 'Repository', icon: 'M5 19a2 2 0 01-2 2H3a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H5z' },
   { to: '/credentials', label: 'Credentials', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
 ];
@@ -70,6 +71,13 @@ export default function SidebarLayout() {
           </div>
           <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-0.5" style={{ WebkitOverflowScrolling: 'touch' }}>
           {navItems.map((item) => {
+            // Only admin, tla, tl, vtl can see the Domain Updates page
+            if (
+              item.to === '/domain-updates' &&
+              !(userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl')
+            ) {
+              return null;
+            }
             const to = item.to === 'dashboard' ? getDashboardPath() : item.to;
             const active = isActive(item.to);
             return (
