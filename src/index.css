@@ -23,3 +23,14 @@
     padding-right: 3rem !important;
   }
 }
+
+/* Repository detail: rich text content from Quill */
+.repository-content h1 { font-size: 1.5rem; font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; }
+.repository-content h2 { font-size: 1.25rem; font-weight: 600; margin-top: 0.875rem; margin-bottom: 0.5rem; }
+.repository-content h3, .repository-content h4, .repository-content h5, .repository-content h6 { font-size: 1.125rem; font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.25rem; }
+.repository-content p { margin-bottom: 0.75rem; }
+.repository-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+.repository-content ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+.repository-content a { color: #6795BE; text-decoration: underline; }
+.repository-content a:hover { opacity: 0.9; }
+.repository-content img { max-width: 100%; height: auto; }
