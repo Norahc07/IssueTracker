@@ -34,3 +34,35 @@
 .repository-content a { color: #6795BE; text-decoration: underline; }
 .repository-content a:hover { opacity: 0.9; }
 .repository-content img { max-width: 100%; height: auto; }
+
+/* Repository tables (e.g. Course List Price Edit) */
+.repository-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.875rem;
+}
+
+.repository-content thead th {
+  background-color: #f3f4f6;
+  color: #111827;
+  padding: 0.5rem 0.4rem;
+  border: 1px solid #e5e7eb;
+  text-align: center;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.repository-content tbody td {
+  padding: 0.45rem 0.4rem;
+  border: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+.repository-content tbody tr:nth-child(even) {
+  background-color: #f9fafb;
+}
+
+.repository-content tbody tr:hover {
+  background-color: #eef2ff;
+}
