@@ -66,6 +66,7 @@ export default function TaskAssignmentLog() {
   const [domainPasswordHistory, setDomainPasswordHistory] = useState({});
   const [passwordHistoryModalDomain, setPasswordHistoryModalDomain] = useState(null);
   const [selectedDomainForAccounts, setSelectedDomainForAccounts] = useState(null);
+  const [selectedNewDomainDetails, setSelectedNewDomainDetails] = useState(null);
   const [defaultAccounts, setDefaultAccounts] = useState({ intern: { username: '', password: '' }, sg: { username: '', password: '' } });
   const [showDefaultPassword, setShowDefaultPassword] = useState({ intern: false, sg: false });
   const [editDefaultAccount, setEditDefaultAccount] = useState(null); // 'intern' | 'sg' | null
@@ -982,7 +983,6 @@ export default function TaskAssignmentLog() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Country</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin Updates</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scanning</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
@@ -990,7 +990,6 @@ export default function TaskAssignmentLog() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">2FA</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Credentials</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -998,8 +997,12 @@ export default function TaskAssignmentLog() {
                     filteredDomains.map((domain) => (
                       <tr key={domain.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm text-gray-900">{domain.country || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.status || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{getDomainPluginSummary(domain)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {(() => {
+                            const summary = getDomainPluginSummary(domain);
+                            return summary === 'OK / Updated' || summary === 'OK' ? 'Updated' : 'Not updated';
+                          })()}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-600 break-all">
                           {domain.url ? (
                             <a
@@ -1014,34 +1017,17 @@ export default function TaskAssignmentLog() {
                             <span>—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_date || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_date || 'ok'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_plugin || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_2fa || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_plugin || 'ok'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_2fa || 'ok'}</td>
                         <td className="px-4 py-3">
                           <input type="checkbox" checked={!!domain.recaptcha} readOnly className="rounded" />
                         </td>
                         <td className="px-4 py-3">
                           <input type="checkbox" checked={!!domain.backup} readOnly className="rounded" />
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedDomainForAccounts(domain)}
-                            className="text-xs font-medium"
-                            style={{ color: PRIMARY }}
-                          >
-                            View accounts
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => fetchDomainPasswordHistory(domain.id)}
-                            className="block mt-0.5 text-xs text-gray-500 hover:underline"
-                          >
-                            Password history
-                          </button>
                         </td>
                       </tr>
                     ))
@@ -1061,7 +1047,6 @@ export default function TaskAssignmentLog() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Country</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin Updates</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scanning</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin</th>
@@ -1070,13 +1055,16 @@ export default function TaskAssignmentLog() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">New Password</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Old Password</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredDomains.length > 0 ? (
                     filteredDomains.map((domain) => (
-                      <tr key={domain.id} className="hover:bg-gray-50">
+                      <tr
+                        key={domain.id}
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => setSelectedNewDomainDetails(domain)}
+                      >
                         <td className="px-4 py-3 text-sm text-gray-900">{domain.country || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 break-all">
                           {domain.url ? (
@@ -1093,7 +1081,6 @@ export default function TaskAssignmentLog() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{domain.status || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{getDomainPluginSummary(domain)}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'}
                         </td>
@@ -1123,7 +1110,10 @@ export default function TaskAssignmentLog() {
                             {domain.new_password && (
                               <button
                                 type="button"
-                                onClick={() => copyPasswordToClipboard(domain.new_password, 'WP Password')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyPasswordToClipboard(domain.new_password, 'WP Password');
+                                }}
                                 className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
                                 title="Copy password"
                               >
@@ -1135,7 +1125,8 @@ export default function TaskAssignmentLog() {
                             {permissions.canManageDomains(userRole) && (
                               <button
                                 type="button"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   const newPass = window.prompt('Enter new password (current will be saved to history):');
                                   if (newPass != null && newPass !== '') handleUpdateDomainPassword(domain.id, newPass);
                                 }}
@@ -1152,19 +1143,6 @@ export default function TaskAssignmentLog() {
                         </td>
                         <td className="px-4 py-3">
                           <input type="checkbox" checked={!!domain.backup} readOnly className="rounded" />
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await fetchDomainPasswordHistory(domain.id);
-                              setPasswordHistoryModalDomain(domain);
-                            }}
-                            className="text-xs font-medium"
-                            style={{ color: PRIMARY }}
-                          >
-                            View history
-                          </button>
                         </td>
                       </tr>
                     ))
@@ -1235,22 +1213,84 @@ export default function TaskAssignmentLog() {
             </Modal>
           )}
 
+          {/* New Domains – details modal */}
+          {selectedNewDomainDetails && (
+            <Modal open={!!selectedNewDomainDetails} onClose={() => setSelectedNewDomainDetails(null)}>
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md border border-gray-200">
+                <div className="p-5 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div className="flex-1 text-center">
+                      <h3 className="font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                        {selectedNewDomainDetails.country || 'Domain'}
+                      </h3>
+                      {selectedNewDomainDetails.url && (
+                        <a
+                          href={selectedNewDomainDetails.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-block text-xs text-[#6795BE] hover:underline break-all"
+                        >
+                          {selectedNewDomainDetails.url}
+                        </a>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedNewDomainDetails(null)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="space-y-2 text-sm text-gray-800">
+                    <div className="flex justify-between">
+                      <span className="font-medium">WP Username:</span>
+                      <span className="font-mono break-all">{selectedNewDomainDetails.wp_username || '—'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">New Password:</span>
+                      <span className="font-mono break-all">
+                        {selectedNewDomainDetails.new_password || '—'}
+                      </span>
+                    </div>
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await fetchDomainPasswordHistory(selectedNewDomainDetails.id);
+                          setPasswordHistoryModalDomain(selectedNewDomainDetails);
+                        }}
+                        className="text-xs font-medium"
+                        style={{ color: PRIMARY }}
+                      >
+                        View old password history
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Modal>
+          )}
+
           {/* Password history modal for a specific domain */}
           {passwordHistoryModalDomain && (
             <Modal open={!!passwordHistoryModalDomain} onClose={() => setPasswordHistoryModalDomain(null)}>
               <div className="bg-white rounded-xl shadow-xl w-full max-w-md border border-gray-200">
                 <div className="p-5">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-semibold text-gray-900" style={{ color: PRIMARY }}>
-                      Password history — {passwordHistoryModalDomain.country || passwordHistoryModalDomain.url || 'Domain'}
+                  <div className="mb-4">
+                    <div className="flex justify-between items-center">
+                      <button
+                        type="button"
+                        onClick={() => setPasswordHistoryModalDomain(null)}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <h3 className="mt-1 text-center font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                      {passwordHistoryModalDomain.country || passwordHistoryModalDomain.url || 'Domain'}
                     </h3>
-                    <button
-                      type="button"
-                      onClick={() => setPasswordHistoryModalDomain(null)}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      ✕
-                    </button>
+                    <p className="mt-1 text-center text-xs text-gray-500">Password history by month and year</p>
                   </div>
                   <div className="space-y-2 max-h-80 overflow-y-auto text-sm text-gray-800">
                     {(() => {
@@ -1260,7 +1300,9 @@ export default function TaskAssignmentLog() {
                       }
                       return history.map((h, idx) => {
                         const date = new Date(h.recorded_at);
-                        const label = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+                        const month = date.toLocaleString('default', { month: 'long' });
+                        const year = date.getFullYear();
+                        const label = `${month} - ${year}`;
                         return (
                           <div
                             key={idx}
