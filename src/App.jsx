@@ -18,7 +18,6 @@ const TaskAssignmentLog = lazy(() => import('./pages/TaskAssignmentLog'));
 const DomainUpdates = lazy(() => import('./pages/DomainUpdates'));
 const CentralizedRepository = lazy(() => import('./pages/CentralizedRepository'));
 const RepositoryView = lazy(() => import('./pages/RepositoryView'));
-const CredentialVault = lazy(() => import('./pages/CredentialVault'));
 const RolePermissions = lazy(() => import('./pages/RolePermissions'));
 const UserManagement = lazy(() => import('./pages/UserManagement'));
 const Attendance = lazy(() => import('./pages/Attendance'));
@@ -88,7 +87,6 @@ function AppContent() {
                 />
                 <Route path="/repository" element={<CentralizedRepository />} />
                 <Route path="/repository/view/:slug" element={<RepositoryView />} />
-                <Route path="/credentials" element={<CredentialVault />} />
                 <Route path="/role-permissions" element={(role === 'admin' || role === 'tla') ? <RolePermissions /> : <Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/user-management" element={(role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl') ? <UserManagement /> : <Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/attendance" element={<Attendance />} />

@@ -131,17 +131,6 @@ export default function Navbar() {
               >
                 Repository
               </Link>
-              {/* Credentials - All users can view */}
-              <Link
-                to="/credentials"
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  location.pathname === '/credentials'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                }`}
-              >
-                Credentials
-              </Link>
               {/* Role Permissions - Admin/TLA only */}
               {(userRole === 'admin' || userRole === 'tla') && (
                 <Link
@@ -282,17 +271,6 @@ export default function Navbar() {
               }`}
             >
               Repository
-            </Link>
-            <Link
-              to="/credentials"
-              onClick={closeMobileMenu}
-              className={`block px-3 py-2 rounded-md text-base font-medium ${
-                location.pathname === '/credentials'
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              Credentials
             </Link>
             {(userRole === 'admin' || userRole === 'tla') && (
               <Link
