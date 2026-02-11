@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { queryCache } from '../utils/queryCache.js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const git = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase environment variables');

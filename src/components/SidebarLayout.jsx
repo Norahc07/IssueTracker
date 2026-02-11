@@ -58,7 +58,6 @@ export default function SidebarLayout() {
         className="fixed left-0 top-0 z-40 w-64 lg:w-72 flex flex-col transition-transform duration-200 ease-out md:translate-x-0"
         style={{
           backgroundColor: PRIMARY,
-          height: '100vh',
           height: '100dvh',
           overflow: 'hidden',
         }}
