@@ -119,14 +119,21 @@ export default function DailyReportForm() {
 
   const q1 = questions[0];
   const sections2to7 = questions.slice(1, 7);
+  const today = todayStr();
+  const hasSubmittedToday = !!existing && String(existing.report_date) === today;
 
   return (
     <div className="max-w-2xl mx-auto p-6">
       <h1 className="text-2xl font-bold text-gray-900 mb-2" style={{ color: PRIMARY }}>
         Daily Report
       </h1>
-      <p className="text-sm text-gray-500 mb-6">Submit your daily documentation report.</p>
+      <p className="text-sm text-gray-500 mb-6">
+        {hasSubmittedToday
+          ? 'You have already submitted your daily documentation report for today.'
+          : 'Submit your daily documentation report.'}
+      </p>
 
+      {!hasSubmittedToday && (
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Name & Date */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -246,6 +253,7 @@ export default function DailyReportForm() {
           </button>
         </div>
       </form>
+      )}
 
       {/* Daily report logs */}
       <section className="mt-10 space-y-3">
