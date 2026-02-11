@@ -162,6 +162,14 @@ export const permissions = {
   canManageAttendanceSchedules: (userRole, userTeam) => {
     return isTeamLead(userRole) && userTeam === TEAMS.MONITORING;
   },
+
+  // Daily Report: TL/VTL/TLA manage form questions and view who submitted
+  canManageDailyReport: (userRole) => {
+    return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA, ROLES.TL, ROLES.VTL]);
+  },
+
+  // Daily Report: interns (and others) can submit their own
+  canSubmitDailyReport: (_userRole) => true,
 };
 
 // Get role display name

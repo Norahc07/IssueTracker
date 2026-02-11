@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import DailyReportReminder from './DailyReportReminder.jsx';
 import { useSupabase } from '../context/supabase.jsx';
 import { getRoleDisplayName, getRoleColor, permissions } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
@@ -17,6 +18,7 @@ const navItems = [
   { to: '/tasks', label: 'Tasks', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
   { to: '/domain-updates', label: 'Domain Updates', icon: 'M3 7h18M3 12h18M3 17h12' },
   { to: '/repository', label: 'Repository', icon: 'M5 19a2 2 0 01-2 2H3a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H5z' },
+  { to: '/daily-report', label: 'Daily Report', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.5a2 2 0 012 2v5.5a2 2 0 01-2 2z' },
 ];
 
 function Icon({ path, className = 'w-5 h-5' }) {
@@ -76,6 +78,10 @@ export default function SidebarLayout() {
             ) {
               return null;
             }
+            // Hide Daily Report (submit form) from admin, TLA, TL, VTL — they use Manage Daily Report only
+            if (item.to === '/daily-report' && (userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl')) {
+              return null;
+            }
             const to = item.to === 'dashboard' ? getDashboardPath() : item.to;
             const active = isActive(item.to);
             return (
@@ -112,6 +118,17 @@ export default function SidebarLayout() {
             >
               <Icon path="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" className="h-5 w-5 flex-shrink-0" />
               <span>Permissions</span>
+            </Link>
+          )}
+          {(userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl') && (
+            <Link
+              to="/daily-report/manage"
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                location.pathname === '/daily-report/manage' ? 'bg-white/20 text-white' : 'text-white/90 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <Icon path="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.5a2 2 0 012 2v5.5a2 2 0 01-2 2z" className="h-5 w-5 flex-shrink-0" />
+              <span>Manage Daily Report</span>
             </Link>
           )}
         </nav>
@@ -160,6 +177,7 @@ export default function SidebarLayout() {
           <Outlet />
         </main>
       </div>
+      <DailyReportReminder />
     </div>
   );
 }

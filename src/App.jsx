@@ -22,6 +22,8 @@ const RolePermissions = lazy(() => import('./pages/RolePermissions'));
 const UserManagement = lazy(() => import('./pages/UserManagement'));
 const Attendance = lazy(() => import('./pages/Attendance'));
 const OnboardingOffboarding = lazy(() => import('./pages/OnboardingOffboarding'));
+const DailyReportForm = lazy(() => import('./pages/DailyReportForm'));
+const DailyReportManage = lazy(() => import('./pages/DailyReportManage'));
 
 function PageFallback() {
   return (
@@ -90,6 +92,8 @@ function AppContent() {
                 <Route path="/role-permissions" element={(role === 'admin' || role === 'tla') ? <RolePermissions /> : <Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/user-management" element={(role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl') ? <UserManagement /> : <Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/attendance" element={<Attendance />} />
+                <Route path="/daily-report" element={(role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl') ? <Navigate to="/daily-report/manage" replace /> : <DailyReportForm />} />
+                <Route path="/daily-report/manage" element={(role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl') ? <DailyReportManage /> : <Navigate to="/daily-report" replace />} />
                 <Route path="/onboarding" element={<OnboardingOffboarding />} />
                 <Route path="/login" element={<Navigate to={getDashboardRoute()} replace />} />
               </Route>
