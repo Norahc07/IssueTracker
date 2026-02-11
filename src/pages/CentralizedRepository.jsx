@@ -236,8 +236,7 @@ export default function CentralizedRepository() {
                         <button
                           type="button"
                           onClick={() => {
-                            setEditItem(item);
-                            setShowCreateModal(true);
+                            navigate(`/repository/view/${item.slug}?edit=1`);
                             setMenuOpenId(null);
                           }}
                           className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"

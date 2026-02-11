@@ -66,3 +66,25 @@
 .repository-content tbody tr:hover {
   background-color: #eef2ff;
 }
+
+/* View-only mode: form controls in repository detail are not interactive */
+.repository-content-view-only select,
+.repository-content-view-only input,
+.repository-content-view-only button,
+.repository-content-view-only textarea {
+  pointer-events: none;
+  cursor: default;
+  opacity: 0.95;
+}
+/* Hide dropdown icon/chevron on selects in view mode (show only in edit mode) */
+.repository-content-view-only select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: none;
+  padding-right: 0.5rem;
+}
+.repository-content-view-only a {
+  pointer-events: auto;
+  cursor: pointer;
+}

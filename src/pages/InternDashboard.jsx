@@ -73,9 +73,12 @@ export default function InternDashboard() {
         .eq('user_id', user.id);
 
       if (logsErr) {
-        // Most common: attendance feature not migrated yet OR missing RLS/GRANT → 403
-        const status = logsErr?.status;
-        if (status !== 403) console.warn('OJT attendance_logs fetch error:', logsErr);
+        // Attendance not set up or no permission → skip without logging
+        const status = logsErr?.status ?? logsErr?.statusCode;
+        const code = logsErr?.code;
+        const msg = (logsErr?.message || '').toLowerCase();
+        const isPermissionDenied = status === 403 || code === 'PGRST301' || code === '42501' || msg.includes('permission') || msg.includes('denied');
+        if (!isPermissionDenied) console.warn('OJT attendance_logs fetch error:', logsErr);
         const next = { scheduleSet, requiredHours, renderedMinutes: 0 };
         setOjt(next);
         queryCache.set(cacheKey, next);

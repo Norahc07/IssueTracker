@@ -73,22 +73,21 @@ export function SupabaseProvider({ children }) {
         return;
       }
 
-      if (userMetadata?.role) {
-        queryCache.set(cacheKey, userMetadata.role, ROLE_CACHE_TTL);
-        setUserRole(userMetadata.role);
+      // 403 = permission denied on public.users (e.g. grants not applied). Use auth metadata so app still works.
+      const useMetadata = error?.code === '42501' || error?.status === 403 || userMetadata?.role;
+      if (userMetadata?.role || useMetadata) {
+        const role = userMetadata?.role || 'intern';
+        queryCache.set(cacheKey, role, ROLE_CACHE_TTL);
+        setUserRole(role);
         return;
       }
 
-      console.warn('Could not fetch user role, defaulting to intern');
       setUserRole('intern');
       queryCache.set(cacheKey, 'intern', ROLE_CACHE_TTL);
     } catch (error) {
-      if (userMetadata?.role) {
-        setUserRole(userMetadata.role);
-      } else {
-        console.warn('Error fetching user role, defaulting to intern:', error);
-        setUserRole('intern');
-      }
+      const role = userMetadata?.role || 'intern';
+      setUserRole(role);
+      queryCache.set(cacheKey, role, ROLE_CACHE_TTL);
     }
   };
 

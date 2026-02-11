@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
@@ -51,12 +52,14 @@ function Modal({ open, onClose, children, zIndexClassName = 'z-[9999]' }) {
 
 export default function TaskAssignmentLog() {
   const { supabase, user, userRole } = useSupabase();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab'); // 'domains' opens Domains tab
   const [tasks, setTasks] = useState([]);
   const [domains, setDomains] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [claimingTaskId, setClaimingTaskId] = useState(null);
-  const [activeMainTab, setActiveMainTab] = useState('tasks'); // 'tasks' | 'domains'
+  const [activeMainTab, setActiveMainTab] = useState(tabParam === 'domains' ? 'domains' : 'tasks'); // 'tasks' | 'domains'
   const [taskFilter, setTaskFilter] = useState('all'); // 'all' | 'my-tasks'
   const [domainTypeFilter, setDomainTypeFilter] = useState('old'); // 'old' | 'new'
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
@@ -68,6 +71,11 @@ export default function TaskAssignmentLog() {
   const [selectedDomainForAccounts, setSelectedDomainForAccounts] = useState(null);
   const [selectedNewDomainDetails, setSelectedNewDomainDetails] = useState(null);
   const [defaultAccounts, setDefaultAccounts] = useState({ intern: { username: '', password: '' }, sg: { username: '', password: '' } });
+
+  // Open Domains tab when URL has ?tab=domains (e.g. from repository link)
+  useEffect(() => {
+    if (tabParam === 'domains') setActiveMainTab('domains');
+  }, [tabParam]);
   const [showDefaultPassword, setShowDefaultPassword] = useState({ intern: false, sg: false });
   const [editDefaultAccount, setEditDefaultAccount] = useState(null); // 'intern' | 'sg' | null
   const [defaultAccountEditForm, setDefaultAccountEditForm] = useState({ username: '', password: '' });
@@ -622,7 +630,7 @@ export default function TaskAssignmentLog() {
       <div className="flex gap-2 border-b border-gray-200">
         <button
           type="button"
-          onClick={() => setActiveMainTab('tasks')}
+          onClick={() => { setActiveMainTab('tasks'); setSearchParams({}); }}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
             activeMainTab === 'tasks' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
@@ -632,7 +640,7 @@ export default function TaskAssignmentLog() {
         </button>
         <button
           type="button"
-          onClick={() => setActiveMainTab('domains')}
+          onClick={() => { setActiveMainTab('domains'); setSearchParams({ tab: 'domains' }); }}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
             activeMainTab === 'domains' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
