@@ -4,13 +4,13 @@ import { useSupabase } from '../context/supabase.jsx';
 
 const SNOOZE_KEY = 'daily_report_reminder_snooze_until';
 const REMINDER_HOUR = 16; // 4pm
-const SNOOZE_MINUTES = 30;
 
 export default function DailyReportReminder() {
   const { user, userRole, supabase } = useSupabase();
   const navigate = useNavigate();
   const [show, setShow] = useState(false);
   const [checked, setChecked] = useState(false);
+   const [timeLabel, setTimeLabel] = useState('');
 
   useEffect(() => {
     if (!user || userRole === undefined) return;
@@ -22,8 +22,8 @@ export default function DailyReportReminder() {
       const now = new Date();
       const snoozedUntil = parseInt(localStorage.getItem(SNOOZE_KEY), 10);
       if (snoozedUntil && Date.now() < snoozedUntil) return;
-      // Show only at exactly 4:00 PM (or within the same minute to avoid missing due to timing)
-      if (now.getHours() !== REMINDER_HOUR || now.getMinutes() > 0) return;
+      // Only remind between 4:00 PM and 4:50 PM
+      if (now.getHours() !== REMINDER_HOUR || now.getMinutes() > 50) return;
       const today = now.toISOString().slice(0, 10);
       const { data } = await supabase
         .from('daily_report_submissions')
@@ -32,6 +32,12 @@ export default function DailyReportReminder() {
         .eq('report_date', today)
         .maybeSingle();
       if (data) return;
+      setTimeLabel(
+        now.toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+        }),
+      );
       setShow(true);
     };
 
@@ -42,7 +48,20 @@ export default function DailyReportReminder() {
   }, [user?.id, userRole, supabase]);
 
   const handleRemindLater = () => {
-    localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_MINUTES * 60 * 1000));
+    const now = new Date();
+    const minutes = now.getMinutes();
+    const next = new Date(now);
+    // First reminder (around 4:00) → next at 4:30
+    if (minutes < 30) {
+      next.setHours(REMINDER_HOUR, 30, 0, 0);
+    } else if (minutes < 50) {
+      // Second reminder (around 4:30) → next at 4:50
+      next.setHours(REMINDER_HOUR, 50, 0, 0);
+    } else {
+      // After 4:50, no more reminders today (set snooze past 5 PM)
+      next.setHours(17, 1, 0, 0);
+    }
+    localStorage.setItem(SNOOZE_KEY, String(next.getTime()));
     setShow(false);
   };
 
@@ -66,7 +85,9 @@ export default function DailyReportReminder() {
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Daily Report Reminder</h2>
         <p className="text-gray-600 mb-2 text-lg">
-          It’s <strong>4:00 PM</strong>. Please submit your daily documentation report.
+          It’s{' '}
+          <strong>{timeLabel || '4:00 PM'}</strong>
+          . Please submit your daily documentation report.
         </p>
         <p className="text-gray-500 text-sm mb-8">You can fill it now or be reminded again in a bit.</p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">

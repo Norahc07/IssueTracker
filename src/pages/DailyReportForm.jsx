@@ -5,12 +5,23 @@ import { toast } from 'react-hot-toast';
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
+const SECTION_HEADINGS = [
+  'Attendance',
+  'Tasks Accomplished',
+  'Task Outputs / Results',
+  'Issues Encountered',
+  'Assistance Requested / Coordination Made',
+  'Pending Tasks',
+  'Additional Notes (optional)',
+];
+
 export default function DailyReportForm() {
   const { supabase, user } = useSupabase();
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [existing, setExisting] = useState(null);
+  const [logs, setLogs] = useState([]);
 
   const [reportDate, setReportDate] = useState(todayStr());
   const [timeIn, setTimeIn] = useState('');
@@ -22,9 +33,14 @@ export default function DailyReportForm() {
     (async () => {
       setLoading(true);
       try {
-        const [qRes, sRes] = await Promise.all([
+        const [qRes, sRes, logsRes] = await Promise.all([
           supabase.from('daily_report_questions').select('id, sort_order, question_text, required').order('sort_order'),
           supabase.from('daily_report_submissions').select('*').eq('user_id', user.id).eq('report_date', todayStr()).maybeSingle(),
+          supabase
+            .from('daily_report_submissions')
+            .select('user_id, report_date, submitted_at, time_in, time_out, answers')
+            .eq('user_id', user.id)
+            .order('report_date', { ascending: false }),
         ]);
         if (qRes.data) setQuestions(qRes.data);
         if (sRes.data) {
@@ -34,6 +50,7 @@ export default function DailyReportForm() {
           setTimeOut(sRes.data.time_out ? String(sRes.data.time_out).slice(0, 5) : '');
           setAnswers(sRes.data.answers || {});
         }
+        setLogs(logsRes.data || []);
       } catch (e) {
         toast.error('Failed to load form');
       } finally {
@@ -100,12 +117,18 @@ export default function DailyReportForm() {
     );
   }
 
+  const q1 = questions[0];
+  const sections2to7 = questions.slice(1, 7);
+
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6" style={{ color: PRIMARY }}>
+      <h1 className="text-2xl font-bold text-gray-900 mb-2" style={{ color: PRIMARY }}>
         Daily Report
       </h1>
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <p className="text-sm text-gray-500 mb-6">Submit your daily documentation report.</p>
+
+      <form onSubmit={handleSubmit} className="space-y-8">
+        {/* Name & Date */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
@@ -126,60 +149,93 @@ export default function DailyReportForm() {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Time in</label>
-            <input
-              type="time"
-              value={timeIn}
-              onChange={(e) => setTimeIn(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
-            />
+        </div>
+
+        {/* 1. Attendance */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+            1. Attendance
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Time IN</label>
+              <input
+                type="time"
+                value={timeIn}
+                onChange={(e) => setTimeIn(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Time OUT</label>
+              <input
+                type="time"
+                value={timeOut}
+                onChange={(e) => setTimeOut(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+              />
+            </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Time out</label>
-            <input
-              type="time"
-              value={timeOut}
-              onChange={(e) => setTimeOut(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
-            />
-          </div>
-          <div className="sm:col-span-2">
             <button
               type="button"
               onClick={fillFromAttendance}
-              className="text-sm font-medium hover:underline"
+              className="text-sm font-medium hover:underline mb-2"
               style={{ color: PRIMARY }}
             >
               Fill time in/out from attendance
             </button>
           </div>
-        </div>
-
-        {questions.length > 0 && (
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Questions</h2>
-            <div className="space-y-4">
-              {questions.map((q) => (
-                <div key={q.id}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {q.question_text} {q.required && <span className="text-red-500">*</span>}
-                  </label>
-                  <textarea
-                    value={answers[q.id] ?? ''}
-                    onChange={(e) => handleAnswer(q.id, e.target.value)}
-                    required={q.required}
-                    rows={3}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none"
-                    placeholder="Your answer..."
-                  />
-                </div>
-              ))}
+          {q1 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <textarea
+                value={answers[q1.id] ?? ''}
+                onChange={(e) => handleAnswer(q1.id, e.target.value)}
+                required={q1.required}
+                rows={2}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none"
+                placeholder={q1.question_text}
+              />
             </div>
-          </div>
+          )}
+        </section>
+
+        {/* 2.–7. Sections from template */}
+        {sections2to7.map((q, idx) => (
+          <section key={q.id} className="space-y-2">
+            <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+              {idx + 2}. {SECTION_HEADINGS[idx + 1] || q.question_text}
+            </h2>
+            <p className="text-sm text-gray-500">{q.question_text}</p>
+            <textarea
+              value={answers[q.id] ?? ''}
+              onChange={(e) => handleAnswer(q.id, e.target.value)}
+              required={q.required}
+              rows={4}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none"
+              placeholder="Your answer..."
+            />
+          </section>
+        ))}
+
+        {/* If no template yet, show a single generic block so form still works */}
+        {questions.length === 0 && (
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+              2. Tasks Accomplished
+            </h2>
+            <textarea
+              value={answers._fallback ?? ''}
+              onChange={(e) => setAnswers((prev) => ({ ...prev, _fallback: e.target.value }))}
+              rows={4}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none"
+              placeholder="List all completed tasks in bullet form."
+            />
+          </section>
         )}
 
-        <div className="flex justify-end gap-3 pt-4">
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
           <button
             type="submit"
             disabled={saving}
@@ -190,6 +246,50 @@ export default function DailyReportForm() {
           </button>
         </div>
       </form>
+
+      {/* Daily report logs */}
+      <section className="mt-10 space-y-3">
+        <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+          My Daily Report Log
+        </h2>
+        <p className="text-sm text-gray-500">
+          Your submitted reports by date. You can review what you sent previously.
+        </p>
+        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto mt-2">
+          <table className="w-full text-sm min-w-[540px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left px-4 py-2 font-semibold text-gray-900">Date</th>
+                <th className="text-left px-4 py-2 font-semibold text-gray-900">Time in</th>
+                <th className="text-left px-4 py-2 font-semibold text-gray-900">Time out</th>
+                <th className="text-left px-4 py-2 font-semibold text-gray-900">Submitted at</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
+                    No reports submitted yet.
+                  </td>
+                </tr>
+              ) : (
+                logs.map((row) => (
+                  <tr key={`${row.user_id}-${row.report_date}`} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="px-4 py-2 text-gray-900">{row.report_date}</td>
+                    <td className="px-4 py-2 text-gray-700">{row.time_in ? String(row.time_in).slice(0, 5) : '—'}</td>
+                    <td className="px-4 py-2 text-gray-700">{row.time_out ? String(row.time_out).slice(0, 5) : '—'}</td>
+                    <td className="px-4 py-2 text-gray-700">
+                      {row.submitted_at
+                        ? new Date(row.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : '—'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }
