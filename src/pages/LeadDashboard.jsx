@@ -22,6 +22,7 @@ export default function LeadDashboard() {
     requiredHours: DEFAULT_OJT_REQUIRED_HOURS,
     renderedMinutes: 0,
   });
+  const [myTasksCount, setMyTasksCount] = useState(0);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [ticketFilter, setTicketFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,6 +37,7 @@ export default function LeadDashboard() {
     if (userRole === 'lead' || userRole === 'tl' || userRole === 'vtl' || userRole === 'monitoring_team' || userRole === 'pat1') {
       fetchTickets();
       fetchOjt();
+      fetchTasks();
     }
   }, [user, userRole, supabase]);
 
@@ -77,6 +79,33 @@ export default function LeadDashboard() {
       queryCache.set(cacheKey, next);
     } catch (e) {
       console.warn('Lead OJT fetch error:', e);
+    }
+  };
+
+  const fetchTasks = async (bypassCache = false) => {
+    if (!user?.id) return;
+    const cacheKey = `lead:tasks:${user.id}`;
+    if (!bypassCache) {
+      const cached = queryCache.get(cacheKey);
+      if (Array.isArray(cached)) {
+        setMyTasksCount(cached.length);
+        return;
+      }
+    }
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('id')
+        .eq('assigned_to', user.id);
+      if (error) {
+        console.warn('Lead tasks fetch error:', error);
+        return;
+      }
+      const list = Array.isArray(data) ? data : [];
+      queryCache.set(cacheKey, list);
+      setMyTasksCount(list.length);
+    } catch (e) {
+      console.warn('Lead tasks fetch error:', e);
     }
   };
 
@@ -156,24 +185,7 @@ export default function LeadDashboard() {
         <p className="mt-1 text-sm text-gray-600">Overview of team tickets and activity</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Link to="/tasks" className="rounded-xl p-5 text-white shadow-sm transition-all hover:shadow-md flex items-center justify-between" style={{ backgroundColor: PRIMARY }}>
-          <div>
-            <p className="text-white/90 text-sm font-medium">Task Assignment</p>
-            <p className="text-lg font-semibold mt-1">View</p>
-          </div>
-          <svg className="h-10 w-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-        </Link>
-        <Link to="/repository" className="rounded-xl p-5 text-white shadow-sm transition-all hover:shadow-md flex items-center justify-between" style={{ backgroundColor: PRIMARY }}>
-          <div>
-            <p className="text-white/90 text-sm font-medium">Repository</p>
-            <p className="text-lg font-semibold mt-1">View</p>
-          </div>
-          <svg className="h-10 w-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2 2H3a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H5z" /></svg>
-        </Link>
-      </div>
-
-      {/* OJT Hours (TLA/PAT1/Monitoring TL-VTL/Interns) */}
+      {/* OJT Hours (TLA/PAT1/Monitoring TL-VTL/Interns) + Tasks */}
       <div>
         <h2 className="text-base font-semibold text-gray-900 mb-3">OJT Hours</h2>
         {!ojt.scheduleSet && (
@@ -185,7 +197,7 @@ export default function LeadDashboard() {
             .
           </div>
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Rendered hours</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">{minutesToHours(ojt.renderedMinutes)}</p>
@@ -195,6 +207,10 @@ export default function LeadDashboard() {
             <p className="mt-1 text-2xl font-bold text-gray-900">
               {minutesToHours(Math.max(0, ojt.requiredHours * 60 - ojt.renderedMinutes))}
             </p>
+          </div>
+          <div className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">My tasks</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">{myTasksCount}</p>
           </div>
         </div>
       </div>

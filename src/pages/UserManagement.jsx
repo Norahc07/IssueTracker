@@ -18,6 +18,14 @@ const TEAM_OPTIONS = [
   { value: TEAMS.PAT1, label: 'PAT1' },
 ];
 
+// Filter options based on team column
+const FILTER_OPTIONS = [
+  { value: '', label: 'All roles' },
+  { value: TEAMS.TLA, label: 'Team Lead Assistant' },
+  { value: TEAMS.MONITORING, label: 'Monitoring Team' },
+  { value: TEAMS.PAT1, label: 'PAT1' },
+];
+
 function canAccessUserManagement(role) {
   return role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl';
 }
@@ -29,7 +37,7 @@ export default function UserManagement() {
   const [editingId, setEditingId] = useState(null);
   const [editRole, setEditRole] = useState('');
   const [editTeam, setEditTeam] = useState('');
-  const [filterRole, setFilterRole] = useState('');
+  const [filterTeam, setFilterTeam] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -131,14 +139,24 @@ export default function UserManagement() {
     setEditTeam('');
   };
 
+  // Calculate statistics
+  const stats = {
+    tlaCount: users.filter((u) => u.team === TEAMS.TLA).length,
+    pat1Count: users.filter((u) => u.team === TEAMS.PAT1).length,
+    monitoringCount: users.filter((u) => u.team === TEAMS.MONITORING).length,
+    totalUsers: users.length,
+  };
+
   const filteredUsers = users.filter((u) => {
-    const matchRole = !filterRole || u.role === filterRole;
+    // When a team filter is selected, show only users in that team.
+    const matchTeam = !filterTeam || u.team === filterTeam;
+
     const matchSearch =
       !searchQuery.trim() ||
       [u.email, u.full_name, u.role].some(
         (v) => v && String(v).toLowerCase().includes(searchQuery.toLowerCase())
       );
-    return matchRole && matchSearch;
+    return matchTeam && matchSearch;
   });
 
   if (!canAccessUserManagement(userRole)) {
@@ -175,17 +193,34 @@ export default function UserManagement() {
         </p>
       </div>
 
+      {/* Statistics Cards */}
+      <div>
+        <h2 className="text-base font-semibold text-gray-900 mb-3">Team Statistics</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            { label: 'TLA', value: stats.tlaCount },
+            { label: 'PAT1', value: stats.pat1Count },
+            { label: 'Monitoring Team', value: stats.monitoringCount },
+            { label: 'Total Users', value: stats.totalUsers },
+          ].map(({ label, value }) => (
+            <div key={label} className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
+              <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Filters and Refresh */}
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
         <select
-          value={filterRole}
-          onChange={(e) => setFilterRole(e.target.value)}
+          value={filterTeam}
+          onChange={(e) => setFilterTeam(e.target.value)}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
         >
-          <option value="">All roles</option>
-          {ROLE_OPTIONS.map((r) => (
-            <option key={r} value={r}>
-              {getRoleDisplayName(r)}
+          {FILTER_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
             </option>
           ))}
         </select>
@@ -208,9 +243,7 @@ export default function UserManagement() {
 
       {/* Users table with edit */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-          <h2 className="text-base font-semibold text-gray-900">Users ({filteredUsers.length})</h2>
-        </div>
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200" />
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead>

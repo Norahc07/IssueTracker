@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSupabase } from '../context/supabase.jsx';
 
-const SNOOZE_KEY = 'daily_report_reminder_snooze_until';
+const SNOOZE_KEY_BASE = 'daily_report_reminder_snooze_until';
 const REMINDER_HOUR = 16; // 4pm
 
 export default function DailyReportReminder() {
@@ -10,17 +10,24 @@ export default function DailyReportReminder() {
   const navigate = useNavigate();
   const [show, setShow] = useState(false);
   const [checked, setChecked] = useState(false);
-   const [timeLabel, setTimeLabel] = useState('');
+  const [timeLabel, setTimeLabel] = useState('');
 
   useEffect(() => {
     if (!user || userRole === undefined) return;
 
-    const isIntern = userRole === 'intern' || !userRole;
-    if (!isIntern) return;
+    // Interns and TL / VTL should all receive reminders
+    const isEligible =
+      userRole === 'intern' ||
+      userRole === 'tl' ||
+      userRole === 'vtl' ||
+      !userRole;
+    if (!isEligible) return;
+
+    const snoozeKey = `${SNOOZE_KEY_BASE}:${user.id}`;
 
     const check = async () => {
       const now = new Date();
-      const snoozedUntil = parseInt(localStorage.getItem(SNOOZE_KEY), 10);
+      const snoozedUntil = parseInt(localStorage.getItem(snoozeKey), 10);
       if (snoozedUntil && Date.now() < snoozedUntil) return;
       // Only remind between 4:00 PM and 4:50 PM
       if (now.getHours() !== REMINDER_HOUR || now.getMinutes() > 50) return;
@@ -48,6 +55,8 @@ export default function DailyReportReminder() {
   }, [user?.id, userRole, supabase]);
 
   const handleRemindLater = () => {
+    if (!user) return;
+    const snoozeKey = `${SNOOZE_KEY_BASE}:${user.id}`;
     const now = new Date();
     const minutes = now.getMinutes();
     const next = new Date(now);
@@ -61,7 +70,7 @@ export default function DailyReportReminder() {
       // After 4:50, no more reminders today (set snooze past 5 PM)
       next.setHours(17, 1, 0, 0);
     }
-    localStorage.setItem(SNOOZE_KEY, String(next.getTime()));
+    localStorage.setItem(snoozeKey, String(next.getTime()));
     setShow(false);
   };
 

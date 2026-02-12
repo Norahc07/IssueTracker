@@ -3,6 +3,7 @@ import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { permissions } from '../utils/rolePermissions.js';
 import { getRoleDisplayName } from '../utils/rolePermissions.js';
+import DailyReportForm from './DailyReportForm.jsx';
 
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -25,9 +26,10 @@ function formatTime(t) {
 }
 
 export default function DailyReportManage() {
-  const { supabase, userRole } = useSupabase();
+  const { supabase, userRole, user } = useSupabase();
   const canManage = permissions.canManageDailyReport(userRole);
-  const [activeTab, setActiveTab] = useState('status'); // 'status' | 'questions'
+  const showMyFormTab = userRole === 'tl' || userRole === 'vtl';
+  const [activeTab, setActiveTab] = useState('status'); // 'status' | 'questions' | 'my'
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [interns, setInterns] = useState([]);
@@ -50,7 +52,11 @@ export default function DailyReportManage() {
     try {
       const shouldFetchSubs = activeTab === 'status';
       const [usersRes, subsRes, qRes] = await Promise.all([
-        supabase.from('users').select('id, full_name, email, role, team').eq('role', 'intern').order('full_name'),
+        supabase
+          .from('users')
+          .select('id, full_name, email, role, team')
+          .in('role', ['intern', 'tl', 'vtl'])
+          .order('full_name'),
         shouldFetchSubs
           ? supabase
               .from('daily_report_submissions')
@@ -170,6 +176,16 @@ export default function DailyReportManage() {
           >
             Daily Report Template
           </button>
+          {showMyFormTab && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('my')}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium ${activeTab === 'my' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'text-gray-600 hover:bg-gray-100'}`}
+              style={activeTab === 'my' ? { borderTopColor: PRIMARY } : {}}
+            >
+              My Daily Report
+            </button>
+          )}
         </div>
         {activeTab === 'status' && (
           <div className="flex items-center gap-2">
@@ -272,17 +288,7 @@ export default function DailyReportManage() {
 
       {activeTab === 'questions' && (
         <div className="space-y-6">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-1" style={{ color: PRIMARY }}>
-              Daily Report Template
-            </h2>
-            <p className="text-sm text-gray-600">
-              Edit the default Daily Report sections interns fill each day. Flow:
-              1) Attendance (Time IN/OUT, Notes), 2) Tasks Accomplished, 3) Task Outputs / Results,
-              4) Issues Encountered, 5) Assistance Requested / Coordination Made, 6) Pending Tasks,
-              7) Additional Notes.
-            </p>
-          </div>
+          
           <div className="flex gap-2 flex-wrap items-end">
             <input
               type="text"
@@ -414,6 +420,12 @@ export default function DailyReportManage() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'my' && showMyFormTab && user && (
+        <div className="mt-4">
+          <DailyReportForm />
         </div>
       )}
     </div>
