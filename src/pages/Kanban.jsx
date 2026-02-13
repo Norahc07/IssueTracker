@@ -1,5 +1,5 @@
 // client/src/pages/Kanban.jsx
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable, sortableKeyboardCoordinates, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useSupabase } from '../context/supabase.jsx';
@@ -67,6 +67,54 @@ function SortableItem({ id, ticket, onTicketClick }) {
   );
 }
 
+function KanbanColumn({ column, tickets, onTicketClick }) {
+  const { setNodeRef } = useDroppable({
+    id: column.id,
+  });
+
+  const columnTickets = tickets.filter((t) =>
+    column.status === 'open'
+      ? t.status === 'open'
+      : column.status === 'in-progress'
+      ? t.status === 'in-progress'
+      : t.status === 'closed'
+  );
+
+  return (
+    <div
+      key={column.id}
+      className="flex-1 min-w-[280px] sm:min-w-[320px] bg-gray-50 rounded-lg border border-gray-200 p-3 sm:p-4"
+      ref={setNodeRef}
+    >
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <h2 className="text-xs sm:text-sm font-semibold text-gray-900 uppercase tracking-wide">
+          {column.title}
+        </h2>
+        <span className="px-2 py-1 text-xs font-medium bg-white rounded-full text-gray-600 border border-gray-200">
+          {columnTickets.length}
+        </span>
+      </div>
+      <SortableContext items={columnTickets.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-2 sm:space-y-3 min-h-[150px] sm:min-h-[200px]">
+          {columnTickets.map((ticket) => (
+            <SortableItem
+              key={ticket.id}
+              id={ticket.id}
+              ticket={ticket}
+              onTicketClick={onTicketClick}
+            />
+          ))}
+          {columnTickets.length === 0 && (
+            <div className="text-center py-8 sm:py-12 text-xs sm:text-sm text-gray-400 border-2 border-dashed border-gray-300 rounded-lg">
+              No tickets
+            </div>
+          )}
+        </div>
+      </SortableContext>
+    </div>
+  );
+}
+
 const Kanban = () => {
   const { supabase, userRole } = useSupabase();
   const [tickets, setTickets] = useState([]);
@@ -113,67 +161,67 @@ const Kanban = () => {
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
-    
+
     if (!over || active.id === over.id) return;
 
-    const activeTicket = tickets.find(t => t.id === active.id);
-    const overTicket = tickets.find(t => t.id === over.id);
+    const activeId = active.id;
+    const overId = over.id;
 
-    if (!activeTicket || !overTicket) return;
+    const activeTicket = tickets.find((t) => t.id === activeId);
+    if (!activeTicket) return;
 
-    // Determine target status based on column
+    // Determine target status:
+    // 1) If dropped on a column container, use that column's status.
+    // 2) If dropped on another ticket, use that ticket's column/status.
     let targetStatus = activeTicket.status;
-    const activeColumn = columns.find(col => {
-      const colTickets = tickets.filter(t => 
-        col.status === 'open' ? t.status === 'open' :
-        col.status === 'in-progress' ? t.status === 'in-progress' :
-        t.status === 'closed'
-      );
-      return colTickets.some(t => t.id === active.id);
-    });
 
-    const overColumn = columns.find(col => {
-      const colTickets = tickets.filter(t => 
-        col.status === 'open' ? t.status === 'open' :
-        col.status === 'in-progress' ? t.status === 'in-progress' :
-        t.status === 'closed'
-      );
-      return colTickets.some(t => t.id === over.id);
-    });
-
-    if (activeColumn && overColumn && activeColumn.id !== overColumn.id) {
-      // Move ticket to different column
+    const overColumn = columns.find((col) => col.id === overId);
+    if (overColumn) {
       targetStatus = overColumn.status;
-      
-      // Update in database
+    } else {
+      const overTicket = tickets.find((t) => t.id === overId);
+      if (!overTicket) return;
+      const overTicketColumn = columns.find(
+        (col) =>
+          (col.status === 'open' && overTicket.status === 'open') ||
+          (col.status === 'in-progress' && overTicket.status === 'in-progress') ||
+          (col.status === 'closed' && overTicket.status === 'closed')
+      );
+      if (overTicketColumn) {
+        targetStatus = overTicketColumn.status;
+      }
+    }
+
+    // If status changed, update Supabase and local state
+    if (targetStatus !== activeTicket.status) {
       try {
         const { error } = await supabase
           .from('tickets')
           .update({ status: targetStatus })
-          .eq('id', active.id);
+          .eq('id', activeId);
 
         if (error) throw error;
 
-        setTickets(prevTickets => 
-          prevTickets.map(ticket => 
-            ticket.id === active.id 
-              ? { ...ticket, status: targetStatus }
-              : ticket
+        setTickets((prevTickets) =>
+          prevTickets.map((ticket) =>
+            ticket.id === activeId ? { ...ticket, status: targetStatus } : ticket
           )
         );
       } catch (error) {
         toast.error('Failed to update ticket status');
         console.error('Error:', error);
       }
-    } else {
-      // Reorder within same column
-      setTickets((items) => {
-        const oldIndex = items.findIndex(item => item.id === active.id);
-        const newIndex = items.findIndex(item => item.id === over.id);
-        
-        return arrayMove(items, oldIndex, newIndex);
-      });
+      return;
     }
+
+    // Reorder within same column (or overall list) if status didn't change
+    setTickets((items) => {
+      const oldIndex = items.findIndex((item) => item.id === activeId);
+      const newIndex = items.findIndex((item) => item.id === overId);
+
+      if (oldIndex === -1 || newIndex === -1) return items;
+      return arrayMove(items, oldIndex, newIndex);
+    });
   };
 
   const columns = [
@@ -203,46 +251,14 @@ const Kanban = () => {
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-3 sm:gap-6 overflow-x-auto pb-4 -mx-4 sm:mx-0 px-4 sm:px-0">
-          {columns.map((column) => {
-            const columnTickets = tickets.filter(t => 
-              column.status === 'open' ? t.status === 'open' :
-              column.status === 'in-progress' ? t.status === 'in-progress' :
-              t.status === 'closed'
-            );
-            
-            return (
-              <div key={column.id} className="flex-1 min-w-[280px] sm:min-w-[320px] bg-gray-50 rounded-lg border border-gray-200 p-3 sm:p-4">
-                <div className="flex items-center justify-between mb-3 sm:mb-4">
-                  <h2 className="text-xs sm:text-sm font-semibold text-gray-900 uppercase tracking-wide">
-                    {column.title}
-                  </h2>
-                  <span className="px-2 py-1 text-xs font-medium bg-white rounded-full text-gray-600 border border-gray-200">
-                    {columnTickets.length}
-                  </span>
-                </div>
-                <SortableContext
-                  items={columnTickets.map(t => t.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="space-y-2 sm:space-y-3 min-h-[150px] sm:min-h-[200px]">
-                    {columnTickets.map((ticket) => (
-                      <SortableItem
-                        key={ticket.id}
-                        id={ticket.id}
-                        ticket={ticket}
-                        onTicketClick={setSelectedTicket}
-                      />
-                    ))}
-                    {columnTickets.length === 0 && (
-                      <div className="text-center py-8 sm:py-12 text-xs sm:text-sm text-gray-400 border-2 border-dashed border-gray-300 rounded-lg">
-                        No tickets
-                      </div>
-                    )}
-                  </div>
-                </SortableContext>
-              </div>
-            );
-          })}
+          {columns.map((column) => (
+            <KanbanColumn
+              key={column.id}
+              column={column}
+              tickets={tickets}
+              onTicketClick={setSelectedTicket}
+            />
+          ))}
         </div>
       </DndContext>
 
