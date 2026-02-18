@@ -55,7 +55,7 @@ export default function AdminDashboard() {
     try {
       const { data: u, error: userErr } = await supabase
         .from('users')
-        .select('total_ojt_hours_required, schedule_configured_at')
+        .select('total_ojt_hours_required, schedule_configured_at, imported_rendered_minutes')
         .eq('id', user.id)
         .single();
       if (userErr) console.warn('Admin/TLA OJT users fetch error:', userErr);
@@ -64,17 +64,24 @@ export default function AdminDashboard() {
 
       const { data: logs, error: logsErr } = await supabase
         .from('attendance_logs')
-        .select('rendered_minutes')
+        .select('total_rendered_seconds, rendered_minutes')
         .eq('user_id', user.id);
       if (logsErr) {
         const status = logsErr?.status;
         if (status !== 403) console.warn('Admin/TLA OJT attendance_logs fetch error:', logsErr);
-        const next = { scheduleSet, requiredHours, renderedMinutes: 0 };
+        const imported = Number(u?.imported_rendered_minutes) || 0;
+        const next = { scheduleSet, requiredHours, renderedMinutes: imported };
         setOjt(next);
         queryCache.set(cacheKey, next);
         return;
       }
-      const renderedMinutes = (Array.isArray(logs) ? logs : []).reduce((acc, row) => acc + (row?.rendered_minutes || 0), 0);
+      const fromLogsMinutes = (Array.isArray(logs) ? logs : []).reduce((acc, row) => {
+        const sec = row?.total_rendered_seconds;
+        const min = row?.rendered_minutes;
+        return acc + (sec != null ? Math.round(sec / 60) : (min || 0));
+      }, 0);
+      const imported = Number(u?.imported_rendered_minutes) || 0;
+      const renderedMinutes = fromLogsMinutes + imported;
       const next = { scheduleSet, requiredHours, renderedMinutes };
       setOjt(next);
       queryCache.set(cacheKey, next);
@@ -189,23 +196,6 @@ export default function AdminDashboard() {
             View Permissions
           </Link>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Link to="/tasks" className="rounded-xl p-5 text-white shadow-sm transition-all hover:shadow-md flex items-center justify-between" style={{ backgroundColor: PRIMARY }}>
-          <div>
-            <p className="text-white/90 text-sm font-medium">Task Assignment</p>
-            <p className="text-lg font-semibold mt-1">View</p>
-          </div>
-          <svg className="h-10 w-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-        </Link>
-        <Link to="/repository" className="rounded-xl p-5 text-white shadow-sm transition-all hover:shadow-md flex items-center justify-between" style={{ backgroundColor: PRIMARY }}>
-          <div>
-            <p className="text-white/90 text-sm font-medium">Repository</p>
-            <p className="text-lg font-semibold mt-1">View</p>
-          </div>
-          <svg className="h-10 w-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2 2H3a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H5z" /></svg>
-        </Link>
       </div>
 
       {userRole === 'tla' && (

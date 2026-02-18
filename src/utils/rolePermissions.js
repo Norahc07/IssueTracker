@@ -147,20 +147,30 @@ export const permissions = {
     return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA, ROLES.TL, ROLES.VTL]);
   },
 
-  // Attendance: all authenticated users can time in/out & view their own hours
+  // Attendance: all authenticated users can view the page; admin cannot clock in/out
   canUseAttendance: (_userRole) => true,
+
+  // Attendance: who can record time in/out (admin is view-only)
+  canClockInOut: (userRole) => userRole !== ROLES.ADMIN,
+
+  // Attendance: who can view all interns' attendance logs (admin, TLA, TL, VTL, Monitoring)
+  canViewAllAttendanceLogs: (userRole) => {
+    return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA, ROLES.TL, ROLES.VTL, ROLES.MONITORING_TEAM]);
+  },
 
   // Attendance: who can set *their own* official time frame
   // - TLA can set own time frame
   // - Monitoring TL/VTL can set own time frame
+  // - TLA TL/VTL (team = TLA) can also set own time frame
   canEditOwnAttendanceSchedule: (userRole, userTeam) => {
     if (userRole === ROLES.TLA) return true;
-    return isTeamLead(userRole) && userTeam === TEAMS.MONITORING;
+    if (!isTeamLead(userRole)) return false;
+    return userTeam === TEAMS.MONITORING || userTeam === TEAMS.TLA;
   },
 
-  // Attendance: who can set time frame for other users (Monitoring TL/VTL only)
+  // Attendance: who can set time frame for others and manage attendance (Admin, Monitoring TL/VTL)
   canManageAttendanceSchedules: (userRole, userTeam) => {
-    return isTeamLead(userRole) && userTeam === TEAMS.MONITORING;
+    return userRole === ROLES.ADMIN || (isTeamLead(userRole) && userTeam === TEAMS.MONITORING);
   },
 
   // Daily Report: TL/VTL/TLA manage form questions and view who submitted

@@ -70,6 +70,7 @@ export function SupabaseProvider({ children }) {
         const role = data.role || 'intern';
         queryCache.set(cacheKey, role, ROLE_CACHE_TTL);
         setUserRole(role);
+        syncRoleToJwt(role);
         return;
       }
 
@@ -79,6 +80,7 @@ export function SupabaseProvider({ children }) {
         const role = userMetadata?.role || 'intern';
         queryCache.set(cacheKey, role, ROLE_CACHE_TTL);
         setUserRole(role);
+        syncRoleToJwt(role);
         return;
       }
 
@@ -88,7 +90,17 @@ export function SupabaseProvider({ children }) {
       const role = userMetadata?.role || 'intern';
       setUserRole(role);
       queryCache.set(cacheKey, role, ROLE_CACHE_TTL);
+      syncRoleToJwt(role);
     }
+  };
+
+  const syncRoleToJwt = (role) => {
+    if (!role) return;
+    supabase.auth.getUser().then(({ data: { user: u } }) => {
+      const current = u?.user_metadata?.role;
+      if (current === role) return;
+      supabase.auth.updateUser({ data: { role } }).then(() => supabase.auth.refreshSession()).catch(() => {});
+    }).catch(() => {});
   };
 
   useEffect(() => {

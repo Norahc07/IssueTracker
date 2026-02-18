@@ -82,6 +82,8 @@ export default function TaskAssignmentLog() {
   const [savingDefaultAccount, setSavingDefaultAccount] = useState(false);
   const [showEditModalPassword, setShowEditModalPassword] = useState(false);
   const [domainUpdates, setDomainUpdates] = useState([]);
+  const [isEditingDomainsTable, setIsEditingDomainsTable] = useState(false);
+  const [savingDomains, setSavingDomains] = useState(false);
   const [createTaskForm, setCreateTaskForm] = useState({
     name: '',
     domain_migration: '',
@@ -448,6 +450,53 @@ export default function TaskAssignmentLog() {
     }
   };
 
+  const updateDomainInState = (id, updates) => {
+    setDomains((prev) => prev.map((d) => (d.id === id ? { ...d, ...updates } : d)));
+  };
+
+  const handleSaveDomains = async () => {
+    const list = domains.filter((d) => d.type === domainTypeFilter);
+    if (list.length === 0) {
+      setIsEditingDomainsTable(false);
+      return;
+    }
+    setSavingDomains(true);
+    try {
+      for (const d of list) {
+        const payload = {
+          country: d.country ?? '',
+          url: d.url ?? '',
+          status: d.status || null,
+          scanning_date: d.scanning_date || null,
+          scanning_plugin: d.scanning_plugin || null,
+          scanning_2fa: d.scanning_2fa || null,
+          scanning_done_date: d.scanning_done_date || null,
+          recaptcha: !!d.recaptcha,
+          backup: !!d.backup,
+        };
+        if (d.type === 'new') {
+          payload.wp_username = d.wp_username ?? '';
+          if (d.new_password !== undefined) payload.new_password = d.new_password;
+        }
+        const { error } = await supabase.from('domains').update(payload).eq('id', d.id);
+        if (error) throw error;
+      }
+      queryCache.invalidate('domains');
+      await fetchDomains(true);
+      setIsEditingDomainsTable(false);
+      toast.success('Domains saved');
+    } catch (error) {
+      toast.error(error?.message || 'Failed to save domains');
+    } finally {
+      setSavingDomains(false);
+    }
+  };
+
+  const handleCancelDomainsEdit = () => {
+    setIsEditingDomainsTable(false);
+    fetchDomains(true);
+  };
+
   const handleStatusChange = async (task, newStatus) => {
     try {
       const { error } = await supabase
@@ -798,17 +847,54 @@ export default function TaskAssignmentLog() {
               </button>
             </div>
             {permissions.canManageDomains(userRole) && (
-              <button
-                type="button"
-                onClick={() => setShowCreateDomainModal(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
-                style={{ backgroundColor: PRIMARY }}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-                Add Domain
-              </button>
+              <div className="flex items-center gap-2">
+                {!isEditingDomainsTable ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingDomainsTable(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Edit
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleSaveDomains}
+                      disabled={savingDomains}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                      style={{ backgroundColor: PRIMARY }}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      {savingDomains ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelDomainsEdit}
+                      disabled={savingDomains}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowCreateDomainModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Domain
+                </button>
+              </div>
             )}
           </div>
 
@@ -1004,38 +1090,117 @@ export default function TaskAssignmentLog() {
                   {filteredDomains.length > 0 ? (
                     filteredDomains.map((domain) => (
                       <tr key={domain.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">{domain.country || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          {isEditingDomainsTable ? (
+                            <input
+                              type="text"
+                              value={domain.country || ''}
+                              onChange={(e) => updateDomainInState(domain.id, { country: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                              placeholder="Country"
+                            />
+                          ) : (
+                            domain.country || '—'
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
-                          {(() => {
+                          {!isEditingDomainsTable && (() => {
                             const summary = getDomainPluginSummary(domain);
                             return summary === 'OK / Updated' || summary === 'OK' ? 'Updated' : 'Not updated';
                           })()}
+                          {isEditingDomainsTable && <span className="text-gray-400">—</span>}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 break-all">
-                          {domain.url ? (
-                            <a
-                              href={domain.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[#6795BE] hover:underline break-all"
-                            >
+                          {isEditingDomainsTable ? (
+                            <input
+                              type="url"
+                              value={domain.url || ''}
+                              onChange={(e) => updateDomainInState(domain.id, { url: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm break-all"
+                              placeholder="https://..."
+                            />
+                          ) : domain.url ? (
+                            <a href={domain.url} target="_blank" rel="noopener noreferrer" className="text-[#6795BE] hover:underline break-all">
                               {domain.url}
                             </a>
                           ) : (
-                            <span>—</span>
+                            '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_date || 'ok'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">
-                          {domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'}
+                          {isEditingDomainsTable ? (
+                            <select
+                              value={domain.scanning_date || 'ok'}
+                              onChange={(e) => updateDomainInState(domain.id, { scanning_date: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            >
+                              {SCANNING_OPTIONS.map((o) => (
+                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            domain.scanning_date || 'ok'
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_plugin || 'ok'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_2fa || 'ok'}</td>
-                        <td className="px-4 py-3">
-                          <input type="checkbox" checked={!!domain.recaptcha} readOnly className="rounded" />
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {isEditingDomainsTable ? (
+                            <input
+                              type="date"
+                              value={domain.scanning_done_date ? domain.scanning_done_date.slice(0, 10) : ''}
+                              onChange={(e) => updateDomainInState(domain.id, { scanning_done_date: e.target.value || null })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            />
+                          ) : (
+                            domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {isEditingDomainsTable ? (
+                            <select
+                              value={domain.scanning_plugin || 'ok'}
+                              onChange={(e) => updateDomainInState(domain.id, { scanning_plugin: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            >
+                              {SCANNING_OPTIONS.map((o) => (
+                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            domain.scanning_plugin || 'ok'
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {isEditingDomainsTable ? (
+                            <select
+                              value={domain.scanning_2fa || 'ok'}
+                              onChange={(e) => updateDomainInState(domain.id, { scanning_2fa: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            >
+                              {SCANNING_OPTIONS.map((o) => (
+                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            domain.scanning_2fa || 'ok'
+                          )}
                         </td>
                         <td className="px-4 py-3">
-                          <input type="checkbox" checked={!!domain.backup} readOnly className="rounded" />
+                          <input
+                            type="checkbox"
+                            checked={!!domain.recaptcha}
+                            readOnly={!isEditingDomainsTable}
+                            onChange={isEditingDomainsTable ? (e) => updateDomainInState(domain.id, { recaptcha: e.target.checked }) : undefined}
+                            className="rounded"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={!!domain.backup}
+                            readOnly={!isEditingDomainsTable}
+                            onChange={isEditingDomainsTable ? (e) => updateDomainInState(domain.id, { backup: e.target.checked }) : undefined}
+                            className="rounded"
+                          />
                         </td>
                       </tr>
                     ))
@@ -1070,87 +1235,197 @@ export default function TaskAssignmentLog() {
                     filteredDomains.map((domain) => (
                       <tr
                         key={domain.id}
-                        className="hover:bg-gray-50 cursor-pointer"
-                        onClick={() => setSelectedNewDomainDetails(domain)}
+                        className={`hover:bg-gray-50 ${!isEditingDomainsTable ? 'cursor-pointer' : ''}`}
+                        onClick={!isEditingDomainsTable ? () => setSelectedNewDomainDetails(domain) : undefined}
                       >
-                        <td className="px-4 py-3 text-sm text-gray-900">{domain.country || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 break-all">
-                          {domain.url ? (
-                            <a
-                              href={domain.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[#6795BE] hover:underline break-all"
-                            >
+                        <td className="px-4 py-3 text-sm text-gray-900" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                          {isEditingDomainsTable ? (
+                            <input
+                              type="text"
+                              value={domain.country || ''}
+                              onChange={(e) => updateDomainInState(domain.id, { country: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                              placeholder="Country"
+                            />
+                          ) : (
+                            domain.country || '—'
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 break-all" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                          {isEditingDomainsTable ? (
+                            <input
+                              type="url"
+                              value={domain.url || ''}
+                              onChange={(e) => updateDomainInState(domain.id, { url: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm break-all"
+                              placeholder="https://..."
+                            />
+                          ) : domain.url ? (
+                            <a href={domain.url} target="_blank" rel="noopener noreferrer" className="text-[#6795BE] hover:underline break-all">
                               {domain.url}
                             </a>
                           ) : (
                             '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.status || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'}
+                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                          {isEditingDomainsTable ? (
+                            <input
+                              type="text"
+                              value={domain.status || ''}
+                              onChange={(e) => updateDomainInState(domain.id, { status: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                              placeholder="Status"
+                            />
+                          ) : (
+                            domain.status || '—'
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_date || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_plugin || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{domain.scanning_2fa || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          <span className="inline-flex items-center gap-1">
-                            <span>{domain.wp_username || '—'}</span>
-                            {domain.wp_username && (
-                              <button
-                                type="button"
-                                onClick={() => copyUsernameToClipboard(domain.wp_username, 'WP Username')}
-                                className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                                title="Copy WP username"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                              </button>
-                            )}
-                          </span>
+                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                          {isEditingDomainsTable ? (
+                            <input
+                              type="date"
+                              value={domain.scanning_done_date ? domain.scanning_done_date.slice(0, 10) : ''}
+                              onChange={(e) => updateDomainInState(domain.id, { scanning_done_date: e.target.value || null })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            />
+                          ) : (
+                            domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          <span className="inline-flex items-center gap-1">
-                            <span>{domain.new_password ? '••••••' : '—'}</span>
-                            {domain.new_password && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  copyPasswordToClipboard(domain.new_password, 'WP Password');
-                                }}
-                                className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                                title="Copy password"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                              </button>
-                            )}
-                            {permissions.canManageDomains(userRole) && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const newPass = window.prompt('Enter new password (current will be saved to history):');
-                                  if (newPass != null && newPass !== '') handleUpdateDomainPassword(domain.id, newPass);
-                                }}
-                                className="ml-1 text-xs font-medium"
-                                style={{ color: PRIMARY }}
-                              >
-                                Update
-                              </button>
-                            )}
-                          </span>
+                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                          {isEditingDomainsTable ? (
+                            <select
+                              value={domain.scanning_date || ''}
+                              onChange={(e) => updateDomainInState(domain.id, { scanning_date: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            >
+                              <option value="">—</option>
+                              {SCANNING_OPTIONS.map((o) => (
+                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            domain.scanning_date || '—'
+                          )}
                         </td>
-                        <td className="px-4 py-3">
-                          <input type="checkbox" checked={!!domain.recaptcha} readOnly className="rounded" />
+                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                          {isEditingDomainsTable ? (
+                            <select
+                              value={domain.scanning_plugin || ''}
+                              onChange={(e) => updateDomainInState(domain.id, { scanning_plugin: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            >
+                              <option value="">—</option>
+                              {SCANNING_OPTIONS.map((o) => (
+                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            domain.scanning_plugin || '—'
+                          )}
                         </td>
-                        <td className="px-4 py-3">
-                          <input type="checkbox" checked={!!domain.backup} readOnly className="rounded" />
+                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                          {isEditingDomainsTable ? (
+                            <select
+                              value={domain.scanning_2fa || ''}
+                              onChange={(e) => updateDomainInState(domain.id, { scanning_2fa: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            >
+                              <option value="">—</option>
+                              {SCANNING_OPTIONS.map((o) => (
+                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            domain.scanning_2fa || '—'
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                          {isEditingDomainsTable ? (
+                            <input
+                              type="text"
+                              value={domain.wp_username || ''}
+                              onChange={(e) => updateDomainInState(domain.id, { wp_username: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                              placeholder="WP Username"
+                            />
+                          ) : (
+                            <span className="inline-flex items-center gap-1">
+                              <span>{domain.wp_username || '—'}</span>
+                              {domain.wp_username && !isEditingDomainsTable && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); copyUsernameToClipboard(domain.wp_username, 'WP Username'); }}
+                                  className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                                  title="Copy WP username"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                </button>
+                              )}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                          {isEditingDomainsTable ? (
+                            <input
+                              type="password"
+                              value={domain.new_password || ''}
+                              onChange={(e) => updateDomainInState(domain.id, { new_password: e.target.value })}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                              placeholder="Password"
+                            />
+                          ) : (
+                            <span className="inline-flex items-center gap-1">
+                              <span>{domain.new_password ? '••••••' : '—'}</span>
+                              {domain.new_password && !isEditingDomainsTable && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); copyPasswordToClipboard(domain.new_password, 'WP Password'); }}
+                                  className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                                  title="Copy password"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                </button>
+                              )}
+                              {permissions.canManageDomains(userRole) && !isEditingDomainsTable && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const newPass = window.prompt('Enter new password (current will be saved to history):');
+                                    if (newPass != null && newPass !== '') handleUpdateDomainPassword(domain.id, newPass);
+                                  }}
+                                  className="ml-1 text-xs font-medium"
+                                  style={{ color: PRIMARY }}
+                                >
+                                  Update
+                                </button>
+                              )}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={!!domain.recaptcha}
+                            readOnly={!isEditingDomainsTable}
+                            onChange={isEditingDomainsTable ? (e) => updateDomainInState(domain.id, { recaptcha: e.target.checked }) : undefined}
+                            className="rounded"
+                          />
+                        </td>
+                        <td className="px-4 py-3" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={!!domain.backup}
+                            readOnly={!isEditingDomainsTable}
+                            onChange={isEditingDomainsTable ? (e) => updateDomainInState(domain.id, { backup: e.target.checked }) : undefined}
+                            className="rounded"
+                          />
                         </td>
                       </tr>
                     ))

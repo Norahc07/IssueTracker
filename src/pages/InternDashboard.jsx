@@ -56,7 +56,7 @@ export default function InternDashboard() {
     try {
       const { data: u, error: userErr } = await supabase
         .from('users')
-        .select('total_ojt_hours_required, schedule_configured_at')
+        .select('total_ojt_hours_required, schedule_configured_at, imported_rendered_minutes')
         .eq('id', user.id)
         .single();
 
@@ -69,7 +69,7 @@ export default function InternDashboard() {
 
       const { data: logs, error: logsErr } = await supabase
         .from('attendance_logs')
-        .select('rendered_minutes')
+        .select('total_rendered_seconds, rendered_minutes')
         .eq('user_id', user.id);
 
       if (logsErr) {
@@ -79,13 +79,20 @@ export default function InternDashboard() {
         const msg = (logsErr?.message || '').toLowerCase();
         const isPermissionDenied = status === 403 || code === 'PGRST301' || code === '42501' || msg.includes('permission') || msg.includes('denied');
         if (!isPermissionDenied) console.warn('OJT attendance_logs fetch error:', logsErr);
-        const next = { scheduleSet, requiredHours, renderedMinutes: 0 };
+        const imported = Number(u?.imported_rendered_minutes) || 0;
+        const next = { scheduleSet, requiredHours, renderedMinutes: imported };
         setOjt(next);
         queryCache.set(cacheKey, next);
         return;
       }
 
-      const renderedMinutes = (Array.isArray(logs) ? logs : []).reduce((acc, row) => acc + (row?.rendered_minutes || 0), 0);
+      const fromLogsMinutes = (Array.isArray(logs) ? logs : []).reduce((acc, row) => {
+        const sec = row?.total_rendered_seconds;
+        const min = row?.rendered_minutes;
+        return acc + (sec != null ? Math.round(sec / 60) : (min || 0));
+      }, 0);
+      const imported = Number(u?.imported_rendered_minutes) || 0;
+      const renderedMinutes = fromLogsMinutes + imported;
       const next = { scheduleSet, requiredHours, renderedMinutes };
       setOjt(next);
       queryCache.set(cacheKey, next);
