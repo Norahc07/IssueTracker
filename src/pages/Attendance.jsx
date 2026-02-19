@@ -330,9 +330,9 @@ export default function Attendance() {
         queryCache.invalidate('attendance');
         await fetchPageData();
         if (isGrace) {
-          toast('You are within the grace period (9:00–9:15). Please message your supervisor or TL if needed.', { duration: 5000 });
+          toast('You are within the 15-minute grace period. Late arrivals exceeding 15 minutes must be communicated in advance to the supervisor.', { duration: 6000 });
         } else if (isLate) {
-          toast('You are marked late. Please inform your supervisor or TL.', { duration: 4000 });
+          toast('You are marked late (more than 15 minutes after scheduled time). Late arrivals exceeding 15 minutes must be communicated in advance to the supervisor.', { duration: 6000 });
         } else {
           toast.success('Time in recorded.');
         }
@@ -573,6 +573,9 @@ export default function Attendance() {
                 <p className="text-sm text-gray-600">
                   Schedule: {formatScheduleTime(mySchedule?.scheduled_time_in || '09:00')} to {formatScheduleTime(mySchedule?.scheduled_time_out || '18:00')}{' '}
                   (Required: {mySchedule?.total_ojt_hours_required ?? 400} hrs)
+                </p>
+                <p className="text-xs text-gray-500">
+                  Late arrivals exceeding 15 minutes must be communicated in advance to the supervisor.
                 </p>
                 {canEditMySchedule && (
                   <button
