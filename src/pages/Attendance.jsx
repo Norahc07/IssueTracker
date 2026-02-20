@@ -2,12 +2,12 @@ import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
-import { permissions } from '../utils/rolePermissions.js';
+import { permissions, getRoleDisplayName, ROLES } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
-import { getRoleDisplayName } from '../utils/rolePermissions.js';
 
 const PRIMARY = '#6795BE';
 const GRACE_MINUTES = 15;
+const PAGE_SIZE = 10;
 
 function formatTime(value) {
   if (value == null || value === '') return '';
@@ -138,6 +138,56 @@ function isClockedIn(log) {
   return last && !last.time_out;
 }
 
+/** Match user to attendance role filter: '' (all), 'tla', 'monitoring', 'pat1', 'tl', 'vtl'.
+ * TLA / Monitoring Team / PAT1 = that group (role or team); TL = team leads only; VTL = vice team leads only. */
+function userMatchesRoleFilter(user, filterValue) {
+  if (!filterValue) return true;
+  const role = user?.role;
+  const team = user?.team;
+  if (filterValue === 'tla') return role === ROLES.TLA || team === 'tla';
+  if (filterValue === 'monitoring') return role === ROLES.MONITORING_TEAM || team === 'monitoring';
+  if (filterValue === 'pat1') return role === ROLES.PAT1 || team === 'pat1';
+  if (filterValue === 'tl') return role === ROLES.TL;
+  if (filterValue === 'vtl') return role === ROLES.VTL;
+  return false;
+}
+
+function Pagination({ total, page, setPage, pageSize }) {
+  if (total <= pageSize) return null;
+  const totalPages = Math.ceil(total / pageSize) || 1;
+  const effectivePage = Math.min(Math.max(1, page), totalPages);
+  const start = (effectivePage - 1) * pageSize + 1;
+  const end = Math.min(effectivePage * pageSize, total);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-gray-200 mt-3">
+      <p className="text-sm text-gray-600">
+        Showing {start}–{end} of {total}
+      </p>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={effectivePage <= 1}
+          className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+        >
+          Previous
+        </button>
+        <span className="px-2 text-sm text-gray-600">
+          Page {effectivePage} of {totalPages}
+        </span>
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={effectivePage >= totalPages}
+          className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Attendance() {
   const { supabase, session, user, userRole } = useSupabase();
   const [myTeam, setMyTeam] = useState(null);
@@ -169,6 +219,17 @@ export default function Attendance() {
   const [timerTick, setTimerTick] = useState(0);
   const timerRef = useRef(null);
   const [logDateFilter, setLogDateFilter] = useState('all'); // 'all' | 'today' | '7' | '30'
+  const [attendanceTab, setAttendanceTab] = useState('my-log'); // 'my-log' | 'all-interns' | 'schedules'
+  const [pageMyLog, setPageMyLog] = useState(1);
+  const [pageAllInterns, setPageAllInterns] = useState(1);
+  const [pageSchedules, setPageSchedules] = useState(1);
+  const [myLogDateFilter, setMyLogDateFilter] = useState('all'); // 'all' | 'today' | '7' | '30' | 'specific'
+  const [myLogSpecificDate, setMyLogSpecificDate] = useState('');
+  const [allInternsRoleFilter, setAllInternsRoleFilter] = useState('');
+  const [allInternsLateFilter, setAllInternsLateFilter] = useState('all'); // 'all' | 'late' | 'on-time'
+  const [scheduleRoleFilter, setScheduleRoleFilter] = useState('');
+  const [scheduleDateFilter, setScheduleDateFilter] = useState(''); // filter by schedule set on/after this date (YYYY-MM-DD)
+  const [logSpecificDate, setLogSpecificDate] = useState(''); // for logDateFilter === 'specific' (all-interns tab)
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -235,7 +296,7 @@ export default function Attendance() {
       if (needAllLogs) {
         const [logsRes, usersRes] = await Promise.all([
           supabase.from('attendance_logs').select('*').order('log_date', { ascending: false }),
-          supabase.from('users').select('id, full_name, email, role, imported_rendered_minutes'),
+          supabase.from('users').select('id, full_name, email, role, team, imported_rendered_minutes'),
         ]);
         const allList = Array.isArray(logsRes.data) ? logsRes.data : [];
         const usersList = Array.isArray(usersRes.data) ? usersRes.data : [];
@@ -506,18 +567,56 @@ export default function Attendance() {
 
   const filteredAttendanceLogs = (() => {
     if (!canViewAllAttendanceLogs || !allLogsWithUsers.length) return allLogsWithUsers;
-    if (logDateFilter === 'all') return allLogsWithUsers;
+    let list = allLogsWithUsers;
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
-    if (logDateFilter === 'today') return allLogsWithUsers.filter((log) => log.log_date === todayStr);
-    const days = logDateFilter === '7' ? 7 : 30;
-    const from = new Date(now);
-    from.setDate(from.getDate() - days);
-    const fromStr = from.toISOString().slice(0, 10);
-    return allLogsWithUsers.filter((log) => log.log_date >= fromStr && log.log_date <= todayStr);
+    if (logDateFilter === 'today') list = list.filter((log) => log.log_date === todayStr);
+    else if (logDateFilter === '7' || logDateFilter === '30') {
+      const days = logDateFilter === '7' ? 7 : 30;
+      const from = new Date(now);
+      from.setDate(from.getDate() - days);
+      const fromStr = from.toISOString().slice(0, 10);
+      list = list.filter((log) => log.log_date >= fromStr && log.log_date <= todayStr);
+    } else if (logDateFilter === 'specific' && logSpecificDate) {
+      list = list.filter((log) => log.log_date === logSpecificDate);
+    }
+    if (allInternsRoleFilter) {
+      list = list.filter((log) => userMatchesRoleFilter(usersById[log.user_id], allInternsRoleFilter));
+    }
+    if (allInternsLateFilter === 'late') list = list.filter((log) => log.is_late === true);
+    else if (allInternsLateFilter === 'on-time') list = list.filter((log) => !log.is_late);
+    list = [...list].sort((a, b) => {
+      const segA = getSegments(a);
+      const segB = getSegments(b);
+      const latestInA = segA.length ? segA[segA.length - 1].time_in : a.time_in;
+      const latestInB = segB.length ? segB[segB.length - 1].time_in : b.time_in;
+      const tsA = latestInA ? new Date(latestInA).getTime() : 0;
+      const tsB = latestInB ? new Date(latestInB).getTime() : 0;
+      return tsB - tsA;
+    });
+    return list;
   })();
 
-  const showCurrentRenderedInModal = scheduleModalMode === 'manage' || (scheduleModalMode === 'self' && canManageSchedules);
+  const filteredMyLogs = (() => {
+    if (!allLogs.length) return allLogs;
+    if (myLogDateFilter === 'all') return allLogs;
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    if (myLogDateFilter === 'today') return allLogs.filter((log) => log.log_date === todayStr);
+    if (myLogDateFilter === '7' || myLogDateFilter === '30') {
+      const days = myLogDateFilter === '7' ? 7 : 30;
+      const from = new Date(now);
+      from.setDate(from.getDate() - days);
+      const fromStr = from.toISOString().slice(0, 10);
+      return allLogs.filter((log) => log.log_date >= fromStr && log.log_date <= todayStr);
+    }
+    if (myLogDateFilter === 'specific' && myLogSpecificDate) {
+      return allLogs.filter((log) => log.log_date === myLogSpecificDate);
+    }
+    return allLogs;
+  })();
+
+  const showCurrentRenderedInModal = scheduleModalMode === 'manage' || (scheduleModalMode === 'self' && (canManageSchedules || canEditMySchedule));
 
   if (loading && !mySchedule) {
     return (
@@ -625,208 +724,349 @@ export default function Attendance() {
             </div>
           </div>
 
-          {/* Personal attendance log: each row = that day's total rendered; card above = all days + imported */}
-          <div>
-            <h2 className="text-base font-semibold text-gray-900 mb-1">My attendance log</h2>
-            <p className="text-xs text-gray-500 mb-3">Rendered (hrs) = total for that day only. Time out pauses; time in again to continue.</p>
-            <div className="rounded-lg border border-gray-200 bg-white overflow-hidden overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Date</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">First in</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest in</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest out</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Rendered time</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Late</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {allLogs.length > 0 ? allLogs.map((log) => {
-                    const seg = getSegments(log);
-                    const firstInLog = seg.length > 0 ? seg[0].time_in : log.time_in;
-                    const latestInLog = seg.length > 0 ? seg[seg.length - 1].time_in : log.time_in;
-                    const lastOutLog = seg.length > 0 ? seg[seg.length - 1].time_out : log.time_out;
-                    const isTodayRow = log.log_date === today && log.user_id === user?.id && isClockedIn(log);
-                    const dayTotalSec = getLogRenderedSeconds(log) + (isTodayRow ? currentSegmentSeconds : 0);
-                    const hasRendered = (log.total_rendered_seconds != null || log.rendered_seconds != null || log.rendered_minutes != null) || isTodayRow;
-                    return (
-                      <tr key={log.id ?? `${log.user_id}-${log.log_date}`} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">{log.log_date}</td>
-                        <td className="px-4 py-3 text-sm">{formatTimeHHMM(firstInLog)}</td>
-                        <td className="px-4 py-3 text-sm">{formatTimeHHMM(latestInLog)}</td>
-                        <td className="px-4 py-3 text-sm">{formatTimeHHMM(lastOutLog)}</td>
-                        <td className="px-4 py-3 text-sm">{hasRendered ? formatHoursMinutesLabel(dayTotalSec) : '—'}</td>
-                        <td className="px-4 py-3 text-sm">{log.is_late ? 'Yes' : '—'}</td>
-                      </tr>
-                    );
-                  }) : (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500 text-sm">No attendance records yet.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </>
       )}
 
-      {/* All interns attendance log (admin, TLA, TL, VTL, Monitoring) */}
-      {canViewAllAttendanceLogs && (
-        <div>
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <h2 className="text-base font-semibold text-gray-900">
-              {canClockInOut ? 'All interns attendance' : 'Attendance log'}
-            </h2>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Filter by date:</span>
-              <select
-                value={logDateFilter}
-                onChange={(e) => setLogDateFilter(e.target.value)}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
-              >
-                <option value="all">All</option>
-                <option value="today">Today</option>
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-              </select>
+      {/* Tabs: My attendance log | All interns attendance | Set schedule for interns */}
+      {(() => {
+        const tabs = [];
+        if (canClockInOut) tabs.push({ id: 'my-log', label: 'My attendance log' });
+        if (canViewAllAttendanceLogs) tabs.push({ id: 'all-interns', label: 'All interns attendance' });
+        if (canManageSchedules) tabs.push({ id: 'schedules', label: 'Set schedule for interns' });
+        const activeTab = tabs.some((t) => t.id === attendanceTab) ? attendanceTab : (tabs[0]?.id ?? 'my-log');
+        if (tabs.length === 0) return null;
+        return (
+          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+            <div className="flex border-b border-gray-200 bg-gray-50/80">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setAttendanceTab(tab.id)}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === tab.id
+                      ? 'border-[#6795BE] text-[#6795BE] bg-white'
+                      : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100/80'
+                  }`}
+                  style={activeTab === tab.id ? { borderColor: PRIMARY } : {}}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Role</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">First in</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest in</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest out</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Rendered time</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Late</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredAttendanceLogs.length > 0 ? filteredAttendanceLogs.map((log) => {
-                  const u = usersById[log.user_id] || {};
-                  const seg = getSegments(log);
-                  const firstInLog = seg.length > 0 ? seg[0].time_in : log.time_in;
-                  const latestInLog = seg.length > 0 ? seg[seg.length - 1].time_in : log.time_in;
-                  const lastOutLog = seg.length > 0 ? seg[seg.length - 1].time_out : log.time_out;
-                  const isTodayRow = log.log_date === today && log.user_id === user?.id && isClockedIn(log);
-                  const dayTotalSec = getLogRenderedSeconds(log) + (isTodayRow ? currentSegmentSeconds : 0);
-                  const hasRendered = (log.total_rendered_seconds != null || log.rendered_seconds != null || log.rendered_minutes != null) || isTodayRow;
-                  return (
-                    <tr key={log.id ?? `${log.user_id}-${log.log_date}`} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-900">{u.full_name || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{u.email || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{getRoleDisplayName(u.role) || '—'}</td>
-                      <td className="px-4 py-3 text-sm">{log.log_date}</td>
-                      <td className="px-4 py-3 text-sm">{formatTimeHHMM(firstInLog)}</td>
-                      <td className="px-4 py-3 text-sm">{formatTimeHHMM(latestInLog)}</td>
-                      <td className="px-4 py-3 text-sm">{formatTimeHHMM(lastOutLog)}</td>
-                      <td className="px-4 py-3 text-sm">{hasRendered ? formatHoursMinutesLabel(dayTotalSec) : '—'}</td>
-                      <td className="px-4 py-3 text-sm">{log.is_late ? 'Yes' : '—'}</td>
-                    </tr>
-                  );
-                }) : (
-                  <tr><td colSpan={9} className="px-4 py-6 text-center text-gray-500 text-sm">{logDateFilter !== 'all' ? 'No records in this date range.' : 'No attendance records.'}</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Monitoring TL/VTL / Admin management */}
-      {canManageSchedules && (
-        <>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleOpenSetSchedule({ mode: 'manage' })}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-              style={{ backgroundColor: PRIMARY }}
-            >
-              Set schedule for interns
-            </button>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Role</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Schedule</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Time In</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Time Out</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Required (hrs)</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Rendered (hrs)</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Remaining (hrs)</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {setupManaged.map((i) => {
-                  const renderedSec = getRenderedSecondsForUser(i.id);
-                  const requiredSec = (i.total_ojt_hours_required || 400) * 3600;
-                  const remainingSec = Math.max(0, requiredSec - renderedSec);
-                  return (
-                    <tr key={i.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-900">{i.full_name || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{i.email || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{i.role || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-green-600 font-medium">Setup</td>
-                    <td className="px-4 py-3 text-sm">{formatScheduleTime(i.scheduled_time_in)}</td>
-                    <td className="px-4 py-3 text-sm">{formatScheduleTime(i.scheduled_time_out)}</td>
-                      <td className="px-4 py-3 text-sm">{i.total_ojt_hours_required ?? 400}</td>
-                      <td className="px-4 py-3 text-sm">{formatHoursFromSeconds(renderedSec)}</td>
-                      <td className="px-4 py-3 text-sm">{formatHoursFromSeconds(remainingSec)}</td>
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenSetSchedule({ mode: 'manage', targetUser: i })}
-                          className="text-sm font-medium"
-                          style={{ color: PRIMARY }}
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {notSetupManaged.map((i) => (
-                  <tr key={i.id} className="hover:bg-gray-50 bg-amber-50/50">
-                    <td className="px-4 py-3 text-sm text-gray-900">{i.full_name || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{i.email || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{i.role || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-amber-600 font-medium">Not set</td>
-                    <td className="px-4 py-3 text-sm">—</td>
-                    <td className="px-4 py-3 text-sm">—</td>
-                    <td className="px-4 py-3 text-sm">—</td>
-                    <td className="px-4 py-3 text-sm">—</td>
-                    <td className="px-4 py-3 text-sm">—</td>
-                    <td className="px-4 py-3">
+            <div className="p-0 min-h-[200px]">
+              {activeTab === 'my-log' && canClockInOut && (() => {
+                const totalMy = filteredMyLogs.length;
+                const totalPagesMy = Math.ceil(totalMy / PAGE_SIZE) || 1;
+                const pageMy = Math.min(Math.max(1, pageMyLog), totalPagesMy);
+                const paginatedMy = filteredMyLogs.slice((pageMy - 1) * PAGE_SIZE, pageMy * PAGE_SIZE);
+                return (
+                  <div className="p-4">
+                    <div className="flex flex-wrap items-center gap-3 mb-3">
+                      <span className="text-sm text-gray-600">Filter:</span>
+                      <select
+                        value={myLogDateFilter}
+                        onChange={(e) => setMyLogDateFilter(e.target.value)}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                      >
+                        <option value="all">All</option>
+                        <option value="today">Day (today)</option>
+                        <option value="7">Week (last 7 days)</option>
+                        <option value="30">Month (last 30 days)</option>
+                        <option value="specific">Specific date</option>
+                      </select>
+                      {myLogDateFilter === 'specific' && (
+                        <input
+                          type="date"
+                          value={myLogSpecificDate}
+                          onChange={(e) => setMyLogSpecificDate(e.target.value)}
+                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                        />
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mb-3">Rendered time = total for that day only. Time out pauses; time in again to continue.</p>
+                    <div className="rounded-lg border border-gray-200 overflow-hidden overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Date</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">First in</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest in</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest out</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Rendered time</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Late</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {paginatedMy.length > 0 ? paginatedMy.map((log) => {
+                            const seg = getSegments(log);
+                            const firstInLog = seg.length > 0 ? seg[0].time_in : log.time_in;
+                            const latestInLog = seg.length > 0 ? seg[seg.length - 1].time_in : log.time_in;
+                            const lastOutLog = seg.length > 0 ? seg[seg.length - 1].time_out : log.time_out;
+                            const isTodayRow = log.log_date === today && log.user_id === user?.id && isClockedIn(log);
+                            const dayTotalSec = getLogRenderedSeconds(log) + (isTodayRow ? currentSegmentSeconds : 0);
+                            const hasRendered = (log.total_rendered_seconds != null || log.rendered_seconds != null || log.rendered_minutes != null) || isTodayRow;
+                            return (
+                              <tr key={log.id ?? `${log.user_id}-${log.log_date}`} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm text-gray-900">{log.log_date}</td>
+                                <td className="px-4 py-3 text-sm">{formatTimeHHMM(firstInLog)}</td>
+                                <td className="px-4 py-3 text-sm">{formatTimeHHMM(latestInLog)}</td>
+                                <td className="px-4 py-3 text-sm">{formatTimeHHMM(lastOutLog)}</td>
+                                <td className="px-4 py-3 text-sm">{hasRendered ? formatHoursMinutesLabel(dayTotalSec) : '—'}</td>
+                                <td className="px-4 py-3 text-sm">{log.is_late ? 'Yes' : '—'}</td>
+                              </tr>
+                            );
+                          }) : (
+                            <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500 text-sm">No attendance records yet.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Pagination total={totalMy} page={pageMyLog} setPage={setPageMyLog} pageSize={PAGE_SIZE} />
+                  </div>
+                );
+              })()}
+              {activeTab === 'all-interns' && canViewAllAttendanceLogs && (() => {
+                const totalAll = filteredAttendanceLogs.length;
+                const totalPagesAll = Math.ceil(totalAll / PAGE_SIZE) || 1;
+                const pageAll = Math.min(Math.max(1, pageAllInterns), totalPagesAll);
+                const paginatedAll = filteredAttendanceLogs.slice((pageAll - 1) * PAGE_SIZE, pageAll * PAGE_SIZE);
+                return (
+                  <div className="p-4">
+                    <div className="flex flex-wrap items-center gap-3 mb-3">
+                      <span className="text-sm text-gray-600">Date:</span>
+                      <select
+                        value={logDateFilter}
+                        onChange={(e) => setLogDateFilter(e.target.value)}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                      >
+                        <option value="all">All</option>
+                        <option value="today">Today</option>
+                        <option value="7">Last 7 days</option>
+                        <option value="30">Last 30 days</option>
+                        <option value="specific">Specific date</option>
+                      </select>
+                      {logDateFilter === 'specific' && (
+                        <input
+                          type="date"
+                          value={logSpecificDate}
+                          onChange={(e) => setLogSpecificDate(e.target.value)}
+                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                        />
+                      )}
+                      <span className="text-sm text-gray-600 ml-2">Role:</span>
+                      <select
+                        value={allInternsRoleFilter}
+                        onChange={(e) => setAllInternsRoleFilter(e.target.value)}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                      >
+                        <option value="">All roles</option>
+                        <option value="tla">Team Lead Assistant (TLA)</option>
+                        <option value="monitoring">Monitoring Team</option>
+                        <option value="pat1">PAT1</option>
+                        <option value="tl">Team Lead</option>
+                        <option value="vtl">Vice Team Lead</option>
+                      </select>
+                      <span className="text-sm text-gray-600">Late:</span>
+                      <select
+                        value={allInternsLateFilter}
+                        onChange={(e) => setAllInternsLateFilter(e.target.value)}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                      >
+                        <option value="all">All</option>
+                        <option value="late">Late only</option>
+                        <option value="on-time">On time only</option>
+                      </select>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 overflow-hidden overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Name</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Email</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Role</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Date</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">First in</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest in</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest out</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Rendered time</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Late</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {paginatedAll.length > 0 ? paginatedAll.map((log) => {
+                            const u = usersById[log.user_id] || {};
+                            const seg = getSegments(log);
+                            const firstInLog = seg.length > 0 ? seg[0].time_in : log.time_in;
+                            const latestInLog = seg.length > 0 ? seg[seg.length - 1].time_in : log.time_in;
+                            const lastOutLog = seg.length > 0 ? seg[seg.length - 1].time_out : log.time_out;
+                            const isTodayRow = log.log_date === today && log.user_id === user?.id && isClockedIn(log);
+                            const dayTotalSec = getLogRenderedSeconds(log) + (isTodayRow ? currentSegmentSeconds : 0);
+                            const hasRendered = (log.total_rendered_seconds != null || log.rendered_seconds != null || log.rendered_minutes != null) || isTodayRow;
+                            return (
+                              <tr key={log.id ?? `${log.user_id}-${log.log_date}`} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm text-gray-900">{u.full_name || '—'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600">{u.email || '—'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600">{getRoleDisplayName(u.role) || '—'}</td>
+                                <td className="px-4 py-3 text-sm">{log.log_date}</td>
+                                <td className="px-4 py-3 text-sm">{formatTimeHHMM(firstInLog)}</td>
+                                <td className="px-4 py-3 text-sm">{formatTimeHHMM(latestInLog)}</td>
+                                <td className="px-4 py-3 text-sm">{formatTimeHHMM(lastOutLog)}</td>
+                                <td className="px-4 py-3 text-sm">{hasRendered ? formatHoursMinutesLabel(dayTotalSec) : '—'}</td>
+                                <td className="px-4 py-3 text-sm">{log.is_late ? 'Yes' : '—'}</td>
+                              </tr>
+                            );
+                          }) : (
+                            <tr><td colSpan={9} className="px-4 py-6 text-center text-gray-500 text-sm">No records match the current filters.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Pagination total={totalAll} page={pageAllInterns} setPage={setPageAllInterns} pageSize={PAGE_SIZE} />
+                  </div>
+                );
+              })()}
+              {activeTab === 'schedules' && canManageSchedules && (() => {
+                let managedList = [
+                  ...setupManaged.map((u) => ({ type: 'setup', user: u })),
+                  ...notSetupManaged.map((u) => ({ type: 'not-set', user: u })),
+                ];
+                if (scheduleRoleFilter) {
+                  managedList = managedList.filter(({ user }) => userMatchesRoleFilter(user, scheduleRoleFilter));
+                }
+                if (scheduleDateFilter) {
+                  managedList = managedList.filter(({ type, user }) => {
+                    if (type === 'not-set') return true;
+                    const setAt = user.schedule_configured_at ? String(user.schedule_configured_at).slice(0, 10) : '';
+                    return setAt >= scheduleDateFilter;
+                  });
+                }
+                const totalSched = managedList.length;
+                const totalPagesSched = Math.ceil(totalSched / PAGE_SIZE) || 1;
+                const pageSched = Math.min(Math.max(1, pageSchedules), totalPagesSched);
+                const paginatedSched = managedList.slice((pageSched - 1) * PAGE_SIZE, pageSched * PAGE_SIZE);
+                return (
+                  <div className="p-4">
+                    <div className="flex flex-wrap items-center gap-3 mb-4">
                       <button
                         type="button"
-                        onClick={() => handleOpenSetSchedule({ mode: 'manage', targetUser: i })}
-                        className="text-sm font-medium"
-                        style={{ color: PRIMARY }}
+                        onClick={() => handleOpenSetSchedule({ mode: 'manage' })}
+                        className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                        style={{ backgroundColor: PRIMARY }}
                       >
-                        Set schedule
+                        Set schedule for interns
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {managedUsers.length === 0 && !loading && (
-              <p className="px-4 py-6 text-center text-gray-500">No users to manage.</p>
-            )}
+                      <span className="text-sm text-gray-600">Role:</span>
+                      <select
+                        value={scheduleRoleFilter}
+                        onChange={(e) => setScheduleRoleFilter(e.target.value)}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                      >
+                        <option value="">All roles</option>
+                        <option value="tla">Team Lead Assistant (TLA)</option>
+                        <option value="monitoring">Monitoring Team</option>
+                        <option value="pat1">PAT1</option>
+                        <option value="tl">Team Lead</option>
+                        <option value="vtl">Vice Team Lead</option>
+                      </select>
+                      <span className="text-sm text-gray-600">Schedule set on/after:</span>
+                      <input
+                        type="date"
+                        value={scheduleDateFilter}
+                        onChange={(e) => setScheduleDateFilter(e.target.value)}
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                      />
+                      {scheduleDateFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setScheduleDateFilter('')}
+                          className="text-sm text-gray-600 hover:underline"
+                        >
+                          Clear date
+                        </button>
+                      )}
+                    </div>
+                    {managedUsers.length === 0 && !loading ? (
+                      <p className="px-4 py-6 text-center text-gray-500">No users to manage.</p>
+                    ) : (
+                      <>
+                        <div className="rounded-lg border border-gray-200 overflow-hidden overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead>
+                              <tr className="bg-gray-50">
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Name</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Email</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Role</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Schedule</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Time In</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Time Out</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Required (hrs)</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Rendered (hrs)</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Remaining (hrs)</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {paginatedSched.map(({ type, user: i }) =>
+                                type === 'setup' ? (
+                                  <tr key={i.id} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 text-sm text-gray-900">{i.full_name || '—'}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-600">{i.email || '—'}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-600">{i.role || '—'}</td>
+                                    <td className="px-4 py-3 text-sm text-green-600 font-medium">Setup</td>
+                                    <td className="px-4 py-3 text-sm">{formatScheduleTime(i.scheduled_time_in)}</td>
+                                    <td className="px-4 py-3 text-sm">{formatScheduleTime(i.scheduled_time_out)}</td>
+                                    <td className="px-4 py-3 text-sm">{i.total_ojt_hours_required ?? 400}</td>
+                                    <td className="px-4 py-3 text-sm">{formatHoursFromSeconds(getRenderedSecondsForUser(i.id))}</td>
+                                    <td className="px-4 py-3 text-sm">{formatHoursFromSeconds(Math.max(0, (i.total_ojt_hours_required || 400) * 3600 - getRenderedSecondsForUser(i.id)))}</td>
+                                    <td className="px-4 py-3">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenSetSchedule({ mode: 'manage', targetUser: i })}
+                                        className="text-sm font-medium"
+                                        style={{ color: PRIMARY }}
+                                      >
+                                        Edit
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  <tr key={i.id} className="hover:bg-gray-50 bg-amber-50/50">
+                                    <td className="px-4 py-3 text-sm text-gray-900">{i.full_name || '—'}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-600">{i.email || '—'}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-600">{i.role || '—'}</td>
+                                    <td className="px-4 py-3 text-sm text-amber-600 font-medium">Not set</td>
+                                    <td className="px-4 py-3 text-sm">—</td>
+                                    <td className="px-4 py-3 text-sm">—</td>
+                                    <td className="px-4 py-3 text-sm">—</td>
+                                    <td className="px-4 py-3 text-sm">—</td>
+                                    <td className="px-4 py-3 text-sm">—</td>
+                                    <td className="px-4 py-3">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenSetSchedule({ mode: 'manage', targetUser: i })}
+                                        className="text-sm font-medium"
+                                        style={{ color: PRIMARY }}
+                                      >
+                                        Set schedule
+                                      </button>
+                                    </td>
+                                  </tr>
+                                )
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                        <Pagination total={totalSched} page={pageSchedules} setPage={setPageSchedules} pageSize={PAGE_SIZE} />
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
-        </>
-      )}
+        );
+      })()}
 
       {showSetScheduleModal &&
         createPortal(

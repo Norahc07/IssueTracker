@@ -2,8 +2,19 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSupabase } from '../context/supabase.jsx';
 
-const SNOOZE_KEY_BASE = 'daily_report_reminder_snooze_until';
 const REMINDER_HOUR = 16; // 4pm
+const REMINDER_MINUTES = [0, 15, 30]; // 4:00 PM, 4:15 PM, 4:30 PM only
+const SHOWN_SLOTS_KEY_BASE = 'daily_report_reminder_shown_slots';
+
+function getCurrentSlot(now) {
+  const h = now.getHours();
+  const m = now.getMinutes();
+  if (h !== REMINDER_HOUR) return null;
+  if (m >= 0 && m < 15) return 0;
+  if (m >= 15 && m < 30) return 15;
+  if (m >= 30 && m < 45) return 30;
+  return null;
+}
 
 export default function DailyReportReminder() {
   const { user, userRole, supabase } = useSupabase();
@@ -11,27 +22,39 @@ export default function DailyReportReminder() {
   const [show, setShow] = useState(false);
   const [checked, setChecked] = useState(false);
   const [timeLabel, setTimeLabel] = useState('');
+  const [userTeam, setUserTeam] = useState(undefined);
 
   useEffect(() => {
-    if (!user || userRole === undefined) return;
+    if (!user?.id) return;
+    let cancelled = false;
+    supabase
+      .from('users')
+      .select('team')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setUserTeam(data?.team ?? null);
+      })
+      .catch(() => { if (!cancelled) setUserTeam(null); });
+    return () => { cancelled = true; };
+  }, [user?.id, supabase]);
 
-    // Interns and TL / VTL should all receive reminders
-    const isEligible =
-      userRole === 'intern' ||
-      userRole === 'tl' ||
-      userRole === 'vtl' ||
-      !userRole;
-    if (!isEligible) return;
+  useEffect(() => {
+    if (!user || userRole === undefined || userTeam === undefined) return;
+    if (userRole === 'admin') return;
+    const isTLA = userRole === 'tla' || userTeam === 'tla';
+    if (!isTLA) return;
 
-    const snoozeKey = `${SNOOZE_KEY_BASE}:${user.id}`;
+    const today = new Date().toISOString().slice(0, 10);
+    const shownKey = `${SHOWN_SLOTS_KEY_BASE}:${user.id}:${today}`;
 
     const check = async () => {
       const now = new Date();
-      const snoozedUntil = parseInt(localStorage.getItem(snoozeKey), 10);
-      if (snoozedUntil && Date.now() < snoozedUntil) return;
-      // Only remind between 4:00 PM and 4:50 PM
-      if (now.getHours() !== REMINDER_HOUR || now.getMinutes() > 50) return;
-      const today = now.toISOString().slice(0, 10);
+      const slot = getCurrentSlot(now);
+      if (slot === null) return;
+      const shownRaw = localStorage.getItem(shownKey);
+      const shown = shownRaw ? new Set(shownRaw.split(',').filter(Boolean)) : new Set();
+      if (shown.has(String(slot))) return;
       const { data } = await supabase
         .from('daily_report_submissions')
         .select('id')
@@ -39,11 +62,10 @@ export default function DailyReportReminder() {
         .eq('report_date', today)
         .maybeSingle();
       if (data) return;
+      shown.add(String(slot));
+      localStorage.setItem(shownKey, [...shown].join(','));
       setTimeLabel(
-        now.toLocaleTimeString([], {
-          hour: 'numeric',
-          minute: '2-digit',
-        }),
+        now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
       );
       setShow(true);
     };
@@ -52,25 +74,9 @@ export default function DailyReportReminder() {
     setChecked(true);
     const interval = setInterval(check, 60 * 1000);
     return () => clearInterval(interval);
-  }, [user?.id, userRole, supabase]);
+  }, [user?.id, userRole, userTeam, supabase]);
 
   const handleRemindLater = () => {
-    if (!user) return;
-    const snoozeKey = `${SNOOZE_KEY_BASE}:${user.id}`;
-    const now = new Date();
-    const minutes = now.getMinutes();
-    const next = new Date(now);
-    // First reminder (around 4:00) → next at 4:30
-    if (minutes < 30) {
-      next.setHours(REMINDER_HOUR, 30, 0, 0);
-    } else if (minutes < 50) {
-      // Second reminder (around 4:30) → next at 4:50
-      next.setHours(REMINDER_HOUR, 50, 0, 0);
-    } else {
-      // After 4:50, no more reminders today (set snooze past 5 PM)
-      next.setHours(17, 1, 0, 0);
-    }
-    localStorage.setItem(snoozeKey, String(next.getTime()));
     setShow(false);
   };
 

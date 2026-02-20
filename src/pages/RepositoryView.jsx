@@ -9,6 +9,9 @@ import { toast } from 'react-hot-toast';
 
 const PRIMARY = '#6795BE';
 
+/** Set to true to hide repository body content for presentation (title, description, tags remain visible). */
+const HIDE_REPOSITORY_CONTENT_FOR_PRESENTATION = true;
+
 const TYPE_OPTIONS = [
   { value: 'document', label: 'Document', description: 'SOPs, guides, text-based resources' },
   { value: 'video', label: 'Video', description: 'Tutorials, recordings, screen captures' },
@@ -460,10 +463,16 @@ export default function RepositoryView() {
                 )}
               </div>
               <hr className="my-6 border-gray-200" />
-              <div
-                className="prose prose-sm max-w-none text-gray-700 repository-content repository-content-view-only"
-                dangerouslySetInnerHTML={{ __html: item.content || '' }}
-              />
+              {HIDE_REPOSITORY_CONTENT_FOR_PRESENTATION ? (
+                <div className="py-8 text-center text-gray-400 text-sm border border-dashed border-gray-200 rounded-lg bg-gray-50/50">
+                  Content is displayed here.
+                </div>
+              ) : (
+                <div
+                  className="prose prose-sm max-w-none text-gray-700 repository-content repository-content-view-only"
+                  dangerouslySetInnerHTML={{ __html: item.content || '' }}
+                />
+              )}
             </>
           )}
         </div>
