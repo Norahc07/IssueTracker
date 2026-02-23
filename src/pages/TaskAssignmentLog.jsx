@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
@@ -50,16 +50,24 @@ function Modal({ open, onClose, children, zIndexClassName = 'z-[9999]' }) {
   );
 }
 
+const canAccessScheduleFormTab = (userRole, userTeam) =>
+  userRole === 'admin' || userRole === 'tla' || userRole === 'monitoring_team' ||
+  ((userRole === 'tl' || userRole === 'vtl') && userTeam === 'tla');
+
 export default function TaskAssignmentLog() {
-  const { supabase, user, userRole } = useSupabase();
+  const { supabase, user, userRole, userTeam } = useSupabase();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab'); // 'domains' opens Domains tab
+  const scheduleSubTabParam = searchParams.get('schedule'); // 'form' | 'responses'
   const [tasks, setTasks] = useState([]);
   const [domains, setDomains] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [claimingTaskId, setClaimingTaskId] = useState(null);
-  const [activeMainTab, setActiveMainTab] = useState(tabParam === 'domains' ? 'domains' : 'tasks'); // 'tasks' | 'domains'
+  const [activeMainTab, setActiveMainTab] = useState(
+    tabParam === 'domains' ? 'domains' : tabParam === 'domain-claims' ? 'domain-claims' : tabParam === 'schedule-form' ? 'schedule-form' : 'tasks'
+  ); // 'tasks' | 'domains' | 'domain-claims' | 'schedule-form'
+  const [scheduleSubTab, setScheduleSubTab] = useState(scheduleSubTabParam === 'responses' ? 'responses' : 'form');
   const [taskFilter, setTaskFilter] = useState('all'); // 'all' | 'my-tasks'
   const [domainTypeFilter, setDomainTypeFilter] = useState('old'); // 'old' | 'new'
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
@@ -72,10 +80,18 @@ export default function TaskAssignmentLog() {
   const [selectedNewDomainDetails, setSelectedNewDomainDetails] = useState(null);
   const [defaultAccounts, setDefaultAccounts] = useState({ intern: { username: '', password: '' }, sg: { username: '', password: '' } });
 
-  // Open Domains tab when URL has ?tab=domains (e.g. from repository link)
+  // Open Domains, Domain Claims, or Schedule Form tab when URL has ?tab=...
   useEffect(() => {
     if (tabParam === 'domains') setActiveMainTab('domains');
+    if (tabParam === 'domain-claims') setActiveMainTab('domain-claims');
+    if (tabParam === 'schedule-form') setActiveMainTab('schedule-form');
   }, [tabParam]);
+
+  // Sync Schedule sub-tab with URL
+  useEffect(() => {
+    if (scheduleSubTabParam === 'responses') setScheduleSubTab('responses');
+    else if (scheduleSubTabParam === 'form') setScheduleSubTab('form');
+  }, [scheduleSubTabParam]);
   const [showDefaultPassword, setShowDefaultPassword] = useState({ intern: false, sg: false });
   const [editDefaultAccount, setEditDefaultAccount] = useState(null); // 'intern' | 'sg' | null
   const [defaultAccountEditForm, setDefaultAccountEditForm] = useState({ username: '', password: '' });
@@ -107,6 +123,12 @@ export default function TaskAssignmentLog() {
     backup: false,
   });
 
+  // Pre-onboarding schedule form (admin, TLA TL/VTL, Monitoring only)
+  const [scheduleConfig, setScheduleConfig] = useState(null);
+  const [scheduleResponses, setScheduleResponses] = useState([]);
+  const [scheduleConfigForm, setScheduleConfigForm] = useState(null);
+  const [savingScheduleConfig, setSavingScheduleConfig] = useState(false);
+
   useEffect(() => {
     fetchTasks();
     fetchDomains();
@@ -118,8 +140,14 @@ export default function TaskAssignmentLog() {
   }, [activeMainTab, domainTypeFilter, supabase]);
 
   useEffect(() => {
-    if (activeMainTab === 'domains') {
+    if (activeMainTab === 'domains' || activeMainTab === 'domain-claims') {
       fetchDomainUpdates();
+    }
+  }, [activeMainTab, supabase]);
+
+  useEffect(() => {
+    if (activeMainTab === 'schedule-form') {
+      fetchScheduleFormData();
     }
   }, [activeMainTab, supabase]);
 
@@ -262,6 +290,98 @@ export default function TaskAssignmentLog() {
       setDomainUpdates([]);
     }
   };
+
+  const fetchScheduleFormData = async () => {
+    try {
+      const [configRes, responsesRes] = await Promise.all([
+        supabase.from('schedule_form_config').select('*').eq('id', 'default').maybeSingle(),
+        supabase.from('intern_schedule_responses').select('*').order('submitted_at', { ascending: false }),
+      ]);
+      if (configRes.data) {
+        const data = configRes.data;
+        setScheduleConfig(data);
+        setScheduleConfigForm({
+          ...data,
+          contact_knowles_email: data.contact_knowles_email ?? '',
+          contact_umonics_email: data.contact_umonics_email ?? '',
+          contact_pinnacle_email: data.contact_pinnacle_email ?? '',
+        });
+      }
+      setScheduleResponses(Array.isArray(responsesRes.data) ? responsesRes.data : []);
+    } catch (err) {
+      console.warn('Schedule form data fetch error:', err);
+      toast.error('Could not load schedule form data. Run supabase_schedule_form_migration.sql in Supabase.');
+    }
+  };
+
+  const scheduleFormLink = `${import.meta.env.VITE_SCHEDULE_FORM_PUBLIC_URL || 'https://kti-portal.vercel.app'}/schedule-form`;
+
+  const handleCopyScheduleFormLink = () => {
+    if (!scheduleFormLink) return;
+    navigator.clipboard.writeText(scheduleFormLink).then(() => toast.success('Form link copied to clipboard')).catch(() => toast.error('Could not copy'));
+  };
+
+  const handleSaveScheduleConfig = async (e) => {
+    e.preventDefault();
+    if (!scheduleConfigForm) return;
+    setSavingScheduleConfig(true);
+    try {
+      const { error } = await supabase.from('schedule_form_config').update({
+        office_hours: scheduleConfigForm.office_hours || '',
+        min_requirement: scheduleConfigForm.min_requirement || '',
+        schedule_options_text: scheduleConfigForm.schedule_options_text || '',
+        regular_shifts_text: scheduleConfigForm.regular_shifts_text || '',
+        other_rules_text: scheduleConfigForm.other_rules_text || '',
+        contact_knowles_email: scheduleConfigForm.contact_knowles_email?.trim() || null,
+        contact_umonics_email: scheduleConfigForm.contact_umonics_email?.trim() || null,
+        contact_pinnacle_email: scheduleConfigForm.contact_pinnacle_email?.trim() || null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', 'default');
+      if (error) throw error;
+      setScheduleConfig(scheduleConfigForm);
+      toast.success('Schedule form content updated');
+    } catch (err) {
+      toast.error(err?.message || 'Failed to save');
+    } finally {
+      setSavingScheduleConfig(false);
+    }
+  };
+
+  // Auto-save monitoring contact emails to schedule form (debounced)
+  const scheduleConfigFormContactsRef = useRef({ knowles: '', umonics: '', pinnacle: '' });
+  useEffect(() => {
+    if (!scheduleConfigForm) return;
+    const k = (scheduleConfigForm.contact_knowles_email ?? '').trim();
+    const u = (scheduleConfigForm.contact_umonics_email ?? '').trim();
+    const p = (scheduleConfigForm.contact_pinnacle_email ?? '').trim();
+    const prev = scheduleConfigFormContactsRef.current;
+    if (prev.knowles === k && prev.umonics === u && prev.pinnacle === p) return;
+    if (scheduleConfig && (scheduleConfig.contact_knowles_email ?? '') === k && (scheduleConfig.contact_umonics_email ?? '') === u && (scheduleConfig.contact_pinnacle_email ?? '') === p) {
+      scheduleConfigFormContactsRef.current = { knowles: k, umonics: u, pinnacle: p };
+      return;
+    }
+    scheduleConfigFormContactsRef.current = { knowles: k, umonics: u, pinnacle: p };
+    const t = setTimeout(async () => {
+      try {
+        const { error } = await supabase.from('schedule_form_config').update({
+          contact_knowles_email: k || null,
+          contact_umonics_email: u || null,
+          contact_pinnacle_email: p || null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', 'default');
+        if (error) throw error;
+        setScheduleConfig((c) => (c ? { ...c, contact_knowles_email: k || null, contact_umonics_email: u || null, contact_pinnacle_email: p || null } : c));
+        toast.success('Monitoring contacts updated on form');
+      } catch (err) {
+        toast.error(err?.message || 'Failed to update contacts');
+      }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [
+    scheduleConfigForm?.contact_knowles_email,
+    scheduleConfigForm?.contact_umonics_email,
+    scheduleConfigForm?.contact_pinnacle_email,
+  ]);
 
   const fetchDefaultAccounts = async () => {
     try {
@@ -675,7 +795,7 @@ export default function TaskAssignmentLog() {
         </div>
       </div>
 
-      {/* Main tabs: Tasks | Domains */}
+      {/* Main tabs: Tasks | Domains | Domain Claims (TLA TL/VTL) */}
       <div className="flex gap-2 border-b border-gray-200">
         <button
           type="button"
@@ -696,6 +816,28 @@ export default function TaskAssignmentLog() {
         >
           Domains
         </button>
+        {(userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl') && (
+          <button
+            type="button"
+            onClick={() => { setActiveMainTab('domain-claims'); setSearchParams({ tab: 'domain-claims' }); }}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeMainTab === 'domain-claims' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Domain Claims
+          </button>
+        )}
+        {canAccessScheduleFormTab(userRole, userTeam) && (
+          <button
+            type="button"
+            onClick={() => { setActiveMainTab('schedule-form'); setSearchParams({ tab: 'schedule-form' }); }}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeMainTab === 'schedule-form' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Schedule
+          </button>
+        )}
       </div>
 
       {activeMainTab === 'tasks' && (
@@ -1682,6 +1824,297 @@ export default function TaskAssignmentLog() {
             </Modal>
           )}
         </>
+      )}
+
+      {activeMainTab === 'domain-claims' && (userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl') && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+              Domain Claims
+            </h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Domains updated by TLA interns — who claimed or updated each domain and when.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            {domainUpdates.length === 0 ? (
+              <div className="py-12 text-center text-sm text-gray-500">No domain update rows yet.</div>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domain / Country</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TLA Intern Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Update Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Post Update Check</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {[...domainUpdates]
+                    .sort((a, b) => {
+                      const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+                      const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+                      return db - da;
+                    })
+                    .map((row) => {
+                      const domain = domains.find((d) => d.id === row.domain_id);
+                      const country = row.country || domain?.country || '—';
+                      return (
+                        <tr key={row.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-900">{country}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{row.updated_by_name || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                            {row.created_at ? new Date(row.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{row.update_status || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{row.post_update_check || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeMainTab === 'schedule-form' && canAccessScheduleFormTab(userRole, userTeam) && (
+        <div className="space-y-4">
+          {/* Schedule sub-tabs: Form | Intern responses */}
+          <div className="flex gap-2 border-b border-gray-200">
+            <button
+              type="button"
+              onClick={() => { setScheduleSubTab('form'); setSearchParams((p) => { const next = new URLSearchParams(p); next.set('tab', 'schedule-form'); next.set('schedule', 'form'); return next; }); }}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                scheduleSubTab === 'form' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              style={scheduleSubTab === 'form' ? { borderTopColor: PRIMARY } : {}}
+            >
+              Schedule Form
+            </button>
+            <button
+              type="button"
+              onClick={() => { setScheduleSubTab('responses'); setSearchParams((p) => { const next = new URLSearchParams(p); next.set('tab', 'schedule-form'); next.set('schedule', 'responses'); return next; }); }}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                scheduleSubTab === 'responses' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              style={scheduleSubTab === 'responses' ? { borderTopColor: PRIMARY } : {}}
+            >
+              Intern responses
+            </button>
+          </div>
+
+          {scheduleSubTab === 'form' && (
+            <div className="space-y-6">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                  Schedule Form
+                </h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  Share the form link with interns to collect their preferred schedule. No login required.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={scheduleFormLink}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm w-72 max-w-full bg-gray-50"
+                />
+                <button
+                  type="button"
+                  onClick={handleCopyScheduleFormLink}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white whitespace-nowrap"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Copy link
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {scheduleConfigForm && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Column 1: Editable form content */}
+              <div className="lg:order-1">
+                <form onSubmit={handleSaveScheduleConfig} className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 space-y-4 h-full flex flex-col">
+                  <h3 className="text-base font-semibold text-gray-900" style={{ color: PRIMARY }}>Editable form content</h3>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Office hours</label>
+                    <input
+                      type="text"
+                      value={scheduleConfigForm.office_hours || ''}
+                      onChange={(e) => setScheduleConfigForm((f) => ({ ...f, office_hours: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="e.g. 8:00 AM – 6:00 PM"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Minimum requirement</label>
+                    <input
+                      type="text"
+                      value={scheduleConfigForm.min_requirement || ''}
+                      onChange={(e) => setScheduleConfigForm((f) => ({ ...f, min_requirement: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="e.g. 20 hours/week"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Schedule options (Option A/B text)</label>
+                    <textarea
+                      value={scheduleConfigForm.schedule_options_text || ''}
+                      onChange={(e) => setScheduleConfigForm((f) => ({ ...f, schedule_options_text: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[80px]"
+                      rows={3}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Regular shifts text</label>
+                    <textarea
+                      value={scheduleConfigForm.regular_shifts_text || ''}
+                      onChange={(e) => setScheduleConfigForm((f) => ({ ...f, regular_shifts_text: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[80px]"
+                      rows={3}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Other rules & reminders</label>
+                    <textarea
+                      value={scheduleConfigForm.other_rules_text || ''}
+                      onChange={(e) => setScheduleConfigForm((f) => ({ ...f, other_rules_text: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[60px]"
+                      rows={2}
+                    />
+                  </div>
+                  <button type="submit" disabled={savingScheduleConfig} className="mt-auto px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60 w-fit" style={{ backgroundColor: PRIMARY }}>
+                    {savingScheduleConfig ? 'Saving...' : 'Save form content'}
+                  </button>
+                </form>
+              </div>
+
+              {/* Column 2: Monitoring Team contacts */}
+              <div className="lg:order-2">
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 h-full">
+                  <h3 className="text-base font-semibold text-gray-900 mb-3" style={{ color: PRIMARY }}>Monitoring Team contacts (shown on form)</h3>
+                  <p className="text-sm text-gray-600 mb-3">Edit the email for each slot. Labels are fixed; only the email is stored and shown on the public form.</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Knowles Monitoring Team</label>
+                      <input
+                        type="email"
+                        value={scheduleConfigForm.contact_knowles_email ?? ''}
+                        onChange={(e) => setScheduleConfigForm((f) => ({ ...f, contact_knowles_email: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                        placeholder="e.g. rowelakatelhynebarredo@gmail.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Umonics Monitoring Intern TL</label>
+                      <input
+                        type="email"
+                        value={scheduleConfigForm.contact_umonics_email ?? ''}
+                        onChange={(e) => setScheduleConfigForm((f) => ({ ...f, contact_umonics_email: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                        placeholder="e.g. johnearl.balabat@gmail.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Pinnacle</label>
+                      <input
+                        type="email"
+                        value={scheduleConfigForm.contact_pinnacle_email ?? ''}
+                        onChange={(e) => setScheduleConfigForm((f) => ({ ...f, contact_pinnacle_email: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                        placeholder="e.g. bermarvillarazojr@gmail.com"
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs text-gray-500">Emails auto-update on the public schedule form a moment after you type.</p>
+                </div>
+              </div>
+
+              {/* Column 3: Preview (as shown on the form) */}
+              <div className="lg:order-3">
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 h-full sticky top-6">
+                  <h3 className="text-base font-semibold text-gray-900 mb-3" style={{ color: PRIMARY }}>Preview (as shown on the form)</h3>
+                  <div className="text-sm text-gray-700 space-y-3">
+                    <p><strong>Office Hours:</strong> {scheduleConfigForm.office_hours || '—'}</p>
+                    <p><strong>Minimum Requirement:</strong> {scheduleConfigForm.min_requirement || '—'}</p>
+                    <p>
+                      <strong>For those with schedule conflicts or overlapping classes:</strong>
+                      <span className="whitespace-pre-wrap block mt-1">{scheduleConfigForm.schedule_options_text || '—'}</span>
+                    </p>
+                    <p>
+                      <strong>Regular Shifts (Mon–Fri):</strong>
+                      <span className="whitespace-pre-wrap block mt-1">{scheduleConfigForm.regular_shifts_text || '—'}</span>
+                    </p>
+                    <p>
+                      <strong>Other Rules & Reminders:</strong>
+                      <span className="whitespace-pre-wrap block mt-1">{scheduleConfigForm.other_rules_text || '—'}</span>
+                    </p>
+                    <p className="pt-2 border-t border-gray-100">
+                      <strong>Monitoring contacts:</strong>
+                      <span className="block mt-1">
+                        {scheduleConfigForm.contact_knowles_email && <span className="block">Knowles – {scheduleConfigForm.contact_knowles_email}</span>}
+                        {scheduleConfigForm.contact_umonics_email && <span className="block">Umonics TL – {scheduleConfigForm.contact_umonics_email}</span>}
+                        {scheduleConfigForm.contact_pinnacle_email && <span className="block">Pinnacle – {scheduleConfigForm.contact_pinnacle_email}</span>}
+                        {!scheduleConfigForm.contact_knowles_email && !scheduleConfigForm.contact_umonics_email && !scheduleConfigForm.contact_pinnacle_email && '—'}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+            </div>
+          )}
+
+          {scheduleSubTab === 'responses' && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="text-base font-semibold text-gray-900" style={{ color: PRIMARY }}>Intern responses</h3>
+              <p className="mt-1 text-sm text-gray-600">Preferred schedule submissions from the public form.</p>
+            </div>
+            <div className="overflow-x-auto">
+              {scheduleResponses.length === 0 ? (
+                <div className="py-12 text-center text-sm text-gray-500">No responses yet.</div>
+              ) : (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Preferred option</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Preferred days</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hours/week</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {scheduleResponses.map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900">{row.intern_name || ''}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{row.email || ''}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{row.preferred_option === 'option_a' ? 'Option A' : row.preferred_option === 'option_b' ? 'Option B' : row.preferred_option === 'combination' ? 'Combination' : row.preferred_option || ''}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{row.preferred_days || ''}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{row.hours_per_week || ''}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{row.start_date_preference ? new Date(row.start_date_preference).toLocaleDateString() : ''}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{row.submitted_at ? new Date(row.submitted_at).toLocaleString() : ''}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={row.notes || ''}>{row.notes || ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+          )}
+        </div>
       )}
 
       {/* Create Task Modal */}

@@ -34,6 +34,7 @@ const defaultContext = {
   session: null,
   user: null,
   userRole: null,
+  userTeam: null,
   loading: false,
   clearSession: noop,
 };
@@ -44,32 +45,42 @@ export function SupabaseProvider({ children }) {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
+  const [userTeam, setUserTeam] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchUserRole = async (userId, userMetadata = null) => {
     if (!userId) {
       setUserRole(null);
+      setUserTeam(null);
       return;
     }
 
-    const cacheKey = `role:${userId}`;
+    const cacheKey = `profile:${userId}`;
     const cached = queryCache.get(cacheKey);
+    if (cached != null && typeof cached === 'object') {
+      setUserRole(cached.role ?? 'intern');
+      setUserTeam(cached.team ?? null);
+      return;
+    }
     if (cached != null) {
       setUserRole(cached);
+      setUserTeam(null);
       return;
     }
 
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('role')
+        .select('role, team')
         .eq('id', userId)
         .single();
 
       if (!error && data) {
         const role = data.role || 'intern';
-        queryCache.set(cacheKey, role, ROLE_CACHE_TTL);
+        const team = data.team ?? null;
+        queryCache.set(cacheKey, { role, team }, ROLE_CACHE_TTL);
         setUserRole(role);
+        setUserTeam(team);
         syncRoleToJwt(role);
         return;
       }
@@ -78,18 +89,21 @@ export function SupabaseProvider({ children }) {
       const useMetadata = error?.code === '42501' || error?.status === 403 || userMetadata?.role;
       if (userMetadata?.role || useMetadata) {
         const role = userMetadata?.role || 'intern';
-        queryCache.set(cacheKey, role, ROLE_CACHE_TTL);
+        queryCache.set(cacheKey, { role, team: null }, ROLE_CACHE_TTL);
         setUserRole(role);
+        setUserTeam(null);
         syncRoleToJwt(role);
         return;
       }
 
       setUserRole('intern');
-      queryCache.set(cacheKey, 'intern', ROLE_CACHE_TTL);
+      setUserTeam(null);
+      queryCache.set(cacheKey, { role: 'intern', team: null }, ROLE_CACHE_TTL);
     } catch (error) {
       const role = userMetadata?.role || 'intern';
       setUserRole(role);
-      queryCache.set(cacheKey, role, ROLE_CACHE_TTL);
+      setUserTeam(null);
+      queryCache.set(cacheKey, { role, team: null }, ROLE_CACHE_TTL);
       syncRoleToJwt(role);
     }
   };
@@ -130,6 +144,7 @@ export function SupabaseProvider({ children }) {
           setSession(null);
           setUser(null);
           setUserRole(null);
+          setUserTeam(null);
         }
         setLoading(false);
       });
@@ -141,6 +156,7 @@ export function SupabaseProvider({ children }) {
         fetchUserRole(session.user.id, session.user.user_metadata);
       } else {
         setUserRole(null);
+        setUserTeam(null);
         if (event === 'SIGNED_OUT') queryCache.clearAll();
       }
       setLoading(false);
@@ -154,12 +170,14 @@ export function SupabaseProvider({ children }) {
           setSession(null);
           setUser(null);
           setUserRole(null);
+          setUserTeam(null);
           queryCache.clearAll();
         }
       } catch {
         setSession(null);
         setUser(null);
         setUserRole(null);
+        setUserTeam(null);
         queryCache.clearAll();
       }
     };
@@ -176,6 +194,7 @@ export function SupabaseProvider({ children }) {
     setSession(null);
     setUser(null);
     setUserRole(null);
+    setUserTeam(null);
     queryCache.clearAll();
     try {
       const keys = [];
@@ -188,7 +207,7 @@ export function SupabaseProvider({ children }) {
   };
 
   return (
-    <SupabaseContext.Provider value={{ supabase, session, user, userRole, loading, clearSession }}>
+    <SupabaseContext.Provider value={{ supabase, session, user, userRole, userTeam, loading, clearSession }}>
       {children}
     </SupabaseContext.Provider>
   );

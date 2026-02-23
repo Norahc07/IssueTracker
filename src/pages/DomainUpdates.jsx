@@ -8,10 +8,11 @@ const POST_UPDATE_CHECK_OPTIONS = ['Ok', 'Issue Found'];
 const DOMAIN_ROW_STATUS_OPTIONS = ['done', 'need verification', 'blocked access'];
 
 export default function DomainUpdates() {
-  const { supabase } = useSupabase();
+  const { supabase, user } = useSupabase();
   const [domains, setDomains] = useState([]);
   const [updates, setUpdates] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [myDisplayName, setMyDisplayName] = useState('');
   const [updatesLoading, setUpdatesLoading] = useState(false);
   const [domainTypeFilter, setDomainTypeFilter] = useState('old'); // 'old' | 'new'
   const [createUpdateForm, setCreateUpdateForm] = useState({
@@ -25,6 +26,13 @@ export default function DomainUpdates() {
     notes: '',
   });
   const [savingUpdate, setSavingUpdate] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase.from('users').select('full_name').eq('id', user.id).maybeSingle().then(({ data }) => {
+      setMyDisplayName(data?.full_name || user?.email || '');
+    });
+  }, [user?.id, supabase]);
 
   useEffect(() => {
     const fetchDomainsAndUpdates = async () => {
@@ -136,6 +144,8 @@ export default function DomainUpdates() {
         post_update_check: createUpdateForm.post_update_check || null,
         status: domainTypeFilter === 'new' ? (createUpdateForm.status || null) : null,
         notes: (createUpdateForm.notes || '').trim() || null,
+        updated_by: user?.id || null,
+        updated_by_name: (myDisplayName || user?.email || '').trim() || null,
       };
       const { error } = await supabase.from('task_plugin_update_rows').insert(payload);
       if (error) throw error;
@@ -254,6 +264,7 @@ export default function DomainUpdates() {
               value={createUpdateForm.version_before}
               onChange={(e) => setCreateUpdateForm((f) => ({ ...f, version_before: e.target.value }))}
               className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+              placeholder="e.g. 6.4.2"
             />
           </div>
           <div className="flex-1 min-w-[120px]">
@@ -263,6 +274,7 @@ export default function DomainUpdates() {
               value={createUpdateForm.version_after}
               onChange={(e) => setCreateUpdateForm((f) => ({ ...f, version_after: e.target.value }))}
               className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+              placeholder="e.g. 6.4.3"
             />
           </div>
         </div>

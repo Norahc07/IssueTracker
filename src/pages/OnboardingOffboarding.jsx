@@ -304,6 +304,7 @@ export default function OnboardingOffboarding() {
                 value={onboardingForm.name}
                 onChange={(e) => setOnboardingForm((f) => ({ ...f, name: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="e.g. Juan Dela Cruz"
                 required
               />
             </div>
@@ -314,6 +315,7 @@ export default function OnboardingOffboarding() {
                 value={onboardingForm.email}
                 onChange={(e) => setOnboardingForm((f) => ({ ...f, email: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="e.g. juan.delacruz@company.com"
               />
             </div>
             <div>
@@ -323,6 +325,7 @@ export default function OnboardingOffboarding() {
                 value={onboardingForm.department}
                 onChange={(e) => setOnboardingForm((f) => ({ ...f, department: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="e.g. IT, HR, Marketing"
               />
             </div>
           </div>
@@ -334,6 +337,7 @@ export default function OnboardingOffboarding() {
                 value={onboardingForm.team}
                 onChange={(e) => setOnboardingForm((f) => ({ ...f, team: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="e.g. TLA, PAT1, Monitoring"
               />
             </div>
           </div>
@@ -426,6 +430,7 @@ export default function OnboardingOffboarding() {
                 value={offboardingForm.hours}
                 onChange={(e) => setOffboardingForm((f) => ({ ...f, hours: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="e.g. 160, 320"
               />
             </div>
             <div>
@@ -435,6 +440,7 @@ export default function OnboardingOffboarding() {
                 value={offboardingForm.department}
                 onChange={(e) => setOffboardingForm((f) => ({ ...f, department: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="e.g. IT, HR, Marketing"
               />
             </div>
           </div>
@@ -446,6 +452,7 @@ export default function OnboardingOffboarding() {
                 value={offboardingForm.last_name}
                 onChange={(e) => setOffboardingForm((f) => ({ ...f, last_name: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="e.g. Dela Cruz"
                 required
               />
             </div>
@@ -456,6 +463,7 @@ export default function OnboardingOffboarding() {
                 value={offboardingForm.first_name}
                 onChange={(e) => setOffboardingForm((f) => ({ ...f, first_name: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="e.g. Juan"
                 required
               />
             </div>
@@ -466,6 +474,7 @@ export default function OnboardingOffboarding() {
                 value={offboardingForm.email}
                 onChange={(e) => setOffboardingForm((f) => ({ ...f, email: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="e.g. juan.delacruz@company.com"
               />
             </div>
           </div>

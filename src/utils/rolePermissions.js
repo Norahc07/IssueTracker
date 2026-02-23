@@ -147,6 +147,11 @@ export const permissions = {
     return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA, ROLES.TL, ROLES.VTL]);
   },
 
+  // Domain Updates: interns (incl. TLA), admin, TLA, TL, VTL can add/update; TL/VTL see Domain Claims in Tasks
+  canAccessDomainUpdates: (userRole, userTeam) => {
+    return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA, ROLES.TL, ROLES.VTL, ROLES.INTERN]) || userTeam === TEAMS.TLA;
+  },
+
   // Attendance: all authenticated users can view the page; admin cannot clock in/out
   canUseAttendance: (_userRole) => true,
 

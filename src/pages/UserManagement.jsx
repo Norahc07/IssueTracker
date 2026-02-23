@@ -100,7 +100,8 @@ export default function UserManagement() {
     if (!editingId || editingId !== userId) return;
     try {
       const payload = { role: editRole };
-      if (editRole === 'tl' || editRole === 'vtl') payload.team = editTeam || null;
+      // TL/VTL and interns can have a team (e.g. TLA interns need team = 'tla' for Domain Updates access)
+      if (editRole === 'tl' || editRole === 'vtl' || editRole === 'intern') payload.team = editTeam || null;
       else payload.team = null;
 
       const { error } = await supabase
@@ -112,6 +113,7 @@ export default function UserManagement() {
 
       queryCache.invalidate('user_management:users');
       queryCache.invalidate(`role:${userId}`);
+      queryCache.invalidate(`profile:${userId}`);
       setUsers((prev) =>
         prev.map((u) =>
           u.id === userId ? { ...u, role: editRole, team: payload.team } : u
@@ -280,7 +282,7 @@ export default function UserManagement() {
                     </td>
                     <td className="px-4 sm:px-6 py-3">
                       {editingId === user.id ? (
-                        (editRole === 'tl' || editRole === 'vtl') ? (
+                        (editRole === 'tl' || editRole === 'vtl' || editRole === 'intern') ? (
                           <select
                             value={editTeam}
                             onChange={(e) => setEditTeam(e.target.value)}

@@ -24,6 +24,7 @@ const Attendance = lazy(() => import('./pages/Attendance'));
 const OnboardingOffboarding = lazy(() => import('./pages/OnboardingOffboarding'));
 const DailyReportForm = lazy(() => import('./pages/DailyReportForm'));
 const DailyReportManage = lazy(() => import('./pages/DailyReportManage'));
+const ScheduleFormPage = lazy(() => import('./pages/ScheduleFormPage'));
 
 function PageFallback() {
   return (
@@ -34,7 +35,7 @@ function PageFallback() {
 }
 
 function AppContent() {
-  const { user, userRole, loading } = useSupabase();
+  const { user, userRole, userTeam, loading } = useSupabase();
   const location = useLocation();
   const isAuthPage = location.pathname === '/login';
 
@@ -47,12 +48,24 @@ function AppContent() {
   }
 
   const role = userRole ?? 'intern';
+  const isScheduleFormPage = location.pathname === '/schedule-form';
+
   const getDashboardRoute = () => {
     if (!user) return '/login';
     if (role === 'admin' || role === 'tla') return '/admin/dashboard';
     if (role === 'lead' || role === 'tl' || role === 'vtl' || role === 'monitoring_team' || role === 'pat1') return '/lead/dashboard';
     return '/intern/dashboard';
   };
+
+  if (isScheduleFormPage) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<PageFallback />}>
+          <ScheduleFormPage />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -82,7 +95,7 @@ function AppContent() {
                 <Route
                   path="/domain-updates"
                   element={
-                    (role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl')
+                    (role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl' || role === 'intern' || userTeam === 'tla')
                       ? <DomainUpdates />
                       : <Navigate to={getDashboardRoute()} replace />
                   }

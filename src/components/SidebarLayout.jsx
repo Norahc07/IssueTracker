@@ -30,7 +30,7 @@ function Icon({ path, className = 'w-5 h-5' }) {
 }
 
 export default function SidebarLayout() {
-  const { user, userRole, supabase, clearSession } = useSupabase();
+  const { user, userRole, userTeam, supabase, clearSession } = useSupabase();
   const location = useLocation();
   const navigate = useNavigate();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -71,10 +71,10 @@ export default function SidebarLayout() {
           </div>
           <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-0.5" style={{ WebkitOverflowScrolling: 'touch' }}>
           {navItems.map((item) => {
-            // Only admin, tla, tl, vtl can see the Domain Updates page
+            // Admin, TLA, TL, VTL, TLA team, or any intern can see Domain Updates (TLA interns use this)
             if (
               item.to === '/domain-updates' &&
-              !(userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl')
+              !(userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl' || userRole === 'intern' || userTeam === 'tla')
             ) {
               return null;
             }
