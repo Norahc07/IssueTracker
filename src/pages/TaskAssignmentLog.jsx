@@ -6,24 +6,37 @@ import { toast } from 'react-hot-toast';
 import { logAction } from '../utils/auditTrail.js';
 import { permissions } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
+import UdemyCourseTab from '../components/UdemyCourseTab.jsx';
 
 const PRIMARY = '#6795BE';
 const TASK_STATUSES = {
-  'to-do': 'To Do',
+  'to-do': 'Not Started',
   'in-progress': 'In Progress',
+  'cancelled': 'Cancelled',
+  'done': 'Complete',
   'review': 'Review',
-  'done': 'Done',
 };
 
-const TASK_NAMES = [
-  'WordPress Plugin Updates',
-  'GSC Crawling',
-  'Doc Reorganization (internal documentation)',
-  'Assisting other teams',
-  'Daily report (indiv & team)',
-  'Udemy review',
-  'Course Price edit (not sure if existing task pa rin ito for interns)',
+const TASK_PRIORITIES = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+};
+
+const TASK_OPTIONS = [
+  { name: 'Daily Report', description: 'Make and submit daily report to Sir Erick.' },
+  { name: 'WordPress Updates (Old Domains)', description: 'Old Migrated Domains. (Notes: Update only on Mondays and Fridays. knowlesti.com must be updated everyday.)' },
+  { name: 'WordPress Updates (New Domains)', description: 'New Migrated Domains. (Notes: Update only on Mondays and Fridays. knowlesti.com must be updated everyday.)' },
+  { name: 'Google Search Console Crawling', description: 'Ensure all domains are indexed and note all issues.' },
+  { name: 'Course Price Edit', description: 'Update course prices for selected domain.' },
+  { name: 'Assisting Other Team', description: 'Assist other team with their task.' },
+  { name: 'Intern Onboarding', description: 'Handle onboarding Intern.' },
+  { name: 'Intern Offboarding', description: 'Handle offboarding Intern.' },
+  { name: 'Internal Documentation Update', description: 'Review and update all standard operating procedures (SOPs).' },
+  { name: 'Oversee Udemy Review', description: 'Assign and Manage Interns to do Udemy Course Review' },
 ];
+
+const TASK_NAMES = TASK_OPTIONS.map((t) => t.name);
 
 const SCANNING_OPTIONS = ['ok', 'move on', 'ongoing'];
 const SCANNING_LABELS = { ok: 'Ok', 'move on': 'Move on', ongoing: 'On-going' };
@@ -54,25 +67,99 @@ const canAccessScheduleFormTab = (userRole, userTeam) =>
   userRole === 'admin' || userRole === 'tla' || userRole === 'monitoring_team' ||
   ((userRole === 'tl' || userRole === 'vtl') && userTeam === 'tla');
 
+const canAccessTLVTLTracker = (userRole, userTeam) => {
+  const isTlaTeam = userTeam && String(userTeam).toLowerCase() === 'tla';
+  return (
+    userRole === 'admin' ||
+    userRole === 'tla' ||
+    userRole === 'intern' ||
+    isTlaTeam ||
+    ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam)
+  );
+};
+
+const TL_VTL_DEPARTMENTS = ['IT', 'HR', 'Marketing'];
+const TL_VTL_TEAMS = ['Team Lead Assistant', 'Monitoring Team', 'PAT1', 'HR Intern', 'Marketing Intern'];
+const TL_VTL_ROLES = ['Team Leader', 'Vice Team Leader', 'Representative'];
+
+const INTERN_SCHEDULE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const INTERN_SCHEDULE_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17];
+
+const formatHourLabel = (hour24) => {
+  const h = ((hour24 + 11) % 12) + 1;
+  const ampm = hour24 >= 12 ? 'PM' : 'AM';
+  return `${String(h).padStart(2, '0')}:00 ${ampm}`;
+};
+
+const createEmptyInternScheduleGrid = () => {
+  const grid = {};
+  INTERN_SCHEDULE_DAYS.forEach((day) => {
+    const hours = {};
+    INTERN_SCHEDULE_HOURS.forEach((h) => {
+      hours[String(h)] = 'unavailable';
+    });
+    grid[day] = hours;
+  });
+  return grid;
+};
+
+const getAggregateScheduleCounts = (schedules) => {
+  const aggregate = {};
+  INTERN_SCHEDULE_DAYS.forEach((day) => {
+    aggregate[day] = {};
+    INTERN_SCHEDULE_HOURS.forEach((h) => {
+      aggregate[day][String(h)] = { available: 0, unavailable: 0 };
+    });
+  });
+
+  (schedules || []).forEach((row) => {
+    const grid = row.schedule && typeof row.schedule === 'object' ? row.schedule : createEmptyInternScheduleGrid();
+    INTERN_SCHEDULE_DAYS.forEach((day) => {
+      INTERN_SCHEDULE_HOURS.forEach((h) => {
+        const v = grid?.[day]?.[String(h)] ?? 'unavailable';
+        if (v === 'available') aggregate[day][String(h)].available += 1;
+        else aggregate[day][String(h)].unavailable += 1; // includes 'unavailable' and 'lunch'
+      });
+    });
+  });
+
+  return aggregate;
+};
+
 export default function TaskAssignmentLog() {
   const { supabase, user, userRole, userTeam } = useSupabase();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab'); // 'domains' opens Domains tab
-  const scheduleSubTabParam = searchParams.get('schedule'); // 'form' | 'responses'
+  const scheduleSubTabParam = searchParams.get('schedule'); // 'form' | 'responses' | 'interns'
   const [tasks, setTasks] = useState([]);
   const [domains, setDomains] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [claimingTaskId, setClaimingTaskId] = useState(null);
   const [activeMainTab, setActiveMainTab] = useState(
-    tabParam === 'domains' ? 'domains' : tabParam === 'domain-claims' ? 'domain-claims' : tabParam === 'schedule-form' ? 'schedule-form' : 'tasks'
-  ); // 'tasks' | 'domains' | 'domain-claims' | 'schedule-form'
-  const [scheduleSubTab, setScheduleSubTab] = useState(scheduleSubTabParam === 'responses' ? 'responses' : 'form');
+    tabParam === 'domains'
+      ? 'domains'
+      : tabParam === 'domain-claims'
+      ? 'domain-claims'
+      : tabParam === 'schedule-form'
+      ? 'schedule-form'
+      : tabParam === 'tl-vtl-tracker'
+      ? 'tl-vtl-tracker'
+      : tabParam === 'udemy-course'
+      ? 'udemy-course'
+      : 'tasks'
+  ); // 'tasks' | 'udemy-course' | 'domains' | 'domain-claims' | 'schedule-form' | 'tl-vtl-tracker'
+  const [scheduleSubTab, setScheduleSubTab] = useState(
+    scheduleSubTabParam === 'responses' ? 'responses' : scheduleSubTabParam === 'interns' ? 'interns' : 'form'
+  );
   const [taskFilter, setTaskFilter] = useState('all'); // 'all' | 'my-tasks'
   const [domainTypeFilter, setDomainTypeFilter] = useState('old'); // 'old' | 'new'
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [showCreateDomainModal, setShowCreateDomainModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [isEditingAllTasks, setIsEditingAllTasks] = useState(false);
+  const [taskEditDrafts, setTaskEditDrafts] = useState({}); // { [taskId]: { assigned_to, priority, status } }
+  const [savingTaskEdit, setSavingTaskEdit] = useState(false);
   const [wpPluginRows, setWpPluginRows] = useState([]);
   const [domainPasswordHistory, setDomainPasswordHistory] = useState({});
   const [passwordHistoryModalDomain, setPasswordHistoryModalDomain] = useState(null);
@@ -80,17 +167,25 @@ export default function TaskAssignmentLog() {
   const [selectedNewDomainDetails, setSelectedNewDomainDetails] = useState(null);
   const [defaultAccounts, setDefaultAccounts] = useState({ intern: { username: '', password: '' }, sg: { username: '', password: '' } });
 
-  // Open Domains, Domain Claims, or Schedule Form tab when URL has ?tab=...
+  // Reset table edit when modal opens
+  useEffect(() => {
+    if (selectedTask) setIsEditingAllTasks(false);
+  }, [selectedTask]);
+
+  // Open Domains, Domain Claims, Schedule Form, or TL/VTL Tracker tab when URL has ?tab=...
   useEffect(() => {
     if (tabParam === 'domains') setActiveMainTab('domains');
     if (tabParam === 'domain-claims') setActiveMainTab('domain-claims');
     if (tabParam === 'schedule-form') setActiveMainTab('schedule-form');
+    if (tabParam === 'tl-vtl-tracker') setActiveMainTab('tl-vtl-tracker');
+    if (tabParam === 'udemy-course') setActiveMainTab('udemy-course');
   }, [tabParam]);
 
   // Sync Schedule sub-tab with URL
   useEffect(() => {
     if (scheduleSubTabParam === 'responses') setScheduleSubTab('responses');
-    else if (scheduleSubTabParam === 'form') setScheduleSubTab('form');
+    else if (scheduleSubTabParam === 'interns') setScheduleSubTab('interns');
+    else setScheduleSubTab('form');
   }, [scheduleSubTabParam]);
   const [showDefaultPassword, setShowDefaultPassword] = useState({ intern: false, sg: false });
   const [editDefaultAccount, setEditDefaultAccount] = useState(null); // 'intern' | 'sg' | null
@@ -98,13 +193,18 @@ export default function TaskAssignmentLog() {
   const [savingDefaultAccount, setSavingDefaultAccount] = useState(false);
   const [showEditModalPassword, setShowEditModalPassword] = useState(false);
   const [domainUpdates, setDomainUpdates] = useState([]);
+  const [domainClaims, setDomainClaims] = useState([]);
+  const [claimingDomainId, setClaimingDomainId] = useState(null);
   const [isEditingDomainsTable, setIsEditingDomainsTable] = useState(false);
   const [savingDomains, setSavingDomains] = useState(false);
   const [createTaskForm, setCreateTaskForm] = useState({
     name: '',
     domain_migration: '',
     assigned_to: '',
+    priority: 'medium',
     status: 'to-do',
+    description: '',
+    notes: '',
   });
   const [createDomainForm, setCreateDomainForm] = useState({
     type: 'old',
@@ -128,6 +228,21 @@ export default function TaskAssignmentLog() {
   const [scheduleResponses, setScheduleResponses] = useState([]);
   const [scheduleConfigForm, setScheduleConfigForm] = useState(null);
   const [savingScheduleConfig, setSavingScheduleConfig] = useState(false);
+  const [internSchedules, setInternSchedules] = useState([]);
+  const [editingInternSchedule, setEditingInternSchedule] = useState(null); // row being edited
+  const [internScheduleDraft, setInternScheduleDraft] = useState(null); // { name, schedule }
+  const [showInternScheduleModal, setShowInternScheduleModal] = useState(false);
+  const [savingInternSchedule, setSavingInternSchedule] = useState(false);
+
+  // TL/VTL Tracker (admin, TL/VTL of TLA only)
+  const [tlVtlTrackerRows, setTlVtlTrackerRows] = useState([]);
+  const [savingTlVtlTracker, setSavingTlVtlTracker] = useState(false);
+  const [isTlVtlTrackerEditMode, setIsTlVtlTrackerEditMode] = useState(false);
+
+  const tlVtlAssignableUsers = useMemo(
+    () => users.filter((u) => u.role === 'intern' || u.role === 'tl' || u.role === 'vtl'),
+    [users]
+  );
 
   useEffect(() => {
     fetchTasks();
@@ -142,6 +257,7 @@ export default function TaskAssignmentLog() {
   useEffect(() => {
     if (activeMainTab === 'domains' || activeMainTab === 'domain-claims') {
       fetchDomainUpdates();
+      fetchDomainClaims();
     }
   }, [activeMainTab, supabase]);
 
@@ -151,12 +267,18 @@ export default function TaskAssignmentLog() {
     }
   }, [activeMainTab, supabase]);
 
+  useEffect(() => {
+    if (activeMainTab === 'tl-vtl-tracker') {
+      fetchTlVtlTracker();
+    }
+  }, [activeMainTab, supabase]);
+
   const isTaskFormValid = () => {
     const name = (createTaskForm.name || '').trim();
     const status = (createTaskForm.status || '').trim();
     const assigned = (createTaskForm.assigned_to || '').trim();
     if (!name || !status || !assigned) return false;
-    if (name === 'WordPress Plugin Updates' && !createTaskForm.domain_migration) return false;
+    if ((name === 'WordPress Updates (Old Domains)' || name === 'WordPress Updates (New Domains)') && !createTaskForm.domain_migration) return false;
     return true;
   };
 
@@ -291,11 +413,178 @@ export default function TaskAssignmentLog() {
     }
   };
 
+  const fetchDomainClaims = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('domain_claims')
+        .select('*')
+        .order('claimed_at', { ascending: false });
+      if (error) throw error;
+      setDomainClaims(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('domain_claims fetch error:', err);
+      setDomainClaims([]);
+    }
+  };
+
+  const fetchTlVtlTracker = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tl_vtl_tracker')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      setTlVtlTrackerRows(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('tl_vtl_tracker fetch error:', err);
+      setTlVtlTrackerRows([]);
+    }
+  };
+
+  const addTlVtlTrackerRow = async () => {
+    setSavingTlVtlTracker(true);
+    try {
+      const { data, error } = await supabase
+        .from('tl_vtl_tracker')
+        .insert({
+          department: 'IT',
+          team: 'Team Lead Assistant',
+          name: '',
+          role: 'Team Leader',
+          updated_at: new Date().toISOString(),
+        })
+        .select('*')
+        .single();
+      if (error) throw error;
+      setTlVtlTrackerRows((prev) => [...prev, data]);
+      toast.success('Row added');
+    } catch (err) {
+      toast.error(err?.message || 'Failed to add row');
+    } finally {
+      setSavingTlVtlTracker(false);
+    }
+  };
+
+  const updateTlVtlTrackerRow = async (id, field, value) => {
+    try {
+      const { error } = await supabase
+        .from('tl_vtl_tracker')
+        .update({ [field]: value, updated_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+      setTlVtlTrackerRows((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, [field]: value } : r))
+      );
+    } catch (err) {
+      toast.error(err?.message || 'Failed to update');
+    }
+  };
+
+  const normalizeUserTeamFromTracker = (teamLabel) => {
+    const t = (teamLabel || '').toLowerCase();
+    if (t.includes('team lead assistant')) return 'tla';
+    if (t.includes('monitoring')) return 'monitoring_team';
+    if (t.includes('pat1')) return 'pat1';
+    if (t.includes('hr')) return 'hr';
+    if (t.includes('marketing')) return 'marketing';
+    return null;
+  };
+
+  const mapTrackerRoleToUserRole = (roleLabel) => {
+    if (!roleLabel) return null;
+    const r = roleLabel.toLowerCase();
+    if (r.includes('team leader')) return 'tl';
+    if (r.includes('vice')) return 'vtl';
+    return null;
+  };
+
+  const saveAllTlVtlTrackerRows = async () => {
+    setSavingTlVtlTracker(true);
+    try {
+      for (const row of tlVtlTrackerRows) {
+        const nowIso = new Date().toISOString();
+
+        // Save tracker row itself
+        const { error } = await supabase
+          .from('tl_vtl_tracker')
+          .update({
+            department: row.department || 'IT',
+            team: row.team || 'Team Lead Assistant',
+            name: (row.name || '').trim(),
+            role: row.role || 'Team Leader',
+            updated_at: nowIso,
+          })
+          .eq('id', row.id);
+        if (error) throw error;
+
+        // Promotion logic: if this row represents a TL or VTL, update their app role
+        const targetRole = mapTrackerRoleToUserRole(row.role);
+        const trimmedName = (row.name || '').trim();
+        if (targetRole && trimmedName) {
+          try {
+            const { data: userMatch, error: userErr } = await supabase
+              .from('users')
+              .select('id, full_name, team')
+              .eq('full_name', trimmedName)
+              .maybeSingle();
+
+            if (!userErr && userMatch) {
+              const mappedTeam = normalizeUserTeamFromTracker(row.team);
+              const updatePayload = {
+                role: targetRole,
+                updated_at: nowIso,
+              };
+              if (mappedTeam) {
+                updatePayload.team = mappedTeam;
+              }
+
+              const { error: updateUserErr } = await supabase
+                .from('users')
+                .update(updatePayload)
+                .eq('id', userMatch.id);
+              if (updateUserErr) {
+                console.warn('Failed to update user role from TL/VTL tracker:', updateUserErr);
+              }
+            }
+          } catch (userUpdateErr) {
+            console.warn('User role promotion error:', userUpdateErr);
+          }
+        }
+      }
+      toast.success('Changes saved and promotions applied');
+      setIsTlVtlTrackerEditMode(false);
+    } catch (err) {
+      toast.error(err?.message || 'Failed to save');
+    } finally {
+      setSavingTlVtlTracker(false);
+    }
+  };
+
+  const cancelTlVtlTrackerEdit = () => {
+    fetchTlVtlTracker();
+    setIsTlVtlTrackerEditMode(false);
+  };
+
+  const deleteTlVtlTrackerRow = async (id) => {
+    setSavingTlVtlTracker(true);
+    try {
+      const { error } = await supabase.from('tl_vtl_tracker').delete().eq('id', id);
+      if (error) throw error;
+      setTlVtlTrackerRows((prev) => prev.filter((r) => r.id !== id));
+      toast.success('Row removed');
+    } catch (err) {
+      toast.error(err?.message || 'Failed to delete');
+    } finally {
+      setSavingTlVtlTracker(false);
+    }
+  };
+
   const fetchScheduleFormData = async () => {
     try {
-      const [configRes, responsesRes] = await Promise.all([
+      const [configRes, responsesRes, internsRes] = await Promise.all([
         supabase.from('schedule_form_config').select('*').eq('id', 'default').maybeSingle(),
         supabase.from('intern_schedule_responses').select('*').order('submitted_at', { ascending: false }),
+        supabase.from('intern_schedules').select('*').order('name', { ascending: true }),
       ]);
       if (configRes.data) {
         const data = configRes.data;
@@ -308,9 +597,10 @@ export default function TaskAssignmentLog() {
         });
       }
       setScheduleResponses(Array.isArray(responsesRes.data) ? responsesRes.data : []);
+      setInternSchedules(Array.isArray(internsRes.data) ? internsRes.data : []);
     } catch (err) {
       console.warn('Schedule form data fetch error:', err);
-      toast.error('Could not load schedule form data. Run supabase_schedule_form_migration.sql in Supabase.');
+      toast.error('Could not load schedule form data. Run supabase_schedule_form_migration.sql and supabase_intern_schedules_migration.sql in Supabase.');
     }
   };
 
@@ -452,33 +742,33 @@ export default function TaskAssignmentLog() {
 
   const handleCreateTask = async (e) => {
     e.preventDefault();
-    const { name, domain_migration, assigned_to, status } = createTaskForm;
+    const { name, domain_migration, assigned_to, priority, status, description, notes } = createTaskForm;
     if (!name) {
       toast.error('Select a task name');
       return;
     }
-    const isWpPlugin = name === 'WordPress Plugin Updates';
-    if (isWpPlugin && !domain_migration) {
-      toast.error('Select Domain Migration (New or Old domain) for WordPress Plugin Updates');
-      return;
-    }
+    const isWpPlugin = name === 'WordPress Updates (Old Domains)' || name === 'WordPress Updates (New Domains)';
+    const domainMigration = isWpPlugin ? (name === 'WordPress Updates (Old Domains)' ? 'old' : 'new') : domain_migration;
     setClaimingTaskId('create');
     try {
       const payload = {
         name,
         type: 'task',
         status: status || 'to-do',
+        priority: priority || 'medium',
+        description: description?.trim() || null,
+        notes: notes?.trim() || null,
         assigned_to: assigned_to || null,
-        assigned_to_name: users.find((u) => u.id === assigned_to)?.full_name || users.find((u) => u.id === assigned_to)?.email || null,
+        assigned_to_name: users.find((u) => u.id === assigned_to)?.full_name ?? null,
       };
-      if (isWpPlugin) payload.domain_migration = domain_migration;
+      if (isWpPlugin) payload.domain_migration = domainMigration;
       const { data, error } = await supabase.from('tasks').insert(payload).select('id').single();
       if (error) throw error;
       await logAction(supabase, 'task_created', { task_id: data?.id, task_name: name }, user?.id);
       queryCache.invalidate('tasks');
       fetchTasks(true);
       setShowCreateTaskModal(false);
-      setCreateTaskForm({ name: '', domain_migration: '', assigned_to: '', status: 'to-do' });
+      setCreateTaskForm({ name: '', domain_migration: '', assigned_to: '', priority: 'medium', status: 'to-do', description: '', notes: '' });
       toast.success('Task created');
     } catch (error) {
       console.error('Error creating task:', error);
@@ -642,6 +932,80 @@ export default function TaskAssignmentLog() {
     }
   };
 
+  const startEditAllTasks = () => {
+    fetchUsers();
+    const drafts = {};
+    filteredTasks.forEach((t) => {
+      drafts[t.id] = {
+        assigned_to: t.assigned_to || '',
+        priority: t.priority || 'medium',
+        status: t.status || 'to-do',
+      };
+    });
+    setTaskEditDrafts(drafts);
+    setIsEditingAllTasks(true);
+  };
+
+  const cancelTaskEdit = () => {
+    setIsEditingAllTasks(false);
+    setTaskEditDrafts({});
+  };
+
+  const updateTaskDraft = (taskId, field, value) => {
+    setTaskEditDrafts((prev) => ({
+      ...prev,
+      [taskId]: { ...(prev[taskId] || {}), [field]: value },
+    }));
+  };
+
+  const handleSaveTaskEdit = async () => {
+    const taskIds = Object.keys(taskEditDrafts);
+    if (taskIds.length === 0) return;
+    setSavingTaskEdit(true);
+    try {
+      for (const id of taskIds) {
+        const task = tasks.find((t) => t.id === id);
+        if (!task || !canUpdateStatus(task)) continue;
+        const d = taskEditDrafts[id] || {};
+        const assigned_to = d.assigned_to || null;
+      const assigned_to_name = assigned_to
+          ? (users.find((u) => u.id === assigned_to)?.full_name ?? null)
+          : null;
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          assigned_to,
+          assigned_to_name,
+          priority: d.priority || 'medium',
+            status: d.status || 'to-do',
+            updated_by: user?.id,
+            updated_by_name: user?.email,
+          })
+          .eq('id', id);
+        if (error) throw error;
+        await logAction(supabase, 'task_updated', { task_id: id, fields: ['assigned_to', 'priority', 'status'] }, user?.id);
+      }
+      queryCache.invalidate('tasks');
+      fetchTasks(true);
+      if (selectedTask && taskEditDrafts[selectedTask.id]) {
+        const d = taskEditDrafts[selectedTask.id];
+        const assigned_to = d.assigned_to || null;
+        const assigned_to_name = assigned_to ? (users.find((u) => u.id === assigned_to)?.full_name ?? null) : null;
+        setSelectedTask((t) =>
+          t ? { ...t, assigned_to, assigned_to_name, priority: d.priority, status: d.status } : null
+        );
+      }
+      setIsEditingAllTasks(false);
+      setTaskEditDrafts({});
+      toast.success('Tasks saved');
+    } catch (error) {
+      const msg = error?.message || 'Failed to save tasks';
+      toast.error(msg);
+    } finally {
+      setSavingTaskEdit(false);
+    }
+  };
+
   const handleDeleteTask = async (task) => {
     if (!window.confirm(`Delete task "${task.name}"?`)) return;
     try {
@@ -718,6 +1082,97 @@ export default function TaskAssignmentLog() {
   const canUpdateStatus = (task) =>
     permissions.canUpdateTaskStatus(userRole, task.assigned_to, user?.id);
 
+  const canClaimTask = (userRole, userTeam) =>
+    (userRole === 'intern' || userRole === 'tl' || userRole === 'vtl') && String(userTeam || '').toLowerCase() === 'tla';
+
+  const handleClaimTask = async (task) => {
+    if (!user?.id || task.assigned_to) return;
+    setClaimingTaskId(task.id);
+    try {
+      let assigned_to_name = (users.find((u) => u.id === user.id)?.full_name || '').trim();
+      if (!assigned_to_name) {
+        const { data: me } = await supabase.from('users').select('full_name').eq('id', user.id).maybeSingle();
+        assigned_to_name = (me?.full_name || '').trim() || user?.user_metadata?.full_name || user?.email || null;
+      }
+      const displayNameForDb = assigned_to_name || user?.user_metadata?.full_name || user?.email || null;
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          assigned_to: user.id,
+          assigned_to_name: displayNameForDb,
+          updated_by: user?.id,
+          updated_by_name: user?.email,
+        })
+        .eq('id', task.id);
+      if (error) throw error;
+      await logAction(supabase, 'task_claimed', { task_id: task.id, task_name: task.name }, user?.id);
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === task.id ? { ...t, assigned_to: user.id, assigned_to_name: displayNameForDb } : t
+        )
+      );
+      queryCache.invalidate('tasks');
+      await fetchTasks(true);
+      if (selectedTask?.id === task.id) setSelectedTask((t) => (t ? { ...t, assigned_to: user.id, assigned_to_name: displayNameForDb } : null));
+      toast.success('Task claimed');
+    } catch (error) {
+      const msg = error?.message || 'Failed to claim task';
+      toast.error(msg);
+    } finally {
+      setClaimingTaskId(null);
+    }
+  };
+
+  const canClaimDomain = (userRole, userTeam) =>
+    (userRole === 'intern' || userRole === 'tl' || userRole === 'vtl') && String(userTeam || '').toLowerCase() === 'tla';
+
+  const handleClaimDomain = async (domain) => {
+    if (!user?.id) return;
+    const existing = domainClaims.find((c) => c.domain_id === domain.id);
+    if (existing) return;
+    setClaimingDomainId(domain.id);
+    try {
+      let claimed_by_name = (users.find((u) => u.id === user.id)?.full_name || '').trim();
+      if (!claimed_by_name) {
+        const { data: me } = await supabase.from('users').select('full_name').eq('id', user.id).maybeSingle();
+        claimed_by_name = (me?.full_name || '').trim() || user?.user_metadata?.full_name || user?.email || null;
+      }
+      const nameForDb = claimed_by_name || user?.user_metadata?.full_name || user?.email || null;
+      const { error } = await supabase.from('domain_claims').insert({
+        domain_id: domain.id,
+        claimed_by: user.id,
+        claimed_by_name: nameForDb,
+      });
+      if (error) throw error;
+      const newClaim = {
+        id: crypto.randomUUID(),
+        domain_id: domain.id,
+        claimed_by: user.id,
+        claimed_by_name: nameForDb,
+        claimed_at: new Date().toISOString(),
+        update_status: null,
+        post_update_check: null,
+      };
+      setDomainClaims((prev) => [newClaim, ...prev]);
+      await fetchDomainClaims();
+      toast.success('Domain claimed');
+    } catch (error) {
+      const msg = error?.message || 'Failed to claim domain';
+      toast.error(msg);
+    } finally {
+      setClaimingDomainId(null);
+    }
+  };
+
+  const getAssignedToDisplay = (task) => {
+    if (!task) return 'Unassigned';
+    const stored = (task.assigned_to_name || '').trim();
+    if (stored && !stored.includes('@')) return stored;
+    const u = task.assigned_to ? users.find((us) => String(us.id) === String(task.assigned_to)) : null;
+    const fromUser = (u?.full_name || '').trim() || u?.email || null;
+    return fromUser || (stored || '').trim() || 'Unassigned';
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'to-do':
@@ -728,12 +1183,28 @@ export default function TaskAssignmentLog() {
         return 'bg-yellow-100 text-yellow-800';
       case 'done':
         return 'bg-green-100 text-green-800';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const isWpPluginTask = (task) => task?.name === 'WordPress Plugin Updates';
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'high':
+        return 'bg-red-100 text-red-800';
+      case 'medium':
+        return 'bg-amber-100 text-amber-800';
+      case 'low':
+        return 'bg-gray-100 text-gray-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const isWpPluginTask = (task) =>
+    task?.name === 'WordPress Updates (Old Domains)' || task?.name === 'WordPress Updates (New Domains)';
 
   const latestUpdateByDomainId = useMemo(() => {
     const map = {};
@@ -795,7 +1266,7 @@ export default function TaskAssignmentLog() {
         </div>
       </div>
 
-      {/* Main tabs: Tasks | Domains | Domain Claims (TLA TL/VTL) */}
+      {/* Main tabs */}
       <div className="flex gap-2 border-b border-gray-200">
         <button
           type="button"
@@ -806,6 +1277,18 @@ export default function TaskAssignmentLog() {
           style={activeMainTab === 'tasks' ? { borderTopColor: PRIMARY } : {}}
         >
           Tasks
+        </button>
+        <button
+          type="button"
+          onClick={() => { setActiveMainTab('udemy-course'); setSearchParams({ tab: 'udemy-course' }); }}
+          className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+            activeMainTab === 'udemy-course'
+              ? 'bg-white border border-b-0 border-gray-200 -mb-px'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+          style={activeMainTab === 'udemy-course' ? { borderTopColor: PRIMARY } : {}}
+        >
+          Udemy Course
         </button>
         <button
           type="button"
@@ -838,6 +1321,18 @@ export default function TaskAssignmentLog() {
             Schedule
           </button>
         )}
+        {canAccessTLVTLTracker(userRole, userTeam) && (
+          <button
+            type="button"
+            onClick={() => { setActiveMainTab('tl-vtl-tracker'); setSearchParams({ tab: 'tl-vtl-tracker' }); }}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeMainTab === 'tl-vtl-tracker' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+            style={activeMainTab === 'tl-vtl-tracker' ? { borderTopColor: PRIMARY } : {}}
+          >
+            TL/VTL Tracker
+          </button>
+        )}
       </div>
 
       {activeMainTab === 'tasks' && (
@@ -865,22 +1360,54 @@ export default function TaskAssignmentLog() {
                 My Tasks
               </button>
             </div>
-            {permissions.canCreateTasks(userRole) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCreateTaskModal(true);
-                  fetchUsers();
-                }}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
-                style={{ backgroundColor: PRIMARY }}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-                Add Task
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {isEditingAllTasks ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleSaveTaskEdit}
+                    disabled={savingTaskEdit}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                    style={{ backgroundColor: PRIMARY }}
+                  >
+                    {savingTaskEdit ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelTaskEdit}
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                filteredTasks.some((t) => canUpdateStatus(t)) && (
+                  <button
+                    type="button"
+                    onClick={startEditAllTasks}
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  >
+                    Edit
+                  </button>
+                )
+              )}
+              {permissions.canCreateTasks(userRole) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateTaskModal(true);
+                    fetchUsers();
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Task
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
@@ -892,10 +1419,13 @@ export default function TaskAssignmentLog() {
                       Task Name
                     </th>
                     <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
+                      Assigned To
                     </th>
                     <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Assigned To
+                      Priority
+                    </th>
+                    <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
                     </th>
                     <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
                       Details
@@ -904,54 +1434,117 @@ export default function TaskAssignmentLog() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredTasks.length > 0 ? (
-                    filteredTasks.map((task) => (
-                      <tr key={task.id} className="hover:bg-gray-50">
-                        <td className="px-4 sm:px-6 py-4">
-                          <div className="text-sm font-medium text-gray-900">{task.name}</div>
-                          {task.description && (
-                            <div className="text-xs text-gray-500 mt-1">{task.description}</div>
-                          )}
-                        </td>
-                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                          {canUpdateStatus(task) ? (
-                            <select
-                              value={task.status || 'to-do'}
-                              onChange={(e) => handleStatusChange(task, e.target.value)}
-                              className={`min-w-[7rem] px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 ${getStatusColor(task.status || 'to-do')} cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:ring-offset-0`}
-                            >
-                              {Object.entries(TASK_STATUSES).map(([key, label]) => (
-                                <option key={key} value={key}>
-                                  {label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-lg ${getStatusColor(task.status || 'to-do')}`}>
-                              {TASK_STATUSES[task.status] || 'To Do'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {task.assigned_to_name || task.assigned_to || 'Unassigned'}
-                        </td>
-                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedTask(task);
-                              if (isWpPluginTask(task)) fetchWpPluginRows(task.id);
-                            }}
-                            className="text-xs font-medium px-2 py-1 rounded text-white hover:opacity-90 transition-opacity"
-                            style={{ backgroundColor: PRIMARY }}
-                          >
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                    filteredTasks.map((task) => {
+                      const draft = taskEditDrafts[task.id] || {
+                        assigned_to: task.assigned_to || '',
+                        priority: task.priority || 'medium',
+                        status: task.status || 'to-do',
+                      };
+                      const rowEditable = isEditingAllTasks && canUpdateStatus(task);
+                      return (
+                        <tr key={task.id} className={isEditingAllTasks ? 'bg-blue-50/50' : 'hover:bg-gray-50'}>
+                          <td className="px-4 sm:px-6 py-4">
+                            <div className="text-sm font-medium text-gray-900">{task.name}</div>
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm">
+                            {rowEditable ? (
+                              <select
+                                value={draft.assigned_to}
+                                onChange={(e) => updateTaskDraft(task.id, 'assigned_to', e.target.value)}
+                                className="min-w-[8rem] rounded border border-gray-300 px-2 py-1.5 text-sm"
+                              >
+                                <option value="">Unassigned</option>
+                                {users.map((u) => (
+                                  <option key={u.id} value={u.id}>{(u.full_name || '').trim() || u.email || 'Unnamed'}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-gray-500">{getAssignedToDisplay(task)}</span>
+                            )}
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            {rowEditable ? (
+                              <select
+                                value={draft.priority}
+                                onChange={(e) => updateTaskDraft(task.id, 'priority', e.target.value)}
+                                className="min-w-[6rem] rounded border border-gray-300 px-2 py-1.5 text-sm"
+                              >
+                                {Object.entries(TASK_PRIORITIES).map(([k, v]) => (
+                                  <option key={k} value={k}>{v}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-lg ${getPriorityColor(task.priority || 'medium')}`}>
+                                {TASK_PRIORITIES[task.priority] || 'Medium'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            {rowEditable ? (
+                              <select
+                                value={draft.status}
+                                onChange={(e) => updateTaskDraft(task.id, 'status', e.target.value)}
+                                className={`min-w-[7rem] rounded border border-gray-300 px-2 py-1.5 text-sm ${getStatusColor(draft.status)}`}
+                              >
+                                {Object.entries(TASK_STATUSES).map(([key, label]) => (
+                                  <option key={key} value={key}>{label}</option>
+                                ))}
+                              </select>
+                            ) : canUpdateStatus(task) ? (
+                              <select
+                                value={task.status || 'to-do'}
+                                onChange={(e) => handleStatusChange(task, e.target.value)}
+                                className={`min-w-[7rem] px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 ${getStatusColor(task.status || 'to-do')} cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:ring-offset-0`}
+                              >
+                                {Object.entries(TASK_STATUSES).map(([key, label]) => (
+                                  <option key={key} value={key}>{label}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-lg ${getStatusColor(task.status || 'to-do')}`}>
+                                {TASK_STATUSES[task.status] || 'Not Started'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedTask(task);
+                                  if (isWpPluginTask(task)) fetchWpPluginRows(task.id);
+                                }}
+                                className="text-xs font-medium min-w-[4rem] px-2 py-1 rounded text-white hover:opacity-90 transition-opacity"
+                                style={{ backgroundColor: PRIMARY }}
+                              >
+                                View
+                              </button>
+                              {canClaimTask(userRole, userTeam) && (
+                                task.assigned_to ? (
+                                  String(task.assigned_to) === String(user?.id) ? (
+                                    <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
+                                      Claimed
+                                    </span>
+                                  ) : null
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleClaimTask(task)}
+                                    disabled={claimingTaskId === task.id}
+                                    className="text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-gray-600 text-white hover:bg-gray-700 disabled:opacity-60 transition-opacity"
+                                  >
+                                    {claimingTaskId === task.id ? '...' : 'Claim'}
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
-                      <td colSpan={4} className="px-4 sm:px-6 py-12 text-center text-sm text-gray-500">
+                      <td colSpan={5} className="px-4 sm:px-6 py-12 text-center text-sm text-gray-500">
                         {taskFilter === 'my-tasks' ? 'You have no assigned tasks' : 'No tasks found'}
                       </td>
                     </tr>
@@ -961,6 +1554,158 @@ export default function TaskAssignmentLog() {
             </div>
           </div>
         </>
+      )}
+
+      {showInternScheduleModal && internScheduleDraft && (
+        <Modal open={showInternScheduleModal} onClose={() => !savingInternSchedule && setShowInternScheduleModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-100">
+            <div className="p-6 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                    Edit intern schedule
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Set availability for each hour (Available / Unavailable / Lunch). Only fill in your own column if sharing.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !savingInternSchedule && setShowInternScheduleModal(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Intern name</label>
+                  <input
+                    type="text"
+                    value={internScheduleDraft.name}
+                    onChange={(e) => setInternScheduleDraft((draft) => ({ ...draft, name: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-2 py-2 text-left font-medium text-gray-500 uppercase tracking-wider w-24">Time</th>
+                        {INTERN_SCHEDULE_DAYS.map((day) => (
+                          <th key={day} className="px-2 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">
+                            {day}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-100">
+                      {INTERN_SCHEDULE_HOURS.map((hour) => {
+                        const label = `${formatHourLabel(hour)} – ${formatHourLabel(hour + 1)}`;
+                        return (
+                          <tr key={hour}>
+                            <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap font-medium">{label}</td>
+                            {INTERN_SCHEDULE_DAYS.map((day) => (
+                              <td key={day} className="px-2 py-1.5">
+                                <select
+                                  value={internScheduleDraft.schedule?.[day]?.[String(hour)] ?? 'unavailable'}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    setInternScheduleDraft((draft) => {
+                                      const next = { ...draft };
+                                      const schedule = { ...(next.schedule || {}) };
+                                      const dayRow = { ...(schedule[day] || {}) };
+                                      dayRow[String(hour)] = value;
+                                      schedule[day] = dayRow;
+                                      next.schedule = schedule;
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-full rounded border border-gray-300 px-1 py-1 text-xs focus:ring-1 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                                >
+                                  <option value="available">Available</option>
+                                  <option value="unavailable">Unavailable</option>
+                                  <option value="lunch">Lunch</option>
+                                </select>
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => !savingInternSchedule && setShowInternScheduleModal(false)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  disabled={savingInternSchedule || !internScheduleDraft.name.trim()}
+                  onClick={async () => {
+                    if (!internScheduleDraft || !internScheduleDraft.name.trim()) return;
+                    setSavingInternSchedule(true);
+                    try {
+                      if (editingInternSchedule) {
+                        const { error } = await supabase
+                          .from('intern_schedules')
+                          .update({
+                            name: internScheduleDraft.name.trim(),
+                            schedule: internScheduleDraft.schedule || createEmptyInternScheduleGrid(),
+                            updated_at: new Date().toISOString(),
+                          })
+                          .eq('id', editingInternSchedule.id);
+                        if (error) throw error;
+                        setInternSchedules((prev) =>
+                          prev.map((row) =>
+                            row.id === editingInternSchedule.id
+                              ? { ...row, name: internScheduleDraft.name.trim(), schedule: internScheduleDraft.schedule }
+                              : row
+                          )
+                        );
+                        toast.success('Intern schedule updated');
+                      } else {
+                        const { data, error } = await supabase
+                          .from('intern_schedules')
+                          .insert({
+                            name: internScheduleDraft.name.trim(),
+                            schedule: internScheduleDraft.schedule || createEmptyInternScheduleGrid(),
+                            updated_at: new Date().toISOString(),
+                          })
+                          .select('*')
+                          .single();
+                        if (error) throw error;
+                        setInternSchedules((prev) => [...prev, data]);
+                        toast.success('Intern schedule added');
+                      }
+                      setShowInternScheduleModal(false);
+                    } catch (err) {
+                      toast.error(err?.message || 'Failed to save intern schedule');
+                    } finally {
+                      setSavingInternSchedule(false);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  {savingInternSchedule ? 'Saving...' : 'Save schedule'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {activeMainTab === 'udemy-course' && (
+        <UdemyCourseTab />
       )}
 
       {activeMainTab === 'domains' && (
@@ -1226,12 +1971,20 @@ export default function TaskAssignmentLog() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">2FA</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Action</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredDomains.length > 0 ? (
-                    filteredDomains.map((domain) => (
-                      <tr key={domain.id} className="hover:bg-gray-50">
+                    filteredDomains.map((domain) => {
+                      const claim = domainClaims.find((c) => c.domain_id === domain.id);
+                      const isClaimed = !!claim;
+                      const isClaimedByMe = claim && String(claim.claimed_by) === String(user?.id);
+                      return (
+                      <tr
+                        key={domain.id}
+                        className={`hover:bg-gray-50 ${isClaimed ? 'bg-green-50/70' : ''}`}
+                      >
                         <td className="px-4 py-3 text-sm text-gray-900">
                           {isEditingDomainsTable ? (
                             <input
@@ -1344,11 +2097,32 @@ export default function TaskAssignmentLog() {
                             className="rounded"
                           />
                         </td>
+                        <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          {canClaimDomain(userRole, userTeam) && (
+                            isClaimed ? (
+                              isClaimedByMe ? (
+                                <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
+                                  Claimed
+                                </span>
+                              ) : null
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleClaimDomain(domain)}
+                                disabled={claimingDomainId === domain.id}
+                                className="text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-gray-600 text-white hover:bg-gray-700 disabled:opacity-60 transition-opacity"
+                              >
+                                {claimingDomainId === domain.id ? '...' : 'Claim'}
+                              </button>
+                            )
+                          )}
+                        </td>
                       </tr>
-                    ))
+                    );
+                    })
                   ) : (
                     <tr>
-                      <td colSpan={11} className="px-4 py-12 text-center text-sm text-gray-500">
+                      <td colSpan={12} className="px-4 py-12 text-center text-sm text-gray-500">
                         No old domains. Add one with &quot;Add Domain&quot;.
                       </td>
                     </tr>
@@ -1370,14 +2144,19 @@ export default function TaskAssignmentLog() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">New Password</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Action</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredDomains.length > 0 ? (
-                    filteredDomains.map((domain) => (
+                    filteredDomains.map((domain) => {
+                      const claim = domainClaims.find((c) => c.domain_id === domain.id);
+                      const isClaimed = !!claim;
+                      const isClaimedByMe = claim && String(claim.claimed_by) === String(user?.id);
+                      return (
                       <tr
                         key={domain.id}
-                        className={`hover:bg-gray-50 ${!isEditingDomainsTable ? 'cursor-pointer' : ''}`}
+                        className={`hover:bg-gray-50 ${!isEditingDomainsTable ? 'cursor-pointer' : ''} ${isClaimed ? 'bg-green-50/70' : ''}`}
                         onClick={!isEditingDomainsTable ? () => setSelectedNewDomainDetails(domain) : undefined}
                       >
                         <td className="px-4 py-3 text-sm text-gray-900" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
@@ -1569,11 +2348,32 @@ export default function TaskAssignmentLog() {
                             className="rounded"
                           />
                         </td>
+                        <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          {canClaimDomain(userRole, userTeam) && (
+                            isClaimed ? (
+                              isClaimedByMe ? (
+                                <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
+                                  Claimed
+                                </span>
+                              ) : null
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleClaimDomain(domain)}
+                                disabled={claimingDomainId === domain.id}
+                                className="text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-gray-600 text-white hover:bg-gray-700 disabled:opacity-60 transition-opacity"
+                              >
+                                {claimingDomainId === domain.id ? '...' : 'Claim'}
+                              </button>
+                            )
+                          )}
+                        </td>
                       </tr>
-                    ))
+                    );
+                    })
                   ) : (
                     <tr>
-                      <td colSpan={13} className="px-4 py-12 text-center text-sm text-gray-500">
+                      <td colSpan={14} className="px-4 py-12 text-center text-sm text-gray-500">
                         No new domains. Add one with &quot;Add Domain&quot;.
                       </td>
                     </tr>
@@ -1826,46 +2626,46 @@ export default function TaskAssignmentLog() {
         </>
       )}
 
-      {activeMainTab === 'domain-claims' && (userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl') && (
+      {activeMainTab === 'domain-claims' && (userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl' || (userRole === 'intern' && String(userTeam || '').toLowerCase() === 'tla')) && (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
           <div className="p-4 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
               Domain Claims
             </h2>
             <p className="mt-1 text-sm text-gray-600">
-              Domains updated by TLA interns — who claimed or updated each domain and when.
+              Domains claimed by TLA interns from the Domains tab — country, intern name, date, and update status.
             </p>
           </div>
           <div className="overflow-x-auto">
-            {domainUpdates.length === 0 ? (
-              <div className="py-12 text-center text-sm text-gray-500">No domain update rows yet.</div>
+            {domainClaims.length === 0 ? (
+              <div className="py-12 text-center text-sm text-gray-500">No domain claims yet. Claim domains from the Domains tab.</div>
             ) : (
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domain / Country</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TLA Intern Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Country</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Intern Name</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Update Status</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Post Update Check</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {[...domainUpdates]
+                  {[...domainClaims]
                     .sort((a, b) => {
-                      const da = a.created_at ? new Date(a.created_at).getTime() : 0;
-                      const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+                      const da = a.claimed_at ? new Date(a.claimed_at).getTime() : 0;
+                      const db = b.claimed_at ? new Date(b.claimed_at).getTime() : 0;
                       return db - da;
                     })
                     .map((row) => {
                       const domain = domains.find((d) => d.id === row.domain_id);
-                      const country = row.country || domain?.country || '—';
+                      const country = domain?.country || '—';
                       return (
                         <tr key={row.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm text-gray-900">{country}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{row.updated_by_name || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{row.claimed_by_name || '—'}</td>
                           <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                            {row.created_at ? new Date(row.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+                            {row.claimed_at ? new Date(row.claimed_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-600">{row.update_status || '—'}</td>
                           <td className="px-4 py-3 text-sm text-gray-600">{row.post_update_check || '—'}</td>
@@ -1902,6 +2702,24 @@ export default function TaskAssignmentLog() {
               style={scheduleSubTab === 'responses' ? { borderTopColor: PRIMARY } : {}}
             >
               Intern responses
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setScheduleSubTab('interns');
+                setSearchParams((p) => {
+                  const next = new URLSearchParams(p);
+                  next.set('tab', 'schedule-form');
+                  next.set('schedule', 'interns');
+                  return next;
+                });
+              }}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                scheduleSubTab === 'interns' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              style={scheduleSubTab === 'interns' ? { borderTopColor: PRIMARY } : {}}
+            >
+              Interns schedule
             </button>
           </div>
 
@@ -2114,6 +2932,290 @@ export default function TaskAssignmentLog() {
             </div>
           </div>
           )}
+
+          {scheduleSubTab === 'interns' && (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                    Interns schedule
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Only fill in your columns, always update when needed.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const name = prompt('Enter intern name');
+                    if (!name) return;
+                    const trimmed = name.trim();
+                    if (!trimmed) return;
+                    const draft = {
+                      name: trimmed,
+                      schedule: createEmptyInternScheduleGrid(),
+                    };
+                    setInternScheduleDraft(draft);
+                    setEditingInternSchedule(null);
+                    setShowInternScheduleModal(true);
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Add intern
+                </button>
+              </div>
+              {internSchedules.length > 0 && (
+                <div className="px-4 pb-4 overflow-x-auto">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Overall availability (all interns)</h3>
+                  <table className="min-w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-2 py-2 text-left font-medium text-gray-500 uppercase tracking-wider w-28">Time</th>
+                        {INTERN_SCHEDULE_DAYS.map((day) => (
+                          <th key={day} className="px-2 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">
+                            {day}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-100">
+                      {INTERN_SCHEDULE_HOURS.map((hour) => {
+                        const label = `${formatHourLabel(hour)} – ${formatHourLabel(hour + 1)}`;
+                        const aggregate = getAggregateScheduleCounts(internSchedules);
+                        return (
+                          <tr key={hour}>
+                            <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap font-medium">{label}</td>
+                            {INTERN_SCHEDULE_DAYS.map((day) => {
+                              const cell = aggregate[day][String(hour)] || { available: 0, unavailable: 0 };
+                              return (
+                                <td key={day} className="px-2 py-1.5 text-gray-700 whitespace-nowrap">
+                                  {cell.available} Avail / {cell.unavailable} Unavail
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="overflow-x-auto">
+                {internSchedules.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-gray-500">No intern schedules yet.</div>
+                ) : (
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Intern name</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {internSchedules.map((row) => (
+                        <tr key={row.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-900">{row.name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const schedule = row.schedule && typeof row.schedule === 'object'
+                                  ? row.schedule
+                                  : createEmptyInternScheduleGrid();
+                                setEditingInternSchedule(row);
+                                setInternScheduleDraft({ name: row.name, schedule });
+                                setShowInternScheduleModal(true);
+                              }}
+                              className="px-3 py-1 rounded-lg text-xs font-medium text-white"
+                              style={{ backgroundColor: PRIMARY }}
+                            >
+                              Edit schedule
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!confirm('Delete this intern schedule?')) return;
+                                try {
+                                  await supabase.from('intern_schedules').delete().eq('id', row.id);
+                                  setInternSchedules((prev) => prev.filter((r) => r.id !== row.id));
+                                  toast.success('Intern schedule deleted');
+                                } catch (err) {
+                                  toast.error(err?.message || 'Failed to delete');
+                                }
+                              }}
+                              className="px-3 py-1 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeMainTab === 'tl-vtl-tracker' && canAccessTLVTLTracker(userRole, userTeam) && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                TL/VTL Tracker
+              </h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Track Team Leaders, Vice Team Leaders, and Representatives by department and team. Click Edit to change data, then Save.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {!isTlVtlTrackerEditMode ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsTlVtlTrackerEditMode(true)}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                    style={{ backgroundColor: PRIMARY }}
+                  >
+                    Edit
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={addTlVtlTrackerRow}
+                    disabled={savingTlVtlTracker}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-60"
+                  >
+                    {savingTlVtlTracker ? 'Adding...' : 'Add row'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveAllTlVtlTrackerRows}
+                    disabled={savingTlVtlTracker}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                    style={{ backgroundColor: PRIMARY }}
+                  >
+                    {savingTlVtlTracker ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelTlVtlTrackerEdit}
+                    disabled={savingTlVtlTracker}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            {tlVtlTrackerRows.length === 0 ? (
+              <div className="py-12 text-center text-sm text-gray-500">
+                {isTlVtlTrackerEditMode ? 'No rows yet. Click &quot;Add row&quot; to add one.' : 'No rows yet. Click Edit then Add row to add one.'}
+              </div>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                    {isTlVtlTrackerEditMode && (
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Actions</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {tlVtlTrackerRows.map((row) => (
+                    <tr key={row.id} className="hover:bg-gray-50">
+                      {isTlVtlTrackerEditMode ? (
+                        <>
+                          <td className="px-4 py-2">
+                            <select
+                              value={row.department || 'IT'}
+                              onChange={(e) => setTlVtlTrackerRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, department: e.target.value } : r)))}
+                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                            >
+                              {TL_VTL_DEPARTMENTS.map((d) => (
+                                <option key={d} value={d}>{d}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-2">
+                            <select
+                              value={row.team || 'Team Lead Assistant'}
+                              onChange={(e) => setTlVtlTrackerRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, team: e.target.value } : r)))}
+                              className="w-full min-w-[160px] rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                            >
+                              {TL_VTL_TEAMS.map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-2">
+                            <select
+                              value={row.name || ''}
+                              onChange={(e) =>
+                                setTlVtlTrackerRows((prev) =>
+                                  prev.map((r) => (r.id === row.id ? { ...r, name: e.target.value } : r))
+                                )
+                              }
+                              className="w-full min-w-[160px] rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                            >
+                              <option value="">Select intern / TL / VTL</option>
+                              {tlVtlAssignableUsers.map((u) => (
+                                <option key={u.id} value={u.full_name || ''}>
+                                  {(u.full_name || '').trim() || u.email || 'Unnamed'}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-2">
+                            <select
+                              value={row.role || 'Team Leader'}
+                              onChange={(e) => setTlVtlTrackerRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, role: e.target.value } : r)))}
+                              className="w-full min-w-[140px] rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                            >
+                              {TL_VTL_ROLES.map((r) => (
+                                <option key={r} value={r}>{r}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-2">
+                            <button
+                              type="button"
+                              onClick={() => deleteTlVtlTrackerRow(row.id)}
+                              disabled={savingTlVtlTracker}
+                              className="p-1.5 rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
+                              title="Delete row"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-4 py-3 text-sm text-gray-900">{row.department || 'IT'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{row.team || 'Team Lead Assistant'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{row.name || ''}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{row.role || 'Team Leader'}</td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
@@ -2130,34 +3232,43 @@ export default function TaskAssignmentLog() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Task Name</label>
                   <select
                     value={createTaskForm.name}
-                    onChange={(e) =>
-                      setCreateTaskForm((f) => ({ ...f, name: e.target.value, domain_migration: '' }))
-                    }
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      const option = TASK_OPTIONS.find((t) => t.name === name);
+                      const domainMigration =
+                        name === 'WordPress Updates (Old Domains)' ? 'old' : name === 'WordPress Updates (New Domains)' ? 'new' : '';
+                      setCreateTaskForm((f) => ({
+                        ...f,
+                        name,
+                        description: option?.description ?? f.description,
+                        domain_migration: domainMigration,
+                      }));
+                    }}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
                     required
                   >
                     <option value="">Select task</option>
-                    {TASK_NAMES.map((n) => (
-                      <option key={n} value={n}>
-                        {n}
+                    {TASK_OPTIONS.map((t) => (
+                      <option key={t.name} value={t.name}>
+                        {t.name}
                       </option>
                     ))}
                   </select>
                 </div>
-                {createTaskForm.name === 'WordPress Plugin Updates' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Domain Migration</label>
-                    <select
-                      value={createTaskForm.domain_migration}
-                      onChange={(e) => setCreateTaskForm((f) => ({ ...f, domain_migration: e.target.value }))}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
-                    >
-                      <option value="">New or Old domain</option>
-                      <option value="new">New domain</option>
-                      <option value="old">Old domain</option>
-                    </select>
-                  </div>
-                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                  <select
+                    value={createTaskForm.priority}
+                    onChange={(e) => setCreateTaskForm((f) => ({ ...f, priority: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                  >
+                    {Object.entries(TASK_PRIORITIES).map(([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                   <select
@@ -2173,7 +3284,27 @@ export default function TaskAssignmentLog() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To (Role - Name)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <textarea
+                    value={createTaskForm.description}
+                    onChange={(e) => setCreateTaskForm((f) => ({ ...f, description: e.target.value }))}
+                    rows={3}
+                    placeholder="Task description"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                  <textarea
+                    value={createTaskForm.notes}
+                    onChange={(e) => setCreateTaskForm((f) => ({ ...f, notes: e.target.value }))}
+                    rows={2}
+                    placeholder="Optional notes"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
                   <select
                     value={createTaskForm.assigned_to}
                     onChange={(e) => setCreateTaskForm((f) => ({ ...f, assigned_to: e.target.value }))}
@@ -2182,7 +3313,7 @@ export default function TaskAssignmentLog() {
                     <option value="">Unassigned</option>
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.role || 'User'} - {u.full_name || u.email}
+                        {(u.full_name || '').trim() || u.email || 'Unnamed'}
                       </option>
                     ))}
                   </select>
@@ -2361,7 +3492,7 @@ export default function TaskAssignmentLog() {
         </Modal>
       )}
 
-      {/* Task Detail Modal (generic or WordPress Plugin Update) */}
+      {/* Task Detail Modal (generic or WordPress Updates task) */}
       {selectedTask && (
         <Modal open={!!selectedTask} onClose={() => setSelectedTask(null)} zIndexClassName="z-[10000]">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto border border-gray-100 flex flex-col">
@@ -2381,8 +3512,8 @@ export default function TaskAssignmentLog() {
 
               {isWpPluginTask(selectedTask) ? (
                 <>
-                  {/* Top section: Date, Updated By, Status, New/Old Domain, Add domain */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
+                  {/* Top section: Date, Assigned To, Updated By, Status, Priority, Domain Type */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
                     <div>
                       <span className="text-xs font-medium text-gray-500">Date</span>
                       <p className="text-sm text-gray-900">
@@ -2392,27 +3523,27 @@ export default function TaskAssignmentLog() {
                       </p>
                     </div>
                     <div>
+                      <span className="text-xs font-medium text-gray-500">Assigned To</span>
+                      <p className="text-sm text-gray-900">{getAssignedToDisplay(selectedTask)}</p>
+                    </div>
+                    <div>
                       <span className="text-xs font-medium text-gray-500">Updated By</span>
                       <p className="text-sm text-gray-900">{selectedTask.updated_by_name || '—'}</p>
                     </div>
                     <div>
                       <span className="text-xs font-medium text-gray-500">Status</span>
                       <p className="text-sm">
-                        {canUpdateStatus(selectedTask) ? (
-                          <select
-                            value={selectedTask.status || 'to-do'}
-                            onChange={(e) => handleStatusChange(selectedTask, e.target.value)}
-                            className={`text-sm font-medium rounded ${getStatusColor(selectedTask.status || 'to-do')} border-0`}
-                          >
-                            {Object.entries(TASK_STATUSES).map(([k, v]) => (
-                              <option key={k} value={k}>{v}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className={getStatusColor(selectedTask.status || 'to-do')}>
-                            {TASK_STATUSES[selectedTask.status] || 'To Do'}
-                          </span>
-                        )}
+                        <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${getStatusColor(selectedTask.status || 'to-do')}`}>
+                          {TASK_STATUSES[selectedTask.status] || 'Not Started'}
+                        </span>
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium text-gray-500">Priority</span>
+                      <p className="text-sm">
+                        <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${getPriorityColor(selectedTask.priority || 'medium')}`}>
+                          {TASK_PRIORITIES[selectedTask.priority] || 'Medium'}
+                        </span>
                       </p>
                     </div>
                     <div>
@@ -2426,6 +3557,18 @@ export default function TaskAssignmentLog() {
                       </p>
                     </div>
                   </div>
+                  {(selectedTask.description != null && selectedTask.description !== '') && (
+                    <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                      <span className="text-xs font-medium text-gray-500">Description</span>
+                      <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{selectedTask.description}</p>
+                    </div>
+                  )}
+                  {(selectedTask.notes != null && selectedTask.notes !== '') && (
+                    <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                      <span className="text-xs font-medium text-gray-500">Notes</span>
+                      <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{selectedTask.notes}</p>
+                    </div>
+                  )}
                   <div className="mb-4 flex flex-wrap items-center gap-2">
                     {permissions.canManageDomains(userRole) && (
                       <>
@@ -2697,25 +3840,33 @@ export default function TaskAssignmentLog() {
               ) : (
                 <div className="space-y-2">
                   <p className="text-sm text-gray-600">
+                    <span className="font-medium">Priority:</span>{' '}
+                    <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${getPriorityColor(selectedTask.priority || 'medium')}`}>
+                      {TASK_PRIORITIES[selectedTask.priority] || 'Medium'}
+                    </span>
+                  </p>
+                  <p className="text-sm text-gray-600">
                     <span className="font-medium">Status:</span>{' '}
-                    {canUpdateStatus(selectedTask) ? (
-                      <select
-                        value={selectedTask.status || 'to-do'}
-                        onChange={(e) => handleStatusChange(selectedTask, e.target.value)}
-                        className={`rounded ${getStatusColor(selectedTask.status || 'to-do')} border-0 text-sm`}
-                      >
-                        {Object.entries(TASK_STATUSES).map(([k, v]) => (
-                          <option key={k} value={k}>{v}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      TASK_STATUSES[selectedTask.status] || 'To Do'
-                    )}
+                    <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${getStatusColor(selectedTask.status || 'to-do')}`}>
+                      {TASK_STATUSES[selectedTask.status] || 'Not Started'}
+                    </span>
                   </p>
                   <p className="text-sm text-gray-600">
                     <span className="font-medium">Assigned To:</span>{' '}
-                    {selectedTask.assigned_to_name || 'Unassigned'}
+                    {getAssignedToDisplay(selectedTask)}
                   </p>
+                  {(selectedTask.description != null && selectedTask.description !== '') && (
+                    <div className="text-sm text-gray-600">
+                      <span className="font-medium">Description:</span>
+                      <p className="mt-1 text-gray-700 whitespace-pre-wrap">{selectedTask.description}</p>
+                    </div>
+                  )}
+                  {(selectedTask.notes != null && selectedTask.notes !== '') && (
+                    <div className="text-sm text-gray-600">
+                      <span className="font-medium">Notes:</span>
+                      <p className="mt-1 text-gray-700 whitespace-pre-wrap">{selectedTask.notes}</p>
+                    </div>
+                  )}
                   {permissions.canDeleteTasks(userRole) && (
                     <button
                       type="button"

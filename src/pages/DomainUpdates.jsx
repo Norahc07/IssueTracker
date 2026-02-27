@@ -149,6 +149,15 @@ export default function DomainUpdates() {
       };
       const { error } = await supabase.from('task_plugin_update_rows').insert(payload);
       if (error) throw error;
+      // Sync update_status and post_update_check to domain_claims for this domain (if claimed)
+      await supabase
+        .from('domain_claims')
+        .update({
+          update_status: payload.update_status ?? null,
+          post_update_check: payload.post_update_check ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('domain_id', createUpdateForm.domain_id);
       toast.success('Domain update row added.');
       // Refresh updates
       setUpdatesLoading(true);
