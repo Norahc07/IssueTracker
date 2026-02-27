@@ -233,6 +233,10 @@ export default function OnboardingOffboarding() {
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [showOffboardingModal, setShowOffboardingModal] = useState(false);
   const [editingOnboardingId, setEditingOnboardingId] = useState(null);
+  const [viewOnboardingRequirementsRow, setViewOnboardingRequirementsRow] = useState(null); // { user, req }
+  const [viewOffboardingRequirementsRow, setViewOffboardingRequirementsRow] = useState(null); // { user, req, off }
+  const [onboardingVerifiedByName, setOnboardingVerifiedByName] = useState(null);
+  const [offboardingVerifiedByName, setOffboardingVerifiedByName] = useState(null);
 
   const isTlaTeam = userTeam && String(userTeam).toLowerCase() === 'tla';
 
@@ -244,7 +248,6 @@ export default function OnboardingOffboarding() {
 
   const canSubmitRequirements =
     userRole === 'intern' ||
-    userRole === 'admin' ||
     ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam);
 
   const onboardingTabs = useMemo(() => {
@@ -383,6 +386,17 @@ export default function OnboardingOffboarding() {
     });
     return set;
   }, [offboarding]);
+
+  const onboardingByEmail = useMemo(() => {
+    const map = new Map();
+    onboarding.forEach((r) => {
+      const email = (r.email || '').trim().toLowerCase();
+      if (email && !map.has(email)) {
+        map.set(email, r);
+      }
+    });
+    return map;
+  }, [onboarding]);
 
   // Merge onboarding records with users (interns/TL/VTL) so table shows everyone
   const mergedOnboardingRows = useMemo(() => {
@@ -688,9 +702,11 @@ export default function OnboardingOffboarding() {
     if (!internUsers || internUsers.length === 0) return [];
     return internUsers.map((u) => {
       const req = requirements.find((r) => r.intern_id === u.id) || null;
-      return { user: u, req };
+      const email = (u.email || '').trim().toLowerCase();
+      const on = email ? onboardingByEmail.get(email) || null : null;
+      return { user: u, req, on };
     });
-  }, [internUsers, requirements, canManageRequirements]);
+  }, [internUsers, requirements, onboardingByEmail, canManageRequirements]);
 
   const offboardingRequirementsTrackerRows = useMemo(() => {
     if (!canManageRequirements) return [];
@@ -712,6 +728,61 @@ export default function OnboardingOffboarding() {
       return { user: userMatch, req, off };
     });
   }, [offboarding, internUsers, offboardingRequirements, canManageRequirements]);
+
+  // Load human-readable verifier name for onboarding/offboarding requirement modals
+  useEffect(() => {
+    const loadOnboardingVerifier = async () => {
+      const v = viewOnboardingRequirementsRow?.req?.verified_by;
+      if (!v) {
+        setOnboardingVerifiedByName(null);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('full_name, email')
+          .eq('id', v)
+          .maybeSingle();
+        if (error) {
+          console.warn('Onboarding verifier fetch error', error);
+          setOnboardingVerifiedByName(null);
+          return;
+        }
+        setOnboardingVerifiedByName(data?.full_name || data?.email || null);
+      } catch (err) {
+        console.warn('Onboarding verifier fetch error', err);
+        setOnboardingVerifiedByName(null);
+      }
+    };
+    loadOnboardingVerifier();
+  }, [viewOnboardingRequirementsRow, supabase]);
+
+  useEffect(() => {
+    const loadOffboardingVerifier = async () => {
+      const v = viewOffboardingRequirementsRow?.req?.verified_by;
+      if (!v) {
+        setOffboardingVerifiedByName(null);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('full_name, email')
+          .eq('id', v)
+          .maybeSingle();
+        if (error) {
+          console.warn('Offboarding verifier fetch error', error);
+          setOffboardingVerifiedByName(null);
+          return;
+        }
+        setOffboardingVerifiedByName(data?.full_name || data?.email || null);
+      } catch (err) {
+        console.warn('Offboarding verifier fetch error', err);
+        setOffboardingVerifiedByName(null);
+      }
+    };
+    loadOffboardingVerifier();
+  }, [viewOffboardingRequirementsRow, supabase]);
 
   if (loading && onboarding.length === 0 && offboarding.length === 0) {
     return (
@@ -1086,20 +1157,34 @@ export default function OnboardingOffboarding() {
                           {statusLabel}
                         </td>
                         <td className="px-4 py-2 text-sm text-gray-700">
-                          <input
-                            type="file"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0] || null;
-                              setRequirementsFiles((prev) => ({
-                                ...prev,
-                                [meta.key]: file,
-                              }));
-                              if (file) {
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="file"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0] || null;
+                                setRequirementsFiles((prev) => ({
+                                  ...prev,
+                                  [meta.key]: file,
+                                }));
+                              }}
+                              className="block w-full text-xs text-gray-700"
+                            />
+                            <button
+                              type="button"
+                              className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                              style={{ backgroundColor: PRIMARY }}
+                              onClick={async () => {
+                                const file = requirementsFiles[meta.key];
+                                if (!file) {
+                                  toast.error('Please choose a file before submitting.');
+                                  return;
+                                }
                                 await handleRequirementsSubmit();
-                              }
-                            }}
-                            className="block w-full text-xs text-gray-700"
-                          />
+                              }}
+                            >
+                              Submit
+                            </button>
+                          </div>
                           {req && req[meta.pathField] && (
                             <div className="mt-1 text-xs text-gray-500">
                               File on record
@@ -1145,76 +1230,64 @@ export default function OnboardingOffboarding() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dept</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verified by</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verified at</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {requirementsTrackerRows.map(({ user: u, req }) => (
+                {requirementsTrackerRows.map(({ user: u, req, on }) => (
                   <tr key={u.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm text-gray-900">{u.full_name || req?.name || '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{u.email || req?.email || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{req?.department || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{u.team || req?.team || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {req?.department || on?.department || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {formatTeamLabel(req?.team || on?.team || u.team) || '—'}
+                    </td>
                     <td className="px-4 py-3 text-xs text-gray-700">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                          req?.status === 'verified'
-                            ? 'bg-green-50 text-green-700'
-                            : 'bg-yellow-50 text-yellow-700'
-                        }`}
-                      >
-                        {req ? (req.status === 'verified' ? 'Verified' : 'Pending') : 'Pending'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600">
-                      {req?.verified_by ? 'Staff' : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600">
-                      {req?.verified_at ? new Date(req.verified_at).toLocaleString() : '—'}
+                      {(() => {
+                        const hasRow = !!req;
+                        const total = REQUIREMENTS_META.length;
+                        const submittedCount = hasRow
+                          ? REQUIREMENTS_META.filter(
+                              (meta) => req[meta.pathField] || req[meta.flagField]
+                            ).length
+                          : 0;
+                        const allSubmitted = hasRow && submittedCount === total;
+
+                        let label = 'No submission';
+                        let cls = 'bg-yellow-50 text-yellow-700';
+
+                        if (!hasRow || submittedCount === 0) {
+                          label = 'No submission';
+                        } else if (!allSubmitted) {
+                          label = 'Incomplete';
+                        } else if (req.status === 'verified') {
+                          label = 'Complete';
+                          cls = 'bg-green-50 text-green-700';
+                        } else {
+                          label = 'Submitted (Pending verification)';
+                        }
+
+                        return (
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-600 space-x-2">
                       <button
                         type="button"
                         onClick={() => {
-                          if (!req) {
-                            toast('No submission yet for this intern.');
-                            return;
-                          }
-                          toast('View requirements modal not yet implemented with file downloads.');
+                          setViewOnboardingRequirementsRow({ user: u, req: req || null, on: on || null });
                         }}
                         className="px-3 py-1 rounded-lg text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
                       >
                         View
                       </button>
-                      {req && req.status !== 'verified' && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              const { error } = await supabase
-                                .from('onboarding_requirements')
-                                .update({
-                                  status: 'verified',
-                                  verified_by: user?.id || null,
-                                  verified_at: new Date().toISOString(),
-                                })
-                                .eq('id', req.id);
-                              if (error) throw error;
-                              toast.success('Marked as verified.');
-                              await fetchData(true);
-                            } catch (err) {
-                              console.error('Verify requirements error:', err);
-                              toast.error(err?.message || 'Failed to verify requirements.');
-                            }
-                          }}
-                          className="px-3 py-1 rounded-lg text-xs font-medium text-white"
-                          style={{ backgroundColor: PRIMARY }}
-                        >
-                          Verify
-                        </button>
-                      )}
                     </td>
                   </tr>
                 ))}
@@ -1279,20 +1352,34 @@ export default function OnboardingOffboarding() {
                           {statusLabel}
                         </td>
                         <td className="px-4 py-2 text-sm text-gray-700">
-                          <input
-                            type="file"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0] || null;
-                              setOffboardingRequirementsFiles((prev) => ({
-                                ...prev,
-                                [meta.key]: file,
-                              }));
-                              if (file) {
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="file"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0] || null;
+                                setOffboardingRequirementsFiles((prev) => ({
+                                  ...prev,
+                                  [meta.key]: file,
+                                }));
+                              }}
+                              className="block w-full text-xs text-gray-700"
+                            />
+                            <button
+                              type="button"
+                              className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                              style={{ backgroundColor: PRIMARY }}
+                              onClick={async () => {
+                                const file = offboardingRequirementsFiles[meta.key];
+                                if (!file) {
+                                  toast.error('Please choose a file before submitting.');
+                                  return;
+                                }
                                 await handleOffboardingRequirementsSubmit();
-                              }
-                            }}
-                            className="block w-full text-xs text-gray-700"
-                          />
+                              }}
+                            >
+                              Submit
+                            </button>
+                          </div>
                           {req && req[meta.pathField] && (
                             <div className="mt-1 text-xs text-gray-500">
                               File on record
@@ -1335,8 +1422,6 @@ export default function OnboardingOffboarding() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dept</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verified by</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verified at</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
@@ -1356,63 +1441,49 @@ export default function OnboardingOffboarding() {
                       {u?.team || req?.team || '—'}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-700">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                          req?.status === 'verified'
-                            ? 'bg-green-50 text-green-700'
-                            : 'bg-yellow-50 text-yellow-700'
-                        }`}
-                      >
-                        {req ? (req.status === 'verified' ? 'Verified' : 'Pending') : 'Pending'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600">
-                      {req?.verified_by ? 'Staff' : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600">
-                      {req?.verified_at ? new Date(req.verified_at).toLocaleString() : '—'}
+                      {(() => {
+                        const hasRow = !!req;
+                        const total = OFFBOARDING_REQUIREMENTS_META.length;
+                        const submittedCount = hasRow
+                          ? OFFBOARDING_REQUIREMENTS_META.filter(
+                              (meta) => req[meta.pathField] || req[meta.flagField]
+                            ).length
+                          : 0;
+                        const allSubmitted = hasRow && submittedCount === total;
+
+                        let label = 'No submission';
+                        let cls = 'bg-yellow-50 text-yellow-700';
+
+                        if (!hasRow || submittedCount === 0) {
+                          label = 'No submission';
+                        } else if (!allSubmitted) {
+                          label = 'Incomplete';
+                        } else if (req.status === 'verified') {
+                          label = 'Complete';
+                          cls = 'bg-green-50 text-green-700';
+                        } else {
+                          label = 'Submitted (Pending verification)';
+                        }
+
+                        return (
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-600 space-x-2">
                       <button
                         type="button"
                         onClick={() => {
-                          if (!req) {
-                            toast('No submission yet for this intern.');
-                            return;
-                          }
-                          toast('View offboarding requirements modal not yet implemented with file downloads.');
+                          setViewOffboardingRequirementsRow({ user: u, req: req || null, off });
                         }}
                         className="px-3 py-1 rounded-lg text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
                       >
                         View
                       </button>
-                      {req && req.status !== 'verified' && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              const { error } = await supabase
-                                .from('offboarding_requirements')
-                                .update({
-                                  status: 'verified',
-                                  verified_by: user?.id || null,
-                                  verified_at: new Date().toISOString(),
-                                })
-                                .eq('id', req.id);
-                              if (error) throw error;
-                              toast.success('Marked as verified.');
-                              await fetchData(true);
-                            } catch (err) {
-                              console.error('Verify offboarding requirements error:', err);
-                              toast.error(err?.message || 'Failed to verify offboarding requirements.');
-                            }
-                          }}
-                          className="px-3 py-1 rounded-lg text-xs font-medium text-white"
-                          style={{ backgroundColor: PRIMARY }}
-                        >
-                          Verify
-                        </button>
-                      )}
                     </td>
                   </tr>
                 ))}
@@ -1429,6 +1500,438 @@ export default function OnboardingOffboarding() {
         </div>
       )}
 
+      {/* Onboarding requirements detail modal */}
+      {viewOnboardingRequirementsRow && (
+        <Modal open={!!viewOnboardingRequirementsRow} onClose={() => setViewOnboardingRequirementsRow(null)}>
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-gray-200 max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Onboarding requirements</h2>
+                <p className="mt-1 text-xs text-gray-600">
+                  Review submitted onboarding requirements for this intern/TL/VTL.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewOnboardingRequirementsRow(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-4 overflow-y-auto">
+              {(() => {
+                const { user: u, req } = viewOnboardingRequirementsRow;
+                const overallStatus = req ? (req.status === 'verified' ? 'Verified' : 'Pending') : 'Pending';
+                return (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <div className="text-xs font-medium text-gray-500">Name</div>
+                        <div className="text-gray-900">{u?.full_name || req?.name || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500">Email</div>
+                        <div className="text-gray-900">{u?.email || req?.email || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500">Department</div>
+                        <div className="text-gray-900">{req?.department || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500">Team</div>
+                        <div className="text-gray-900">{req?.team || u?.team || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500">Overall status</div>
+                        <div className="mt-0.5">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              overallStatus === 'Verified' ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'
+                            }`}
+                          >
+                            {overallStatus}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3">
+                      <table className="min-w-full table-auto divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Requirement</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Verified by</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Verified at</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {REQUIREMENTS_META.map((meta) => {
+                            const hasFile = req && (req[meta.pathField] || req[meta.flagField]);
+                            let statusLabel = 'Not submitted';
+                            if (hasFile) {
+                              statusLabel = req?.status === 'verified' ? 'Verified' : 'Pending verification';
+                            }
+                            const bucket = 'onboarding-requirements';
+                            const canViewFile = !!(req && req[meta.pathField]);
+                            return (
+                              <tr key={meta.key}>
+                                <td className="px-4 py-2 align-top">
+                                  <div className="font-medium text-gray-900">{meta.label}</div>
+                                  {meta.description && (
+                                    <div className="text-xs text-gray-500">{meta.description}</div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2 text-gray-700">
+                                  <div className="flex items-center gap-2">
+                                    <span>{statusLabel}</span>
+                                    {canViewFile && (
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          try {
+                                            const path = req[meta.pathField];
+                                            const { data } = await supabase.storage
+                                              .from(bucket)
+                                              .getPublicUrl(path);
+                                            const url = data?.publicUrl;
+                                            if (url) {
+                                              window.open(url, '_blank', 'noopener,noreferrer');
+                                            } else {
+                                              toast.error('Could not generate file URL.');
+                                            }
+                                          } catch (err) {
+                                            console.error('Open requirement file error:', err);
+                                            toast.error('Failed to open file.');
+                                          }
+                                        }}
+                                        className="px-2 py-0.5 rounded text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100"
+                                      >
+                                        View file
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2 text-xs text-gray-600">
+                                  {hasFile && req?.verified_by ? onboardingVerifiedByName || '—' : '—'}
+                                </td>
+                                <td className="px-4 py-2 text-xs text-gray-600">
+                                  {hasFile && req?.verified_at
+                                    ? new Date(req.verified_at).toLocaleString()
+                                    : '—'}
+                                </td>
+                                <td className="px-4 py-2 text-xs text-gray-600">
+                                  {req && req.status !== 'verified' && hasFile ? (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          const { error } = await supabase
+                                            .from('onboarding_requirements')
+                                            .update({
+                                              status: 'verified',
+                                              verified_by: user?.id || null,
+                                              verified_at: new Date().toISOString(),
+                                            })
+                                            .eq('id', req.id);
+                                          if (error) throw error;
+                                          toast.success('Marked as verified.');
+                                          setViewOnboardingRequirementsRow((prev) =>
+                                            prev ? { ...prev, req: { ...prev.req, status: 'verified', verified_by: user?.id || null, verified_at: new Date().toISOString() } } : prev
+                                          );
+                                          await fetchData(true);
+                                        } catch (err) {
+                                          console.error('Verify requirements error:', err);
+                                          toast.error(err?.message || 'Failed to verify requirements.');
+                                        }
+                                      }}
+                                      className="px-3 py-1 rounded-lg text-[11px] font-medium text-white"
+                                      style={{ backgroundColor: PRIMARY }}
+                                    >
+                                      Verify
+                                    </button>
+                                  ) : (
+                                    <span className="text-gray-400">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setViewOnboardingRequirementsRow(null)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+              >
+                Close
+              </button>
+              {viewOnboardingRequirementsRow?.req && viewOnboardingRequirementsRow.req.status !== 'verified' && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const req = viewOnboardingRequirementsRow.req;
+                    try {
+                      const { error } = await supabase
+                        .from('onboarding_requirements')
+                        .update({
+                          status: 'verified',
+                          verified_by: user?.id || null,
+                          verified_at: new Date().toISOString(),
+                        })
+                        .eq('id', req.id);
+                      if (error) throw error;
+                      toast.success('Marked as verified.');
+                      setViewOnboardingRequirementsRow(null);
+                      await fetchData(true);
+                    } catch (err) {
+                      console.error('Verify requirements error:', err);
+                      toast.error(err?.message || 'Failed to verify requirements.');
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Mark all as verified
+                </button>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Offboarding requirements detail modal */}
+      {viewOffboardingRequirementsRow && (
+        <Modal open={!!viewOffboardingRequirementsRow} onClose={() => setViewOffboardingRequirementsRow(null)}>
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-gray-200 max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Offboarding requirements</h2>
+                <p className="mt-1 text-xs text-gray-600">
+                  Review submitted offboarding requirements for this intern/TL/VTL.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewOffboardingRequirementsRow(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-4 overflow-y-auto">
+              {(() => {
+                const { user: u, req, off } = viewOffboardingRequirementsRow;
+                const overallStatus = req ? (req.status === 'verified' ? 'Verified' : 'Pending') : 'Pending';
+                const displayName =
+                  u?.full_name ||
+                  req?.name ||
+                  `${off?.first_name || ''} ${off?.last_name || ''}`.trim() ||
+                  '—';
+                return (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <div className="text-xs font-medium text-gray-500">Name</div>
+                        <div className="text-gray-900">{displayName}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500">Email</div>
+                        <div className="text-gray-900">{u?.email || req?.email || off?.email || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500">Department</div>
+                        <div className="text-gray-900">{req?.department || off?.department || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500">Team</div>
+                        <div className="text-gray-900">{u?.team || req?.team || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500">Overall status</div>
+                        <div className="mt-0.5">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              overallStatus === 'Verified' ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'
+                            }`}
+                          >
+                            {overallStatus}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3">
+                      <table className="min-w-full table-auto divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Requirement</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Verified by</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Verified at</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {OFFBOARDING_REQUIREMENTS_META.map((meta) => {
+                            const hasFile = req && (req[meta.pathField] || req[meta.flagField]);
+                            let statusLabel = 'Not submitted';
+                            if (hasFile) {
+                              statusLabel = req?.status === 'verified' ? 'Verified' : 'Pending verification';
+                            }
+                            const bucket = 'offboarding-requirements';
+                            const canViewFile = !!(req && req[meta.pathField]);
+                            return (
+                              <tr key={meta.key}>
+                                <td className="px-4 py-2 align-top">
+                                  <div className="font-medium text-gray-900">{meta.label}</div>
+                                  {meta.description && (
+                                    <div className="text-xs text-gray-500">{meta.description}</div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2 text-gray-700">
+                                  <div className="flex items-center gap-2">
+                                    <span>{statusLabel}</span>
+                                    {canViewFile && (
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          try {
+                                            const path = req[meta.pathField];
+                                            const { data } = await supabase.storage
+                                              .from(bucket)
+                                              .getPublicUrl(path);
+                                            const url = data?.publicUrl;
+                                            if (url) {
+                                              window.open(url, '_blank', 'noopener,noreferrer');
+                                            } else {
+                                              toast.error('Could not generate file URL.');
+                                            }
+                                          } catch (err) {
+                                            console.error('Open offboarding requirement file error:', err);
+                                            toast.error('Failed to open file.');
+                                          }
+                                        }}
+                                        className="px-2 py-0.5 rounded text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100"
+                                      >
+                                        View file
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2 text-xs text-gray-600">
+                                  {hasFile && req?.verified_by ? offboardingVerifiedByName || '—' : '—'}
+                                </td>
+                                <td className="px-4 py-2 text-xs text-gray-600">
+                                  {hasFile && req?.verified_at
+                                    ? new Date(req.verified_at).toLocaleString()
+                                    : '—'}
+                                </td>
+                                <td className="px-4 py-2 text-xs text-gray-600">
+                                  {req && req.status !== 'verified' && hasFile ? (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          const { error } = await supabase
+                                            .from('offboarding_requirements')
+                                            .update({
+                                              status: 'verified',
+                                              verified_by: user?.id || null,
+                                              verified_at: new Date().toISOString(),
+                                            })
+                                            .eq('id', req.id);
+                                          if (error) throw error;
+                                          toast.success('Marked as verified.');
+                                          setViewOffboardingRequirementsRow((prev) =>
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  req: {
+                                                    ...prev.req,
+                                                    status: 'verified',
+                                                    verified_by: user?.id || null,
+                                                    verified_at: new Date().toISOString(),
+                                                  },
+                                                }
+                                              : prev
+                                          );
+                                          await fetchData(true);
+                                        } catch (err) {
+                                          console.error('Verify offboarding requirements error:', err);
+                                          toast.error(err?.message || 'Failed to verify offboarding requirements.');
+                                        }
+                                      }}
+                                      className="px-3 py-1 rounded-lg text-[11px] font-medium text-white"
+                                      style={{ backgroundColor: PRIMARY }}
+                                    >
+                                      Verify
+                                    </button>
+                                  ) : (
+                                    <span className="text-gray-400">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setViewOffboardingRequirementsRow(null)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+              >
+                Close
+              </button>
+              {viewOffboardingRequirementsRow?.req && viewOffboardingRequirementsRow.req.status !== 'verified' && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const req = viewOffboardingRequirementsRow.req;
+                    try {
+                      const { error } = await supabase
+                        .from('offboarding_requirements')
+                        .update({
+                          status: 'verified',
+                          verified_by: user?.id || null,
+                          verified_at: new Date().toISOString(),
+                        })
+                        .eq('id', req.id);
+                      if (error) throw error;
+                      toast.success('Marked as verified.');
+                      setViewOffboardingRequirementsRow(null);
+                      await fetchData(true);
+                    } catch (err) {
+                      console.error('Verify offboarding requirements error:', err);
+                      toast.error(err?.message || 'Failed to verify offboarding requirements.');
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Mark all as verified
+                </button>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
       {/* Onboarding modal form */}
       {canManage && (
         <Modal open={showOnboardingModal} onClose={() => setShowOnboardingModal(false)}>
