@@ -1174,6 +1174,297 @@ and relevant notes. Submit before <strong>5 PM</strong> to the Team Lead.
 </table>
 `.trim(),
   },
+  {
+    slug: 'onboarding-user-account-creation',
+    title: 'Tutorial: User/Account Creation for Onboarding',
+    description: 'Steps for creating user accounts when onboarding new interns.',
+    tags: ['onboarding', 'tutorial', 'account', 'user'],
+    content: `
+<h2>Intern Account &amp; Onboarding Setup Guide</h2>
+
+<p>This guide explains how to:</p>
+<ul>
+  <li>Create intern / TL / VTL accounts in <strong>Supabase Auth</strong> (with passwords).</li>
+  <li>Record them in the app via <strong>Onboarding → Add onboarding record</strong>.</li>
+  <li>Sync onboarding records into <code>auth.users</code> display name and <code>public.users</code> so they appear across the system (TL/VTL Tracker, attendance, etc.).</li>
+</ul>
+
+<p><strong>Important:</strong> Passwords are only handled in Supabase Auth. The app and database never store raw passwords.</p>
+
+<hr />
+
+<h3>1. Create the account in Supabase Auth (email + password only)</h3>
+<p>Do this once per intern / TL / VTL.</p>
+<ol>
+  <li>Go to <strong>Supabase Dashboard → Auth → Users</strong>.</li>
+  <li>Click <strong>Add user</strong>.</li>
+  <li>Fill in:
+    <ul>
+      <li><strong>Email</strong>: same email that will be used in the onboarding record.</li>
+      <li><strong>Password</strong>: your standard internship password (for example <code>KTI-Intern-2026!</code>).
+        You give this password to the intern; you may keep one shared password per batch.</li>
+    </ul>
+  </li>
+  <li>You can leave <strong>User metadata / Display name</strong> empty. It will be filled later from onboarding.</li>
+  <li>Leave other fields as default, then click <strong>Create user</strong>.</li>
+</ol>
+
+<p>Repeat for all interns and staff who need login accounts.</p>
+
+<hr />
+
+<h3>2. Add the intern to Onboarding records (in the app)</h3>
+<p>Do this inside the app once the account exists in Auth.</p>
+<ol>
+  <li>Open the app and go to <code>/onboarding?onboarding_tab=records</code>.</li>
+  <li>Click <strong>Add onboarding</strong>.</li>
+  <li>In the modal, fill in:
+    <ul>
+      <li><strong>Onboarding date</strong> (required).</li>
+      <li><strong>Onboarding time</strong> (optional).</li>
+      <li><strong>Start date</strong> (optional but recommended).</li>
+      <li><strong>Department</strong>: IT, HR, or Marketing.</li>
+      <li><strong>Name</strong>: this becomes the display name in Supabase and <code>full_name</code> in <code>public.users</code>, e.g. <code>Juan Dela Cruz</code>.</li>
+      <li><strong>Email</strong>: use the same email as the Auth account (step 1).</li>
+      <li><strong>Team</strong> (only when Department = IT): Team Lead Assistant, PAT1, or Monitoring Team.</li>
+    </ul>
+  </li>
+  <li>Click <strong>Save onboarding</strong>.</li>
+</ol>
+
+<p>After saving, the intern appears in the Onboarding records table. Once synced (next section), they are also in <code>auth.users</code> (Display name) and <code>public.users</code>, so all features see them.</p>
+
+<hr />
+
+<h3>3. Sync onboarding records into Auth display name and <code>public.users</code></h3>
+
+<p>This step connects onboarding records to:</p>
+<ul>
+  <li><strong>Auth</strong>: sets <code>user_metadata.full_name</code> from the Onboarding <strong>Name</strong> so the Supabase Display name is the actual full name (not email).</li>
+  <li><strong><code>public.users</code></strong>: ensures all onboarded interns exist and that <code>full_name</code> comes from onboarding so the app (e.g. Tasks “Assigned to”) shows the real name.</li>
+</ul>
+
+<p><strong>Onboarding Name is the source of truth</strong> for full name. The sync updates both new and existing users so <code>full_name</code> is always taken from the onboarding record when available.</p>
+
+<p><strong>How to run:</strong></p>
+<ol>
+  <li>Open <strong>Supabase Dashboard → SQL Editor</strong>.</li>
+  <li>Create a new query.</li>
+  <li>Copy–paste the SQL below and run it.</li>
+</ol>
+
+<pre><code>-- 1) Set Auth user metadata full_name from onboarding_records.name (source of truth)
+UPDATE auth.users u
+SET raw_user_meta_data =
+      COALESCE(u.raw_user_meta_data, '{}'::jsonb)
+      || jsonb_build_object('full_name', obr.name)
+FROM public.onboarding_records obr
+WHERE lower(obr.email) = lower(u.email)
+  AND obr.name IS NOT NULL
+  AND trim(obr.name) != '';
+
+-- 2) UPDATE existing public.users: set full_name from onboarding so Tasks \"Assigned to\" gets actual name
+UPDATE public.users u
+SET full_name = obr.name
+FROM public.onboarding_records obr
+WHERE lower(u.email) = lower(obr.email)
+  AND obr.name IS NOT NULL
+  AND trim(obr.name) != '';
+
+-- 3) INSERT new users: sync onboarding_records → public.users for accounts in auth that are not yet in public.users
+INSERT INTO public.users (id, email, role, full_name, team)
+SELECT
+  au.id,
+  au.email,
+  'intern' AS role,
+  COALESCE(obr.name, au.raw_user_meta_data ->> 'full_name') AS full_name,
+  CASE
+    WHEN lower(obr.department) = 'it' THEN
+      CASE
+        WHEN lower(obr.team) IN ('team lead assistant', 'tla') THEN 'tla'
+        WHEN lower(obr.team) LIKE 'pat1%' THEN 'pat1'
+        WHEN lower(obr.team) LIKE 'monitoring%' THEN 'monitoring_team'
+        ELSE 'tla'
+      END
+    WHEN lower(obr.department) = 'hr' THEN 'hr'
+    WHEN lower(obr.department) = 'marketing' THEN 'marketing'
+    ELSE NULL
+  END AS team
+FROM public.onboarding_records obr
+JOIN auth.users au
+  ON lower(au.email) = lower(obr.email)
+LEFT JOIN public.users pu
+  ON pu.id = au.id
+WHERE obr.email IS NOT NULL
+  AND pu.id IS NULL;</code></pre>
+
+<p>You can safely re-run this script whenever you add a new batch of interns or change names in onboarding.</p>
+
+<hr />
+
+<h3>4. How this affects other features</h3>
+
+<p>Once steps 1–3 are done:</p>
+<ul>
+  <li><code>public.users</code> has an entry for each onboarded intern.</li>
+  <li>The following pages automatically see them:
+    <ul>
+      <li>Onboarding records (merged view of onboarding + users).</li>
+      <li>TL/VTL Tracker (<code>/tasks?tab=tl-vtl-tracker</code>) Name dropdown (intern / TL / VTL).</li>
+      <li>Any other feature that reads from <code>public.users</code> (attendance, filters, etc.).</li>
+    </ul>
+  </li>
+</ul>
+
+<h4>TL / VTL assignment</h4>
+<ul>
+  <li>Use <code>/tasks?tab=tl-vtl-tracker</code> to assign TL/VTL roles:
+    <ul>
+      <li>In edit mode, choose a Name from the dropdown (intern / TL / VTL).</li>
+      <li>Choose Role (<code>Team Leader</code> or <code>Vice Team Leader</code>).</li>
+      <li>Click Save.</li>
+    </ul>
+  </li>
+  <li>The system will update the user’s <code>role</code> in <code>public.users</code> and normalize their <code>team</code> (tla, monitoring_team, pat1, etc.).</li>
+</ul>
+
+<hr />
+
+<h3>5. Summary</h3>
+<ul>
+  <li><strong>Auth (Supabase Users)</strong>: where emails and passwords live.</li>
+  <li><strong>Onboarding records</strong>: HR / onboarding details; the <strong>Name</strong> field is the source of truth for the person’s full name.</li>
+  <li><strong>Sync SQL</strong>: copies onboarding Name into Auth and <code>public.users</code> so:
+    <ul>
+      <li>New users are inserted into <code>public.users</code> with <code>full_name</code> from onboarding.</li>
+      <li>Existing users are updated so <code>full_name</code> (and Auth display name) comes from onboarding, not email.</li>
+    </ul>
+  </li>
+  <li><strong>Tasks “Assigned to”</strong> and other dropdowns read <code>full_name</code> from <code>public.users</code>; after running the sync, they show the actual full name from onboarding.</li>
+</ul>
+`.trim(),
+  },
+  {
+    slug: 'domains-wp-updates-steps',
+    title: 'Domains WP Updates Steps',
+    description: 'Step-by-step guide for WordPress plugin updates on old and new domains.',
+    tags: ['domains', 'wordpress', 'plugins', 'updates', 'wp'],
+    content: `
+<h2>Domains WordPress Plugin Updates</h2>
+
+<p>This guide is aligned with the current system flow in the Tasks page.</p>
+
+<p><strong>Location in the app:</strong> <code>/tasks?tab=domains</code> and <code>/tasks?tab=domain-claims</code></p>
+
+<h3>Step 1. Go to Tasks → Domains and claim your domains</h3>
+<ol>
+  <li>
+    Open the <strong>Tasks</strong> page and switch to the <strong>Domains</strong> tab.
+  </li>
+  <li>
+    At the top of the Domains tab, choose which list you will work on:
+    <ul>
+      <li><strong>Old Domains</strong> – migrated old Knowles domains.</li>
+      <li><strong>New Domains</strong> – migrated new Knowles domains.</li>
+    </ul>
+  </li>
+  <li>
+    In the table, use the <strong>Claim</strong> column:
+    <ul>
+      <li>Click <strong>Claim</strong> on the domains you will update today.</li>
+      <li>The row will highlight in light green and show a green <strong>Claimed</strong> pill.</li>
+      <li>Your claim will appear in the <strong>Domain Claims</strong> tab (<code>/tasks?tab=domain-claims</code>), separated by Old vs New domains.</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Step 2. Open the domain details from Domains WP Updates Steps</h3>
+<p>After claiming, use this repository page as the detailed checklist for plugin updates.</p>
+<ol>
+  <li>
+    In the Domains tab, find the domain you claimed.
+  </li>
+  <li>
+    Click the <strong>URL</strong> link in the table to open the site in a new tab.
+  </li>
+  <li>
+    Decide which account to use:
+    <ul>
+      <li><strong>Old Domains</strong>:
+        <ul>
+          <li>Use the default <strong>Intern Account WordPress</strong> and <strong>SG Domain WordPress</strong> credentials shown at the top of the Old Domains tab.</li>
+          <li>These credentials are shared across all old domains.</li>
+        </ul>
+      </li>
+      <li><strong>New Domains</strong>:
+        <ul>
+          <li>Use the <strong>WP Username</strong> and <strong>New Password</strong> shown in that specific row.</li>
+          <li>Each new domain can have its own username and password.</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Step 3. Log in to WordPress and update plugins</h3>
+<ol>
+  <li>Go to <code>https://&lt;domain&gt;/wp-admin</code>.</li>
+  <li>Log in using the correct credentials (old domain default, or per-domain credentials for new domains).</li>
+  <li>Navigate to <strong>Plugins → Installed Plugins</strong>.</li>
+  <li>Update the plugins that require updates:
+    <ul>
+      <li>Update one plugin at a time or in small batches to avoid issues.</li>
+      <li>Wait for each update to complete and ensure there are no visible errors.</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Step 4. Collect plugin update details (for the system)</h3>
+<p>After updating, you will log the details in the system (Domains tab and related tasks). For each plugin you updated, collect:</p>
+<ul>
+  <li><strong>Plugin name</strong></li>
+  <li><strong>Version before</strong> the update</li>
+  <li><strong>Version after</strong> the update</li>
+  <li><strong>Update status</strong> (e.g. Updated, Skipped, Failed)</li>
+  <li><strong>Post‑update check</strong> result:
+    <ul>
+      <li>Site loads correctly (front‑end).</li>
+      <li>No errors in the WordPress dashboard.</li>
+    </ul>
+  </li>
+  <li><strong>Notes</strong> (optional) – any errors, warnings, or special handling required.</li>
+</ul>
+
+<p>These details are used to populate the <strong>Domain Claims</strong> and plugin update tracking from the system (via the Domain Updates task flow).</p>
+
+<h3>Step 5. Update the Domains tab and related tasks</h3>
+<ol>
+  <li>
+    In the <strong>Domains</strong> tab, update the columns for the domain you worked on:
+    <ul>
+      <li><strong>Status</strong> (Updated / Not updated).</li>
+      <li><strong>Scanning</strong> and <strong>Date</strong> (if applicable).</li>
+      <li><strong>Plugin</strong>, <strong>2FA</strong>, <strong>reCAPTCHA</strong>, and <strong>Backup</strong> checkboxes, matching what you configured.</li>
+    </ul>
+  </li>
+  <li>
+    Make sure the Domain Claims view (<code>/tasks?tab=domain-claims</code>) shows:
+    <ul>
+      <li>Your name as <strong>Intern Name</strong>.</li>
+      <li>The date you claimed/updated.</li>
+      <li><strong>Update Status</strong> and <strong>Post Update Check</strong> filled from the plugin update details.</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Step 6. Notes and troubleshooting</h3>
+<ul>
+  <li>If you are <strong>locked out</strong> of a domain, ask another team member to unblock you. See <a href="/repository/view/unblocking-wordpress-domain">Unblocking WordPress domain</a>.</li>
+  <li>For the <strong>SG Domain WordPress</strong> credentials, do <strong>NOT</strong> change the password unless specifically instructed.</li>
+  <li>If a plugin update fails or causes an error, record the details in the Notes and inform the Team Lead / Monitoring TL.</li>
+</ul>
+`.trim(),
+  },
 ];
 
 export function getRepositoryItemBySlug(slug) {

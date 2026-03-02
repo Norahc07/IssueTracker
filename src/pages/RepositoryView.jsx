@@ -10,7 +10,7 @@ import { toast } from 'react-hot-toast';
 const PRIMARY = '#6795BE';
 
 /** Set to true to hide repository body content for presentation (title, description, tags remain visible). */
-const HIDE_REPOSITORY_CONTENT_FOR_PRESENTATION = true;
+const HIDE_REPOSITORY_CONTENT_FOR_PRESENTATION = false;
 
 const TYPE_OPTIONS = [
   { value: 'document', label: 'Document', description: 'SOPs, guides, text-based resources' },

@@ -63,9 +63,13 @@ function Modal({ open, onClose, children, zIndexClassName = 'z-[9999]' }) {
   );
 }
 
-const canAccessScheduleFormTab = (userRole, userTeam) =>
-  userRole === 'admin' || userRole === 'tla' || userRole === 'monitoring_team' ||
-  ((userRole === 'tl' || userRole === 'vtl') && userTeam === 'tla');
+const canAccessScheduleFormTab = (userRole, userTeam) => {
+  const team = String(userTeam || '').toLowerCase();
+  if (userRole === 'admin' || userRole === 'tla' || userRole === 'monitoring_team') return true;
+  if ((userRole === 'tl' || userRole === 'vtl') && team === 'tla') return true;
+  if (userRole === 'intern' && team === 'tla') return true; // interns in TLA team can access Interns schedule sub-tab
+  return false;
+};
 
 const canAccessTLVTLTracker = (userRole, userTeam) => {
   const isTlaTeam = userTeam && String(userTeam).toLowerCase() === 'tla';
@@ -83,7 +87,7 @@ const TL_VTL_TEAMS = ['Team Lead Assistant', 'Monitoring Team', 'PAT1', 'HR Inte
 const TL_VTL_ROLES = ['Team Leader', 'Vice Team Leader', 'Representative'];
 
 const INTERN_SCHEDULE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-const INTERN_SCHEDULE_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17];
+const INTERN_SCHEDULE_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 
 const formatHourLabel = (hour24) => {
   const h = ((hour24 + 11) % 12) + 1;
@@ -131,6 +135,7 @@ export default function TaskAssignmentLog() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab'); // 'domains' opens Domains tab
   const scheduleSubTabParam = searchParams.get('schedule'); // 'form' | 'responses' | 'interns'
+  const isTlaIntern = userRole === 'intern' && String(userTeam || '').toLowerCase() === 'tla';
   const [tasks, setTasks] = useState([]);
   const [domains, setDomains] = useState([]);
   const [users, setUsers] = useState([]);
@@ -150,7 +155,13 @@ export default function TaskAssignmentLog() {
       : 'tasks'
   ); // 'tasks' | 'udemy-course' | 'domains' | 'domain-claims' | 'schedule-form' | 'tl-vtl-tracker'
   const [scheduleSubTab, setScheduleSubTab] = useState(
-    scheduleSubTabParam === 'responses' ? 'responses' : scheduleSubTabParam === 'interns' ? 'interns' : 'form'
+    isTlaIntern
+      ? 'interns'
+      : scheduleSubTabParam === 'responses'
+      ? 'responses'
+      : scheduleSubTabParam === 'interns'
+      ? 'interns'
+      : 'form'
   );
   const [taskFilter, setTaskFilter] = useState('all'); // 'all' | 'my-tasks'
   const [domainTypeFilter, setDomainTypeFilter] = useState('old'); // 'old' | 'new'
@@ -181,12 +192,16 @@ export default function TaskAssignmentLog() {
     if (tabParam === 'udemy-course') setActiveMainTab('udemy-course');
   }, [tabParam]);
 
-  // Sync Schedule sub-tab with URL
+  // Sync Schedule sub-tab with URL (interns in TLA team always see Interns schedule only)
   useEffect(() => {
+    if (isTlaIntern) {
+      setScheduleSubTab('interns');
+      return;
+    }
     if (scheduleSubTabParam === 'responses') setScheduleSubTab('responses');
     else if (scheduleSubTabParam === 'interns') setScheduleSubTab('interns');
     else setScheduleSubTab('form');
-  }, [scheduleSubTabParam]);
+  }, [scheduleSubTabParam, isTlaIntern]);
   const [showDefaultPassword, setShowDefaultPassword] = useState({ intern: false, sg: false });
   const [editDefaultAccount, setEditDefaultAccount] = useState(null); // 'intern' | 'sg' | null
   const [defaultAccountEditForm, setDefaultAccountEditForm] = useState({ username: '', password: '' });
@@ -194,6 +209,7 @@ export default function TaskAssignmentLog() {
   const [showEditModalPassword, setShowEditModalPassword] = useState(false);
   const [domainUpdates, setDomainUpdates] = useState([]);
   const [domainClaims, setDomainClaims] = useState([]);
+  const [domainClaimsTab, setDomainClaimsTab] = useState('old'); // 'old' | 'new'
   const [claimingDomainId, setClaimingDomainId] = useState(null);
   const [isEditingDomainsTable, setIsEditingDomainsTable] = useState(false);
   const [savingDomains, setSavingDomains] = useState(false);
@@ -228,11 +244,14 @@ export default function TaskAssignmentLog() {
   const [scheduleResponses, setScheduleResponses] = useState([]);
   const [scheduleConfigForm, setScheduleConfigForm] = useState(null);
   const [savingScheduleConfig, setSavingScheduleConfig] = useState(false);
+  const [scheduleOnboardingRecords, setScheduleOnboardingRecords] = useState([]);
   const [internSchedules, setInternSchedules] = useState([]);
   const [editingInternSchedule, setEditingInternSchedule] = useState(null); // row being edited
   const [internScheduleDraft, setInternScheduleDraft] = useState(null); // { name, schedule }
   const [showInternScheduleModal, setShowInternScheduleModal] = useState(false);
   const [savingInternSchedule, setSavingInternSchedule] = useState(false);
+  const [internScheduleDayTab, setInternScheduleDayTab] = useState('Monday');
+  const [selectedInternOnboardingId, setSelectedInternOnboardingId] = useState('');
 
   // TL/VTL Tracker (admin, TL/VTL of TLA only)
   const [tlVtlTrackerRows, setTlVtlTrackerRows] = useState([]);
@@ -264,6 +283,7 @@ export default function TaskAssignmentLog() {
   useEffect(() => {
     if (activeMainTab === 'schedule-form') {
       fetchScheduleFormData();
+      fetchScheduleOnboardingRecords();
     }
   }, [activeMainTab, supabase]);
 
@@ -604,12 +624,60 @@ export default function TaskAssignmentLog() {
     }
   };
 
+  const fetchScheduleOnboardingRecords = async () => {
+    try {
+      const cached = queryCache.get('onboarding:records');
+      if (cached) {
+        setScheduleOnboardingRecords(cached);
+        return;
+      }
+      const { data, error } = await supabase
+        .from('onboarding_records')
+        .select('*')
+        .order('onboarding_datetime', { ascending: false });
+      if (error) throw error;
+      const list = Array.isArray(data) ? data : [];
+      setScheduleOnboardingRecords(list);
+      queryCache.set('onboarding:records', list);
+    } catch (err) {
+      console.warn('Onboarding fetch error (schedule):', err);
+    }
+  };
+
   const scheduleFormLink = `${import.meta.env.VITE_SCHEDULE_FORM_PUBLIC_URL || 'https://kti-portal.vercel.app'}/schedule-form`;
 
   const handleCopyScheduleFormLink = () => {
     if (!scheduleFormLink) return;
     navigator.clipboard.writeText(scheduleFormLink).then(() => toast.success('Form link copied to clipboard')).catch(() => toast.error('Could not copy'));
   };
+
+  const availableInternOnboardingOptions = useMemo(() => {
+    if (!Array.isArray(scheduleOnboardingRecords)) return [];
+
+    const existingNames = new Set(
+      internSchedules
+        .map((r) => (r.name || '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    return scheduleOnboardingRecords
+      .filter((r) => {
+        const name = (r.name || '').trim();
+        if (!name) return false;
+        const lowerName = name.toLowerCase();
+        if (existingNames.has(lowerName)) return false;
+        const dept = (r.department || '').toLowerCase();
+        const team = (r.team || '').toLowerCase();
+        if (!dept.includes('intern') && !team.includes('intern')) return false;
+        return true;
+      })
+      .map((r) => ({
+        id: r.id,
+        name: (r.name || '').trim(),
+        email: r.email || '',
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [scheduleOnboardingRecords, internSchedules]);
 
   const handleSaveScheduleConfig = async (e) => {
     e.preventDefault();
@@ -1123,8 +1191,12 @@ export default function TaskAssignmentLog() {
     }
   };
 
-  const canClaimDomain = (userRole, userTeam) =>
-    (userRole === 'intern' || userRole === 'tl' || userRole === 'vtl') && String(userTeam || '').toLowerCase() === 'tla';
+  const canClaimDomain = (userRole, userTeam) => {
+    const team = String(userTeam || '').toLowerCase();
+    if (userRole === 'admin' || userRole === 'tla') return true;
+    if ((userRole === 'intern' || userRole === 'tl' || userRole === 'vtl') && team === 'tla') return true;
+    return false;
+  };
 
   const handleClaimDomain = async (domain) => {
     if (!user?.id) return;
@@ -1563,7 +1635,7 @@ export default function TaskAssignmentLog() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
-                    Edit intern schedule
+                    {editingInternSchedule ? 'Edit intern schedule' : 'Add intern schedule'}
                   </h2>
                   <p className="mt-1 text-sm text-gray-600">
                     Set availability for each hour (Available / Unavailable / Lunch). Only fill in your own column if sharing.
@@ -1581,12 +1653,45 @@ export default function TaskAssignmentLog() {
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Intern name</label>
-                  <input
-                    type="text"
-                    value={internScheduleDraft.name}
-                    onChange={(e) => setInternScheduleDraft((draft) => ({ ...draft, name: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
+                  {editingInternSchedule || availableInternOnboardingOptions.length === 0 ? (
+                    <input
+                      type="text"
+                      value={internScheduleDraft.name}
+                      onChange={(e) =>
+                        setInternScheduleDraft((draft) => ({ ...draft, name: e.target.value }))
+                      }
+                      placeholder={
+                        availableInternOnboardingOptions.length === 0
+                          ? 'Enter your name'
+                          : 'Intern name'
+                      }
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  ) : (
+                    <select
+                      value={selectedInternOnboardingId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setSelectedInternOnboardingId(id);
+                        const selected = availableInternOnboardingOptions.find(
+                          (opt) => String(opt.id) === id
+                        );
+                        setInternScheduleDraft((draft) => ({
+                          ...draft,
+                          name: selected?.name || '',
+                        }));
+                      }}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="">Select intern</option>
+                      {availableInternOnboardingOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.name}
+                          {opt.email ? ` (${opt.email})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div className="overflow-x-auto border border-gray-200 rounded-lg">
@@ -1603,7 +1708,7 @@ export default function TaskAssignmentLog() {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-100">
                       {INTERN_SCHEDULE_HOURS.map((hour) => {
-                        const label = `${formatHourLabel(hour)} – ${formatHourLabel(hour + 1)}`;
+                        const label = formatHourLabel(hour);
                         return (
                           <tr key={hour}>
                             <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap font-medium">{label}</td>
@@ -1971,7 +2076,7 @@ export default function TaskAssignmentLog() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">2FA</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Action</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Claim</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -2098,14 +2203,12 @@ export default function TaskAssignmentLog() {
                           />
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          {canClaimDomain(userRole, userTeam) && (
+                          {!isEditingDomainsTable && (
                             isClaimed ? (
-                              isClaimedByMe ? (
-                                <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
-                                  Claimed
-                                </span>
-                              ) : null
-                            ) : (
+                              <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
+                                Claimed
+                              </span>
+                            ) : canClaimDomain(userRole, userTeam) ? (
                               <button
                                 type="button"
                                 onClick={() => handleClaimDomain(domain)}
@@ -2114,6 +2217,8 @@ export default function TaskAssignmentLog() {
                               >
                                 {claimingDomainId === domain.id ? '...' : 'Claim'}
                               </button>
+                            ) : (
+                              <span className="inline-block text-xs text-gray-400 min-w-[4rem] text-center">—</span>
                             )
                           )}
                         </td>
@@ -2122,7 +2227,7 @@ export default function TaskAssignmentLog() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={12} className="px-4 py-12 text-center text-sm text-gray-500">
+                      <td colSpan={10} className="px-4 py-12 text-center text-sm text-gray-500">
                         No old domains. Add one with &quot;Add Domain&quot;.
                       </td>
                     </tr>
@@ -2144,7 +2249,7 @@ export default function TaskAssignmentLog() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">New Password</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Action</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Claim</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -2349,14 +2454,12 @@ export default function TaskAssignmentLog() {
                           />
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          {canClaimDomain(userRole, userTeam) && (
+                          {!isEditingDomainsTable && (
                             isClaimed ? (
-                              isClaimedByMe ? (
-                                <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
-                                  Claimed
-                                </span>
-                              ) : null
-                            ) : (
+                              <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
+                                Claimed
+                              </span>
+                            ) : canClaimDomain(userRole, userTeam) ? (
                               <button
                                 type="button"
                                 onClick={() => handleClaimDomain(domain)}
@@ -2365,6 +2468,8 @@ export default function TaskAssignmentLog() {
                               >
                                 {claimingDomainId === domain.id ? '...' : 'Claim'}
                               </button>
+                            ) : (
+                              <span className="inline-block text-xs text-gray-400 min-w-[4rem] text-center">—</span>
                             )
                           )}
                         </td>
@@ -2373,7 +2478,7 @@ export default function TaskAssignmentLog() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={14} className="px-4 py-12 text-center text-sm text-gray-500">
+                      <td colSpan={12} className="px-4 py-12 text-center text-sm text-gray-500">
                         No new domains. Add one with &quot;Add Domain&quot;.
                       </td>
                     </tr>
@@ -2636,6 +2741,30 @@ export default function TaskAssignmentLog() {
               Domains claimed by TLA interns from the Domains tab — country, intern name, date, and update status.
             </p>
           </div>
+
+          <div className="px-4 pt-3 border-b border-gray-100 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setDomainClaimsTab('old')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
+                domainClaimsTab === 'old' ? 'text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              style={domainClaimsTab === 'old' ? { backgroundColor: PRIMARY } : {}}
+            >
+              Old Domains
+            </button>
+            <button
+              type="button"
+              onClick={() => setDomainClaimsTab('new')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
+                domainClaimsTab === 'new' ? 'text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              style={domainClaimsTab === 'new' ? { backgroundColor: PRIMARY } : {}}
+            >
+              New Domains
+            </button>
+          </div>
+
           <div className="overflow-x-auto">
             {domainClaims.length === 0 ? (
               <div className="py-12 text-center text-sm text-gray-500">No domain claims yet. Claim domains from the Domains tab.</div>
@@ -2652,6 +2781,11 @@ export default function TaskAssignmentLog() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {[...domainClaims]
+                    .filter((row) => {
+                      const domain = domains.find((d) => d.id === row.domain_id);
+                      const type = (domain?.type || 'old').toLowerCase();
+                      return domainClaimsTab === 'old' ? type === 'old' : type === 'new';
+                    })
                     .sort((a, b) => {
                       const da = a.claimed_at ? new Date(a.claimed_at).getTime() : 0;
                       const db = b.claimed_at ? new Date(b.claimed_at).getTime() : 0;
@@ -2683,26 +2817,50 @@ export default function TaskAssignmentLog() {
         <div className="space-y-4">
           {/* Schedule sub-tabs: Form | Intern responses */}
           <div className="flex gap-2 border-b border-gray-200">
-            <button
-              type="button"
-              onClick={() => { setScheduleSubTab('form'); setSearchParams((p) => { const next = new URLSearchParams(p); next.set('tab', 'schedule-form'); next.set('schedule', 'form'); return next; }); }}
-              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-                scheduleSubTab === 'form' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-              style={scheduleSubTab === 'form' ? { borderTopColor: PRIMARY } : {}}
-            >
-              Schedule Form
-            </button>
-            <button
-              type="button"
-              onClick={() => { setScheduleSubTab('responses'); setSearchParams((p) => { const next = new URLSearchParams(p); next.set('tab', 'schedule-form'); next.set('schedule', 'responses'); return next; }); }}
-              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-                scheduleSubTab === 'responses' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-              style={scheduleSubTab === 'responses' ? { borderTopColor: PRIMARY } : {}}
-            >
-              Intern responses
-            </button>
+            {!(userRole === 'intern' && String(userTeam || '').toLowerCase() === 'tla') && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScheduleSubTab('form');
+                    setSearchParams((p) => {
+                      const next = new URLSearchParams(p);
+                      next.set('tab', 'schedule-form');
+                      next.set('schedule', 'form');
+                      return next;
+                    });
+                  }}
+                  className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                    scheduleSubTab === 'form'
+                      ? 'bg-white border border-b-0 border-gray-200 -mb-px'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                  style={scheduleSubTab === 'form' ? { borderTopColor: PRIMARY } : {}}
+                >
+                  Schedule Form
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScheduleSubTab('responses');
+                    setSearchParams((p) => {
+                      const next = new URLSearchParams(p);
+                      next.set('tab', 'schedule-form');
+                      next.set('schedule', 'responses');
+                      return next;
+                    });
+                  }}
+                  className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                    scheduleSubTab === 'responses'
+                      ? 'bg-white border border-b-0 border-gray-200 -mb-px'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                  style={scheduleSubTab === 'responses' ? { borderTopColor: PRIMARY } : {}}
+                >
+                  Intern responses
+                </button>
+              </>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -2891,46 +3049,149 @@ export default function TaskAssignmentLog() {
           )}
 
           {scheduleSubTab === 'responses' && (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="text-base font-semibold text-gray-900" style={{ color: PRIMARY }}>Intern responses</h3>
-              <p className="mt-1 text-sm text-gray-600">Preferred schedule submissions from the public form.</p>
-            </div>
-            <div className="overflow-x-auto">
-              {scheduleResponses.length === 0 ? (
-                <div className="py-12 text-center text-sm text-gray-500">No responses yet.</div>
-              ) : (
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Preferred option</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Preferred days</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hours/week</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {scheduleResponses.map((row) => (
-                      <tr key={row.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">{row.intern_name || ''}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.email || ''}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.preferred_option === 'option_a' ? 'Option A' : row.preferred_option === 'option_b' ? 'Option B' : row.preferred_option === 'combination' ? 'Combination' : row.preferred_option || ''}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.preferred_days || ''}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.hours_per_week || ''}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{row.start_date_preference ? new Date(row.start_date_preference).toLocaleDateString() : ''}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{row.submitted_at ? new Date(row.submitted_at).toLocaleString() : ''}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={row.notes || ''}>{row.notes || ''}</td>
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                    Intern schedule responses
+                  </h2>
+                  <p className="mt-1 text-xs sm:text-sm text-gray-600">
+                    View preferred schedule submissions from the public form.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 text-xs sm:text-sm text-gray-600">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200">
+                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                    <span className="font-medium text-gray-900">
+                      {scheduleResponses.length || 0}
+                    </span>
+                    <span className="text-gray-500">
+                      {scheduleResponses.length === 1 ? 'response' : 'responses'}
+                    </span>
+                  </div>
+                  <span className="hidden sm:inline text-gray-300">•</span>
+                  <span className="hidden sm:inline text-gray-500">
+                    Latest submissions appear at the top.
+                  </span>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                {scheduleResponses.length === 0 ? (
+                  <div className="py-16 text-center text-sm text-gray-500">
+                    <p className="font-medium text-gray-700 mb-1">No responses yet</p>
+                    <p className="text-xs text-gray-500">
+                      Share the schedule form link to start collecting preferred schedules.
+                    </p>
+                  </div>
+                ) : (
+                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Name
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Email
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Preferred option
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Preferred days
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Hours / week
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Start date
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Submitted
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Notes
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-100">
+                      {[...scheduleResponses]
+                        .sort((a, b) => {
+                          const da = a.submitted_at ? new Date(a.submitted_at).getTime() : 0;
+                          const db = b.submitted_at ? new Date(b.submitted_at).getTime() : 0;
+                          return db - da;
+                        })
+                        .map((row) => {
+                          const preferredOptionLabel =
+                            row.preferred_option === 'option_a'
+                              ? 'Option A'
+                              : row.preferred_option === 'option_b'
+                              ? 'Option B'
+                              : row.preferred_option === 'combination'
+                              ? 'Combination'
+                              : row.preferred_option || '';
+                          return (
+                            <tr key={row.id} className="hover:bg-gray-50/80">
+                              <td className="px-4 py-3 text-gray-900 font-medium">
+                                {row.intern_name || '—'}
+                              </td>
+                              <td className="px-4 py-3 text-gray-600">
+                                {row.email ? (
+                                  <a
+                                    href={`mailto:${row.email}`}
+                                    className="text-[#6795BE] hover:underline break-all"
+                                  >
+                                    {row.email}
+                                  </a>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-gray-600">
+                                {preferredOptionLabel ? (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                    {preferredOptionLabel}
+                                  </span>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-gray-600 whitespace-pre-line">
+                                {row.preferred_days || '—'}
+                              </td>
+                              <td className="px-4 py-3 text-gray-600">
+                                {row.hours_per_week || '—'}
+                              </td>
+                              <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                                {row.start_date_preference
+                                  ? new Date(row.start_date_preference).toLocaleDateString()
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                                {row.submitted_at
+                                  ? new Date(row.submitted_at).toLocaleString()
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-gray-600 max-w-xs">
+                                {row.notes ? (
+                                  <span
+                                    className="block truncate"
+                                    title={row.notes}
+                                  >
+                                    {row.notes}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
-          </div>
           )}
 
           {scheduleSubTab === 'interns' && (
@@ -2947,16 +3208,13 @@ export default function TaskAssignmentLog() {
                 <button
                   type="button"
                   onClick={() => {
-                    const name = prompt('Enter intern name');
-                    if (!name) return;
-                    const trimmed = name.trim();
-                    if (!trimmed) return;
                     const draft = {
-                      name: trimmed,
+                      name: '',
                       schedule: createEmptyInternScheduleGrid(),
                     };
                     setInternScheduleDraft(draft);
                     setEditingInternSchedule(null);
+                    setSelectedInternOnboardingId('');
                     setShowInternScheduleModal(true);
                   }}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-white"
@@ -2965,94 +3223,119 @@ export default function TaskAssignmentLog() {
                   Add intern
                 </button>
               </div>
-              {internSchedules.length > 0 && (
-                <div className="px-4 pb-4 overflow-x-auto">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Overall availability (all interns)</h3>
-                  <table className="min-w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-2 py-2 text-left font-medium text-gray-500 uppercase tracking-wider w-28">Time</th>
-                        {INTERN_SCHEDULE_DAYS.map((day) => (
-                          <th key={day} className="px-2 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">
-                            {day}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-100">
-                      {INTERN_SCHEDULE_HOURS.map((hour) => {
-                        const label = `${formatHourLabel(hour)} – ${formatHourLabel(hour + 1)}`;
-                        const aggregate = getAggregateScheduleCounts(internSchedules);
-                        return (
-                          <tr key={hour}>
-                            <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap font-medium">{label}</td>
-                            {INTERN_SCHEDULE_DAYS.map((day) => {
-                              const cell = aggregate[day][String(hour)] || { available: 0, unavailable: 0 };
-                              return (
-                                <td key={day} className="px-2 py-1.5 text-gray-700 whitespace-nowrap">
-                                  {cell.available} Avail / {cell.unavailable} Unavail
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <div className="overflow-x-auto">
+
+              {/* Day tabs */}
+              <div className="flex gap-1 px-4 pt-2 border-b border-gray-200">
+                {INTERN_SCHEDULE_DAYS.map((day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setInternScheduleDayTab(day)}
+                    className={`px-3 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                      internScheduleDayTab === day
+                        ? 'bg-white border border-b-0 border-gray-200 -mb-px text-gray-900'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                    style={internScheduleDayTab === day ? { borderTopColor: PRIMARY, borderTopWidth: 2 } : {}}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-4 overflow-x-auto">
                 {internSchedules.length === 0 ? (
                   <div className="py-12 text-center text-sm text-gray-500">No intern schedules yet.</div>
                 ) : (
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Intern name</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {internSchedules.map((row) => (
-                        <tr key={row.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-900">{row.name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600 space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const schedule = row.schedule && typeof row.schedule === 'object'
-                                  ? row.schedule
-                                  : createEmptyInternScheduleGrid();
-                                setEditingInternSchedule(row);
-                                setInternScheduleDraft({ name: row.name, schedule });
-                                setShowInternScheduleModal(true);
-                              }}
-                              className="px-3 py-1 rounded-lg text-xs font-medium text-white"
-                              style={{ backgroundColor: PRIMARY }}
-                            >
-                              Edit schedule
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (!confirm('Delete this intern schedule?')) return;
-                                try {
-                                  await supabase.from('intern_schedules').delete().eq('id', row.id);
-                                  setInternSchedules((prev) => prev.filter((r) => r.id !== row.id));
-                                  toast.success('Intern schedule deleted');
-                                } catch (err) {
-                                  toast.error(err?.message || 'Failed to delete');
-                                }
-                              }}
-                              className="px-3 py-1 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100"
-                            >
-                              Delete
-                            </button>
-                          </td>
+                  <>
+                    <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36 sticky left-0 bg-gray-50 z-10">Name</th>
+                          {INTERN_SCHEDULE_HOURS.map((hour) => (
+                            <th key={hour} className="px-2 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[4.5rem]">
+                              {formatHourLabel(hour)}
+                            </th>
+                          ))}
+                          <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28 min-w-[7rem]">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {internSchedules.map((row) => {
+                          const grid = row.schedule && typeof row.schedule === 'object' ? row.schedule : createEmptyInternScheduleGrid();
+                          const daySchedule = grid[internScheduleDayTab] || {};
+                          return (
+                            <tr key={row.id} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 text-sm text-gray-900 font-medium sticky left-0 bg-white z-10">{row.name}</td>
+                              {INTERN_SCHEDULE_HOURS.map((hour) => {
+                                const v = daySchedule[String(hour)] ?? 'unavailable';
+                                const label = v === 'available' ? 'Available' : v === 'lunch' ? 'Lunch' : 'Unavailable';
+                                const bg = v === 'available' ? 'bg-emerald-50 text-emerald-700' : v === 'lunch' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600';
+                                return (
+                                  <td key={hour} className={`px-2 py-1.5 text-xs text-center ${bg} rounded`}>
+                                    {label}
+                                  </td>
+                                );
+                              })}
+                              <td className="px-3 py-2 text-sm text-gray-600 align-middle">
+                                <div className="flex items-center gap-2 flex-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const schedule = row.schedule && typeof row.schedule === 'object'
+                                        ? row.schedule
+                                        : createEmptyInternScheduleGrid();
+                                      setEditingInternSchedule(row);
+                                      setInternScheduleDraft({ name: row.name, schedule });
+                                  setSelectedInternOnboardingId('');
+                                      setShowInternScheduleModal(true);
+                                    }}
+                                    className="px-2 py-1 rounded text-xs font-medium text-white shrink-0"
+                                    style={{ backgroundColor: PRIMARY }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (!confirm('Delete this intern schedule?')) return;
+                                      try {
+                                        await supabase.from('intern_schedules').delete().eq('id', row.id);
+                                        setInternSchedules((prev) => prev.filter((r) => r.id !== row.id));
+                                        toast.success('Intern schedule deleted');
+                                      } catch (err) {
+                                        toast.error(err?.message || 'Failed to delete');
+                                      }
+                                    }}
+                                    className="px-2 py-1 rounded text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 shrink-0"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                        <tr>
+                          <td className="px-3 py-2 text-xs font-semibold text-gray-700 sticky left-0 bg-gray-50 z-10">Availability</td>
+                          {INTERN_SCHEDULE_HOURS.map((hour) => {
+                            const aggregate = getAggregateScheduleCounts(internSchedules);
+                            const cell = aggregate[internScheduleDayTab]?.[String(hour)] || { available: 0, unavailable: 0 };
+                            return (
+                              <td key={hour} className="px-2 py-2 text-xs text-gray-700 text-center">
+                                <span className="text-emerald-600 font-medium">{cell.available} available</span>
+                                <span className="text-gray-400 mx-1">/</span>
+                                <span className="text-gray-500">{cell.unavailable} unavailable</span>
+                              </td>
+                            );
+                          })}
+                          <td className="px-3 py-2" />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </>
                 )}
               </div>
             </div>

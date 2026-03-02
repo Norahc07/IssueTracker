@@ -46,12 +46,23 @@ const INTERN_REVIEW_STATUS = ['', 'in-progress', 'done'];
 const INTERN_REVIEW_LABELS = { '': '—', 'in-progress': 'In Progress', done: 'Done' };
 
 export default function UdemyCourseTab() {
-  const { supabase, user } = useSupabase();
+  const { supabase, user, userRole, userTeam } = useSupabase();
   const [activeSubTab, setActiveSubTab] = useState('rotation'); // 'rotation' | 'intern'
 
   const [batches, setBatches] = useState([]);
   const [selectedBatchId, setSelectedBatchId] = useState('');
   const selectedBatch = useMemo(() => batches.find((b) => b.id === selectedBatchId) || null, [batches, selectedBatchId]);
+
+  const isTlaTeam = userTeam && String(userTeam).toLowerCase() === 'tla';
+  const canManageUdemy =
+    userRole === 'admin' ||
+    userRole === 'tla' ||
+    ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam);
+  // Who can edit progress in Intern Tracker (per-cell, only their own column):
+  // - Interns in TLA team
+  // - TL/VTL in TLA team
+  const canEditInternProgress =
+    isTlaTeam && (userRole === 'intern' || userRole === 'tl' || userRole === 'vtl');
 
   // Rotation tracker
   const [rotationRows, setRotationRows] = useState([]);
@@ -66,6 +77,7 @@ export default function UdemyCourseTab() {
     screenshot_status: 'Pending',
   });
   const [rotationSaving, setRotationSaving] = useState(false);
+  const [editingRotationRow, setEditingRotationRow] = useState(null);
 
   // Intern tracker
   const [internNames, setInternNames] = useState([]);
@@ -73,6 +85,8 @@ export default function UdemyCourseTab() {
   const [nameDraft, setNameDraft] = useState('');
   const [internStatusMap, setInternStatusMap] = useState({}); // key: `${course}|${nameId}` -> status
   const [internLoading, setInternLoading] = useState(false);
+  const [tlaPeople, setTlaPeople] = useState([]); // onboarding interns/TL/VTL in TLA team
+  const [currentInternName, setCurrentInternName] = useState('');
 
   const fetchBatches = async () => {
     const { data, error } = await supabase.from('udemy_batches').select('*').order('batch_no', { ascending: false });
@@ -145,16 +159,112 @@ export default function UdemyCourseTab() {
   useEffect(() => {
     if (!user?.id) return;
     fetchBatches();
+    const fetchTlaPeople = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('onboarding_records')
+          .select('id, name, email, department, team')
+          .ilike('department', 'it%');
+        if (error) {
+          console.warn('TLA people fetch error', error);
+          return;
+        }
+        const rows = Array.isArray(data) ? data : [];
+        const map = new Map();
+        rows.forEach((r) => {
+          const name = (r.name || '').trim();
+          const email = (r.email || '').trim();
+          const teamLower = (r.team || '').toLowerCase();
+          if (!name) return;
+          if (!teamLower.includes('team lead assistant') && !teamLower.includes('tla')) return;
+          const key = email || name;
+          if (!map.has(key)) {
+            map.set(key, { name, email });
+          }
+        });
+        const people = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+        setTlaPeople(people);
+
+        // derive current intern name for matching cells in Intern Tracker
+        const myEmail = (user?.email || '').toLowerCase();
+        const fromEmail = people.find((p) => (p.email || '').toLowerCase() === myEmail);
+        if (fromEmail?.name) {
+          setCurrentInternName(fromEmail.name);
+        } else {
+          setCurrentInternName(
+            (user?.user_metadata && user.user_metadata.full_name) || user?.email || ''
+          );
+        }
+      } catch (err) {
+        console.warn('TLA people fetch error', err);
+      }
+    };
+    fetchTlaPeople();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   useEffect(() => {
-    if (activeSubTab === 'rotation') fetchRotationRows(selectedBatchId);
-    if (activeSubTab === 'intern') fetchInternTracker(selectedBatchId);
+    if (activeSubTab === 'rotation' || activeSubTab === 'intern') fetchRotationRows(selectedBatchId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSubTab, selectedBatchId]);
 
+  // Intern Tracker: courses and names derived from Course Assignment (rotation rows)
+  const internTrackerCourses = useMemo(() => {
+    const seen = new Set();
+    return (rotationRows || [])
+      .filter((r) => {
+        const t = (r.course_title || '').trim();
+        if (!t || seen.has(t)) return false;
+        seen.add(t);
+        return true;
+      })
+      .map((r) => ({ course_title: r.course_title || '', course_link: r.course_link || '' }))
+      .sort((a, b) => a.course_title.localeCompare(b.course_title));
+  }, [rotationRows]);
+
+  const internTrackerNames = useMemo(() => {
+    const set = new Set();
+    (rotationRows || []).forEach((r) => {
+      const n = (r.assigned_intern || '').trim();
+      if (n) set.add(n);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rotationRows]);
+
+  const getRotationRowForCell = (courseTitle, assignedName) =>
+    (rotationRows || []).find(
+      (r) =>
+        (r.course_title || '').trim() === (courseTitle || '').trim() &&
+        (r.assigned_intern || '').trim() === (assignedName || '').trim()
+    );
+
+  // Course Assignment: aggregate Review Status per course (read-only) from interns' statuses in Intern Tracker
+  const courseAggregateReviewStatus = useMemo(() => {
+    const map = {};
+    const rows = rotationRows || [];
+    const byCourse = {};
+    rows.forEach((r) => {
+      const t = (r.course_title || '').trim();
+      if (!t) return;
+      if (!byCourse[t]) byCourse[t] = [];
+      byCourse[t].push(r.review_status || 'Not Started');
+    });
+    Object.keys(byCourse).forEach((courseTitle) => {
+      const statuses = byCourse[courseTitle];
+      const allCompleted = statuses.length > 0 && statuses.every((s) => s === 'Completed');
+      const anyCompletedOrInProgress = statuses.some((s) => s === 'Completed' || s === 'In Progress');
+      if (allCompleted) map[courseTitle] = 'Completed';
+      else if (anyCompletedOrInProgress) map[courseTitle] = 'In Progress';
+      else map[courseTitle] = 'Not Started';
+    });
+    return map;
+  }, [rotationRows]);
+
   const handleAddBatch = async () => {
+    if (!canManageUdemy) {
+      toast.error('You do not have permission to manage Udemy batches.');
+      return;
+    }
     const raw = window.prompt('Enter batch number (e.g. Batch 7):');
     const batchNo = (raw || '').trim();
     if (!batchNo) return;
@@ -176,6 +286,10 @@ export default function UdemyCourseTab() {
 
   const handleCreateRotationRow = async (e) => {
     e.preventDefault();
+    if (!canManageUdemy) {
+      toast.error('You do not have permission to add course assignments.');
+      return;
+    }
     if (!selectedBatchId) {
       toast.error('Select a batch first.');
       return;
@@ -238,6 +352,72 @@ export default function UdemyCourseTab() {
     }
   };
 
+  const handleSaveRotationForm = async (e) => {
+    e?.preventDefault();
+    if (!canManageUdemy) {
+      toast.error('You do not have permission to edit course assignments.');
+      return;
+    }
+    const courseTitle = (rotationCreate.course_title || '').trim();
+    const courseLink = (rotationCreate.course_link || '').trim();
+    if (!courseTitle || !courseLink) {
+      toast.error('Course title and course link are required.');
+      return;
+    }
+    if (editingRotationRow) {
+      try {
+        setRotationSaving(true);
+        const payload = {
+          course_link: courseLink,
+          course_title: courseTitle,
+          assigned_intern: (rotationCreate.assigned_intern || '').trim() || null,
+          day: (rotationCreate.day || '').trim() || null,
+          screenshot_status: rotationCreate.screenshot_status || 'Pending',
+        };
+        await handleUpdateRotationRow(editingRotationRow.id, payload);
+        toast.success('Course assignment updated.');
+        setShowRotationModal(false);
+        setEditingRotationRow(null);
+        setRotationCreate({
+          course_link: '',
+          course_title: '',
+          assigned_intern: '',
+          day: '',
+          review_status: 'Not Started',
+          screenshot_status: 'Pending',
+        });
+        await fetchRotationRows(selectedBatchId);
+      } catch (err) {
+        // error already shown in handleUpdateRotationRow
+      } finally {
+        setRotationSaving(false);
+      }
+      return;
+    }
+    handleCreateRotationRow(e);
+  };
+
+  const handleDeleteRotationRow = async (row) => {
+    if (!canManageUdemy) {
+      toast.error('You do not have permission to delete course assignments.');
+      return;
+    }
+    if (!row?.id) return;
+    const ok = window.confirm(`Delete this course assignment?\n\n"${row.course_title || 'Untitled'}"`);
+    if (!ok) return;
+    try {
+      const { error } = await supabase.from('udemy_rotation_assignments').delete().eq('id', row.id);
+      if (error) throw error;
+      toast.success('Course assignment deleted.');
+      setRotationRows((prev) => prev.filter((r) => r.id !== row.id));
+      await fetchRotationRows(selectedBatchId);
+    } catch (err) {
+      console.warn('Delete rotation row error', err);
+      toast.error(err?.message || 'Failed to delete assignment.');
+      await fetchRotationRows(selectedBatchId);
+    }
+  };
+
   const handleAddInternName = async () => {
     if (!selectedBatchId) {
       toast.error('Select a batch first.');
@@ -290,6 +470,7 @@ export default function UdemyCourseTab() {
   };
 
   const handleCellStatusChange = async (courseTitle, nameId, nextStatus) => {
+    if (!canManageUdemy) return;
     if (!selectedBatchId || !courseTitle || !nameId) return;
     const status = (nextStatus || '').trim();
     const key = `${courseTitle}|${nameId}`;
@@ -353,14 +534,16 @@ export default function UdemyCourseTab() {
               ))}
             </select>
           </div>
-          <button
-            type="button"
-            onClick={handleAddBatch}
-            className="mt-5 px-3 py-2 rounded-lg text-xs font-medium text-white"
-            style={{ backgroundColor: PRIMARY }}
-          >
-            Add batch
-          </button>
+          {canManageUdemy && (
+            <button
+              type="button"
+              onClick={handleAddBatch}
+              className="mt-5 px-3 py-2 rounded-lg text-xs font-medium text-white"
+              style={{ backgroundColor: PRIMARY }}
+            >
+              Add batch
+            </button>
+          )}
         </div>
       </div>
 
@@ -397,17 +580,30 @@ export default function UdemyCourseTab() {
             <h3 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
               Course Assignment
             </h3>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowRotationModal(true)}
-                disabled={!selectedBatchId}
-                className="px-4 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-60"
-                style={{ backgroundColor: PRIMARY }}
-              >
-                Add course
-              </button>
-            </div>
+            {canManageUdemy && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingRotationRow(null);
+                    setRotationCreate({
+                      course_link: '',
+                      course_title: '',
+                      assigned_intern: '',
+                      day: '',
+                      review_status: 'Not Started',
+                      screenshot_status: 'Pending',
+                    });
+                    setShowRotationModal(true);
+                  }}
+                  disabled={!selectedBatchId}
+                  className="px-4 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Add course
+                </button>
+              </div>
+            )}
           </div>
 
           {showRotationModal &&
@@ -415,7 +611,10 @@ export default function UdemyCourseTab() {
               <div
                 className="fixed inset-0 z-[10000] bg-black/10 backdrop-blur-sm flex justify-end"
                 onMouseDown={(e) => {
-                  if (e.target === e.currentTarget) setShowRotationModal(false);
+                  if (e.target === e.currentTarget) {
+                    setShowRotationModal(false);
+                    setEditingRotationRow(null);
+                  }
                 }}
               >
                 {/* Right slide-over panel (full viewport height) */}
@@ -425,14 +624,19 @@ export default function UdemyCourseTab() {
                 >
                   <div className="px-4 py-3 border-b border-gray-200 flex items-start justify-between gap-3">
                     <div>
-                      <h4 className="text-lg font-semibold text-gray-900">Add course assignment</h4>
+                      <h4 className="text-lg font-semibold text-gray-900">
+                        {editingRotationRow ? 'Edit course assignment' : 'Add course assignment'}
+                      </h4>
                       <p className="mt-1 text-sm text-gray-600">
                         Batch: <span className="font-medium">{selectedBatch?.batch_no || '—'}</span>
                       </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setShowRotationModal(false)}
+                      onClick={() => {
+                        setShowRotationModal(false);
+                        setEditingRotationRow(null);
+                      }}
                       className="px-3 py-1.5 rounded-lg text-xs bg-gray-100 text-gray-700 hover:bg-gray-200"
                     >
                       Close
@@ -440,7 +644,7 @@ export default function UdemyCourseTab() {
                   </div>
 
                   <div className="flex-1 overflow-y-auto px-4 py-3">
-                    <form onSubmit={handleCreateRotationRow} className="space-y-4">
+                    <form onSubmit={handleSaveRotationForm} className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -471,41 +675,57 @@ export default function UdemyCourseTab() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">Assigned intern</label>
-                          <input
-                            type="text"
-                            value={rotationCreate.assigned_intern}
-                            onChange={(e) => setRotationCreate((s) => ({ ...s, assigned_intern: e.target.value }))}
-                            className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-                            placeholder="Intern name"
-                          />
+                          <select
+                            value={rotationCreate.assigned_intern || ''}
+                            onChange={(e) =>
+                              setRotationCreate((s) => ({
+                                ...s,
+                                assigned_intern: e.target.value || '',
+                              }))
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                          >
+                            <option value="">Unassigned</option>
+                            {tlaPeople.map((p) => {
+                              const label = p.name || 'Unnamed';
+                              return (
+                                <option key={label} value={label}>
+                                  {label}
+                                </option>
+                              );
+                            })}
+                            {rotationCreate.assigned_intern &&
+                              !tlaPeople.some(
+                                (p) => (p.name || '').trim() === rotationCreate.assigned_intern.trim()
+                              ) && (
+                                <option value={rotationCreate.assigned_intern}>
+                                  {rotationCreate.assigned_intern}
+                                </option>
+                              )}
+                          </select>
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">Day</label>
-                          <input
-                            type="text"
-                            value={rotationCreate.day}
-                            onChange={(e) => setRotationCreate((s) => ({ ...s, day: e.target.value }))}
-                            className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-                            placeholder="e.g. Day 1"
-                          />
+                          <select
+                            value={rotationCreate.day || ''}
+                            onChange={(e) =>
+                              setRotationCreate((s) => ({
+                                ...s,
+                                day: e.target.value || '',
+                              }))
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                          >
+                            <option value="">Select day</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                          </select>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Review status</label>
-                          <select
-                            value={rotationCreate.review_status}
-                            onChange={(e) => setRotationCreate((s) => ({ ...s, review_status: e.target.value }))}
-                            className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-                          >
-                            {ROTATION_REVIEW_STATUS.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">Screenshot status</label>
                           <select
@@ -527,19 +747,22 @@ export default function UdemyCourseTab() {
                   <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
                     <button
                       type="button"
-                      onClick={() => setShowRotationModal(false)}
+                      onClick={() => {
+                        setShowRotationModal(false);
+                        setEditingRotationRow(null);
+                      }}
                       className="px-4 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
-                      onClick={handleCreateRotationRow}
+                      onClick={handleSaveRotationForm}
                       disabled={rotationSaving}
                       className="px-4 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-60"
                       style={{ backgroundColor: PRIMARY }}
                     >
-                      {rotationSaving ? 'Saving…' : 'Save'}
+                      {rotationSaving ? 'Saving…' : editingRotationRow ? 'Update' : 'Save'}
                     </button>
                   </div>
                 </div>
@@ -561,11 +784,11 @@ export default function UdemyCourseTab() {
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch No.</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Course Link</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Course Title</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Intern</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Day</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Review Status</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Screenshot Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-28">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -587,34 +810,65 @@ export default function UdemyCourseTab() {
                             '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.course_title || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{row.assigned_intern || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{row.day || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">
-                          <select
-                            value={row.review_status || 'Not Started'}
-                            onChange={(e) => handleUpdateRotationRow(row.id, { review_status: e.target.value })}
-                            className="w-full min-w-[150px] rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-                          >
-                            {ROTATION_REVIEW_STATUS.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
+                          <span className="font-medium">
+                            {courseAggregateReviewStatus[(row.course_title || '').trim()] || 'Not Started'}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
-                          <select
-                            value={row.screenshot_status || 'Pending'}
-                            onChange={(e) => handleUpdateRotationRow(row.id, { screenshot_status: e.target.value })}
-                            className="w-full min-w-[140px] rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-                          >
-                            {ROTATION_SCREENSHOT_STATUS.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
+                          {canManageUdemy ? (
+                            <select
+                              value={row.screenshot_status || 'Pending'}
+                              onChange={(e) => handleUpdateRotationRow(row.id, { screenshot_status: e.target.value })}
+                              className="w-full min-w-[140px] rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                            >
+                              {ROTATION_SCREENSHOT_STATUS.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                              {row.screenshot_status || 'Pending'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 align-middle">
+                          {canManageUdemy ? (
+                            <div className="flex items-center gap-2 flex-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingRotationRow(row);
+                                  setRotationCreate({
+                                    course_link: row.course_link || '',
+                                    course_title: row.course_title || '',
+                                    assigned_intern: row.assigned_intern || '',
+                                    day: row.day || '',
+                                    review_status: row.review_status || 'Not Started',
+                                    screenshot_status: row.screenshot_status || 'Pending',
+                                  });
+                                  setShowRotationModal(true);
+                                }}
+                                className="px-2 py-1 rounded text-xs font-medium text-white shrink-0"
+                                style={{ backgroundColor: PRIMARY }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteRotationRow(row)}
+                                className="px-2 py-1 rounded text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 shrink-0"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="inline-block text-xs text-gray-400">View only</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -628,162 +882,85 @@ export default function UdemyCourseTab() {
 
       {activeSubTab === 'intern' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
-                Udemy review
-              </h3>
-              <p className="mt-1 text-sm text-gray-600">
-                Rows are default courses; columns are intern names. Pick a batch to view/edit statuses.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setNameModalOpen(true)}
-              className="px-4 py-2 rounded-lg text-xs font-medium text-white"
-              style={{ backgroundColor: PRIMARY }}
-              disabled={!selectedBatchId}
-            >
-              Manage names
-            </button>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+              Intern Tracker
+            </h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Courses and intern names come from Course Assignment. Progress dropdown only appears when an intern is assigned to that course.
+            </p>
           </div>
-
-          {nameModalOpen &&
-            createPortal(
-              <div
-                className="fixed inset-0 z-[10000] bg-black/20 backdrop-blur-sm flex items-center justify-center px-4"
-                role="dialog"
-                aria-modal="true"
-                onMouseDown={(e) => {
-                  if (e.target === e.currentTarget) setNameModalOpen(false);
-                }}
-              >
-                <div
-                  className="w-full max-w-xl max-h-[90vh] bg-white rounded-xl shadow-lg border border-gray-200 p-4 flex flex-col"
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h4 className="text-lg font-semibold text-gray-900">Intern names</h4>
-                      <p className="mt-1 text-sm text-gray-600">
-                        Batch: <span className="font-medium">{selectedBatch?.batch_no || '—'}</span>
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setNameModalOpen(false)}
-                      className="px-3 py-2 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    >
-                      Close
-                    </button>
-                  </div>
-
-                  <div className="mt-4 flex items-end gap-2">
-                    <div className="flex-1">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Add name</label>
-                      <input
-                        type="text"
-                        value={nameDraft}
-                        onChange={(e) => setNameDraft(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-                        placeholder="e.g. Juan D."
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAddInternName}
-                      className="px-4 py-2 rounded-lg text-xs font-medium text-white"
-                      style={{ backgroundColor: PRIMARY }}
-                    >
-                      Add
-                    </button>
-                  </div>
-
-                  <div className="mt-4 border rounded-lg overflow-y-auto">
-                    {internNames.length === 0 ? (
-                      <div className="p-3 text-sm text-gray-600">No names yet.</div>
-                    ) : (
-                      <ul className="divide-y divide-gray-200">
-                        {internNames.map((n) => (
-                          <li key={n.id} className="p-3 flex items-center justify-between gap-3">
-                            <span className="text-sm text-gray-900">{n.name}</span>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleRenameInternName(n)}
-                                className="px-3 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteInternName(n)}
-                                className="px-3 py-1.5 rounded-md text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              </div>,
-              document.body
-            )}
 
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              {internLoading ? (
-                <div className="py-8 text-center text-sm text-gray-500">Loading intern tracker…</div>
+              {rotationLoading ? (
+                <div className="py-8 text-center text-sm text-gray-500">Loading…</div>
               ) : !selectedBatchId ? (
                 <div className="py-8 text-center text-sm text-gray-500">Select a batch to view the tracker.</div>
+              ) : internTrackerCourses.length === 0 || internTrackerNames.length === 0 ? (
+                <div className="py-8 text-center text-sm text-gray-500">
+                  Add course assignments in the Rotation Tracker tab to see courses and assigned interns here.
+                </div>
               ) : (
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Udemy Courses</th>
-                      {internNames.map((n) => (
-                        <th key={n.id} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          {n.name}
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Course</th>
+                      {internTrackerNames.map((name) => (
+                        <th key={name} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          {name}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {DEFAULT_UDEMY_COURSES.map((course) => (
-                      <tr key={course.title} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900 min-w-[420px]">
-                          {course.link ? (
+                    {internTrackerCourses.map((course) => (
+                      <tr key={course.course_title} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900 min-w-[280px]">
+                          {course.course_link ? (
                             <a
-                              href={course.link}
+                              href={course.course_link}
                               target="_blank"
                               rel="noreferrer"
                               className="text-blue-600 hover:underline"
                             >
-                              {course.title}
+                              {course.course_title || '—'}
                             </a>
                           ) : (
-                            course.title
+                            course.course_title || '—'
                           )}
                         </td>
-                        {internNames.map((n) => {
-                          const key = `${course.title}|${n.id}`;
-                          const v = internStatusMap[key] ?? '';
+                        {internTrackerNames.map((assignedName) => {
+                          const row = getRotationRowForCell(course.course_title, assignedName);
+                          const isCurrentInternCell =
+                            canEditInternProgress &&
+                            currentInternName &&
+                            assignedName.trim().toLowerCase() === currentInternName.trim().toLowerCase();
                           return (
-                            <td key={n.id} className="px-4 py-3 text-sm text-gray-600">
-                              <select
-                                value={v}
-                                onChange={(e) => handleCellStatusChange(course.title, n.id, e.target.value)}
-                                className="w-full min-w-[140px] rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-                              >
-                                {INTERN_REVIEW_STATUS.map((opt) => (
-                                  <option key={opt} value={opt}>
-                                    {INTERN_REVIEW_LABELS[opt]}
-                                  </option>
-                                ))}
-                              </select>
+                            <td key={assignedName} className="px-4 py-3 text-sm text-gray-600">
+                              {row ? (
+                                isCurrentInternCell ? (
+                                  <select
+                                    value={row.review_status || 'Not Started'}
+                                    onChange={(e) =>
+                                      handleUpdateRotationRow(row.id, { review_status: e.target.value })
+                                    }
+                                    className="w-full min-w-[140px] rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                                  >
+                                    {ROTATION_REVIEW_STATUS.map((s) => (
+                                      <option key={s} value={s}>
+                                        {s}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                    {row.review_status || 'Not Started'}
+                                  </span>
+                                )
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
                             </td>
                           );
                         })}

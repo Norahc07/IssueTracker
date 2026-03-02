@@ -33,7 +33,29 @@ export default function CentralizedRepository() {
         .select('id, slug, title, type, description, tags, content, created_at, updated_at')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      setItems(Array.isArray(data) ? data : []);
+      const dbItems = Array.isArray(data) ? data : [];
+      const staticSlugs = new Set(OFFICIAL_REPOSITORY_ITEMS.map((item) => item.slug));
+      const dbBySlug = new Map(dbItems.map((r) => [r.slug, r]));
+
+      // Merge: use DB row if exists for slug, else use static; add DB-only items
+      const merged = OFFICIAL_REPOSITORY_ITEMS.map((item, i) => {
+        const dbRow = dbBySlug.get(item.slug);
+        if (dbRow) return { ...dbRow, isStatic: false };
+        return {
+          id: `static-${i}`,
+          slug: item.slug,
+          title: item.title,
+          type: 'document',
+          description: item.description,
+          tags: item.tags || [],
+          content: item.content,
+          isStatic: true,
+        };
+      });
+      dbItems.forEach((dbRow) => {
+        if (!staticSlugs.has(dbRow.slug)) merged.push({ ...dbRow, isStatic: false });
+      });
+      setItems(merged);
     } catch (err) {
       console.warn('Repository fetch failed, using static data:', err);
       setItems(
