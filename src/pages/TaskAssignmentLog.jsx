@@ -82,12 +82,84 @@ const canAccessTLVTLTracker = (userRole, userTeam) => {
   );
 };
 
+const canAccessCourseListTab = (userRole, userTeam) => {
+  const team = String(userTeam || '').toLowerCase();
+  if (userRole === 'admin' || userRole === 'tla') return true;
+  if ((userRole === 'tl' || userRole === 'vtl') && team === 'tla') return true;
+  if (userRole === 'intern' && team === 'tla') return true;
+  return false;
+};
+
+const canEditCourseList = (userRole, userTeam) => {
+  const team = String(userTeam || '').toLowerCase();
+  if (userRole === 'admin' || userRole === 'tla') return true;
+  if ((userRole === 'tl' || userRole === 'vtl') && team === 'tla') return true;
+  // TLA interns are view-only in Course List
+  return false;
+};
+
+const canDeleteCourseList = (userRole, userTeam) => {
+  const team = String(userTeam || '').toLowerCase();
+  if (userRole === 'admin') return true;
+  if ((userRole === 'tl' || userRole === 'vtl') && team === 'tla') return true;
+  return false;
+};
+
 const TL_VTL_DEPARTMENTS = ['IT', 'HR', 'Marketing'];
 const TL_VTL_TEAMS = ['Team Lead Assistant', 'Monitoring Team', 'PAT1', 'HR Intern', 'Marketing Intern'];
 const TL_VTL_ROLES = ['Team Leader', 'Vice Team Leader', 'Representative'];
 
 const INTERN_SCHEDULE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const INTERN_SCHEDULE_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+
+const COURSE_LIST_DOMAIN_COUNTRIES = [
+  'Belize',
+  'China',
+  'Denmark',
+  'Germany',
+  'Hongkong',
+  'India',
+  'Indonesia',
+  'Israel',
+  'Japan',
+  'Kenya',
+  'Laos',
+  'Luxembourg',
+  'Mexico',
+  'Netherlands',
+  'New Zealand',
+  'Nigeria',
+  'Norway',
+  'Pakistan',
+  'Philippines',
+  'Poland',
+  'Qatar',
+  'Singapore',
+  'South Africa',
+  'Spain',
+  'Sweden',
+  'Taiwan',
+  'Timor-Leste',
+  'UAE',
+  'UK',
+];
+
+const CORPORATE_COURSE_CATEGORIES = [
+  'Career Skills Course',
+  'Communication Skills Courses',
+  'Conflict Resolution & Mediation Skills Courses',
+  'Customer Service Skills Courses',
+  'Facilitation, Teaching, Training & Learning Skills Courses',
+  'Leadership & Management Skills Courses',
+  'Mentoring and Coaching Skills Courses',
+  'Marketing Skills Courses',
+  'Organisation Level Training Courses',
+  'Personal Development Skills Courses',
+  'Problem Solving and Decision Making Courses',
+  'Sales Skills Course',
+  'Strategy Tools Course',
+  'Teamwork and Collaboration Skill Courses',
+];
 
 const formatHourLabel = (hour24) => {
   const h = ((hour24 + 11) % 12) + 1;
@@ -152,8 +224,10 @@ export default function TaskAssignmentLog() {
       ? 'tl-vtl-tracker'
       : tabParam === 'udemy-course'
       ? 'udemy-course'
+      : tabParam === 'course-list'
+      ? 'course-list'
       : 'tasks'
-  ); // 'tasks' | 'udemy-course' | 'domains' | 'domain-claims' | 'schedule-form' | 'tl-vtl-tracker'
+  ); // 'tasks' | 'udemy-course' | 'course-list' | 'domains' | 'domain-claims' | 'schedule-form' | 'tl-vtl-tracker'
   const [scheduleSubTab, setScheduleSubTab] = useState(
     isTlaIntern
       ? 'interns'
@@ -190,6 +264,7 @@ export default function TaskAssignmentLog() {
     if (tabParam === 'schedule-form') setActiveMainTab('schedule-form');
     if (tabParam === 'tl-vtl-tracker') setActiveMainTab('tl-vtl-tracker');
     if (tabParam === 'udemy-course') setActiveMainTab('udemy-course');
+    if (tabParam === 'course-list') setActiveMainTab('course-list');
   }, [tabParam]);
 
   // Sync Schedule sub-tab with URL (interns in TLA team always see Interns schedule only)
@@ -213,6 +288,25 @@ export default function TaskAssignmentLog() {
   const [claimingDomainId, setClaimingDomainId] = useState(null);
   const [isEditingDomainsTable, setIsEditingDomainsTable] = useState(false);
   const [savingDomains, setSavingDomains] = useState(false);
+  const [courseListDomainId, setCourseListDomainId] = useState('');
+  const [courseListItems, setCourseListItems] = useState([]);
+  const [courseListLoading, setCourseListLoading] = useState(false);
+  const [courseListSaving, setCourseListSaving] = useState(false);
+  const [corporateCourseItems, setCorporateCourseItems] = useState([]);
+  const [corporateCourseLoading, setCorporateCourseLoading] = useState(false);
+  const [hasLoadedSavedCourseDomain, setHasLoadedSavedCourseDomain] = useState(false);
+  const [editingDomainCourseId, setEditingDomainCourseId] = useState(null);
+  const [editingDomainCourseDraft, setEditingDomainCourseDraft] = useState({
+    course_title: '',
+    course_type: '',
+    status: '',
+  });
+  const [editingCorporateCourseId, setEditingCorporateCourseId] = useState(null);
+  const [editingCorporateCourseDraft, setEditingCorporateCourseDraft] = useState({
+    course_title: '',
+    course_type: '',
+    status: '',
+  });
   const [createTaskForm, setCreateTaskForm] = useState({
     name: '',
     domain_migration: '',
@@ -292,6 +386,34 @@ export default function TaskAssignmentLog() {
       fetchTlVtlTracker();
     }
   }, [activeMainTab, supabase]);
+
+  // Load previously selected course-list domain from localStorage (once)
+  useEffect(() => {
+    if (hasLoadedSavedCourseDomain) return;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const saved = window.localStorage.getItem('courseListDomainId');
+        if (saved && !courseListDomainId) {
+          setCourseListDomainId(saved);
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+    setHasLoadedSavedCourseDomain(true);
+  }, [courseListDomainId, hasLoadedSavedCourseDomain]);
+
+  // Fetch course list data when Course List tab is active
+  useEffect(() => {
+    if (activeMainTab !== 'course-list') return;
+    if (courseListDomainId) {
+      fetchCourseListItems(courseListDomainId);
+      fetchCorporateCourseItems(courseListDomainId);
+    } else {
+      setCourseListItems([]);
+      setCorporateCourseItems([]);
+    }
+  }, [activeMainTab, courseListDomainId]);
 
   const isTaskFormValid = () => {
     const name = (createTaskForm.name || '').trim();
@@ -416,6 +538,59 @@ export default function TaskAssignmentLog() {
       setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: data || [] }));
     } catch (error) {
       setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: [] }));
+    }
+  };
+
+  const fetchCourseListItems = async (domainId) => {
+    if (!domainId) {
+      setCourseListItems([]);
+      return;
+    }
+    setCourseListLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('course_list_domain_items')
+        .select('*')
+        .eq('domain_id', domainId)
+        .order('course_title', { ascending: true });
+      if (error) {
+        console.warn('course_list_domain_items fetch error:', error);
+        setCourseListItems([]);
+        return;
+      }
+      setCourseListItems(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.warn('course_list_domain_items fetch error:', error);
+      setCourseListItems([]);
+    } finally {
+      setCourseListLoading(false);
+    }
+  };
+
+  const fetchCorporateCourseItems = async (domainId) => {
+    if (!domainId) {
+      setCorporateCourseItems([]);
+      return;
+    }
+    setCorporateCourseLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('corporate_course_items')
+        .select('*')
+        .eq('domain_id', domainId)
+        .order('category', { ascending: true })
+        .order('course_title', { ascending: true });
+      if (error) {
+        console.warn('corporate_course_items fetch error:', error);
+        setCorporateCourseItems([]);
+        return;
+      }
+      setCorporateCourseItems(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.warn('corporate_course_items fetch error:', error);
+      setCorporateCourseItems([]);
+    } finally {
+      setCorporateCourseLoading(false);
     }
   };
 
@@ -1362,6 +1537,20 @@ export default function TaskAssignmentLog() {
         >
           Udemy Course
         </button>
+        {canAccessCourseListTab(userRole, userTeam) && (
+          <button
+            type="button"
+            onClick={() => { setActiveMainTab('course-list'); setSearchParams({ tab: 'course-list' }); }}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeMainTab === 'course-list'
+                ? 'bg-white border border-b-0 border-gray-200 -mb-px'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+            style={activeMainTab === 'course-list' ? { borderTopColor: PRIMARY } : {}}
+          >
+            Course List
+          </button>
+        )}
         <button
           type="button"
           onClick={() => { setActiveMainTab('domains'); setSearchParams({ tab: 'domains' }); }}
@@ -1813,6 +2002,667 @@ export default function TaskAssignmentLog() {
         <UdemyCourseTab />
       )}
 
+      {activeMainTab === 'course-list' && canAccessCourseListTab(userRole, userTeam) && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                Course List
+              </h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Track course titles per domain and across corporate course categories.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="min-w-[220px]">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Domain</label>
+                <select
+                  value={courseListDomainId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setCourseListDomainId(id);
+                    try {
+                      if (typeof window !== 'undefined' && window.localStorage) {
+                        if (id) {
+                          window.localStorage.setItem('courseListDomainId', id);
+                        } else {
+                          window.localStorage.removeItem('courseListDomainId');
+                        }
+                      }
+                    } catch {
+                      // ignore storage errors
+                    }
+                    // Data fetch is handled by useEffect that watches courseListDomainId
+                  }}
+                  className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                >
+                  <option value="">Select domain…</option>
+                  {COURSE_LIST_DOMAIN_COUNTRIES.map((name) => {
+                    const match = domains.find(
+                      (d) => (d.country || '').trim().toLowerCase() === name.toLowerCase()
+                    );
+                    if (!match) return null;
+                    return (
+                      <option key={match.id} value={match.id}>
+                        {name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </div>
+          </div>
+          {courseListDomainId ? (
+            <>
+              {/* Per-domain course list */}
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-end gap-3">
+                  {canEditCourseList(userRole, userTeam) && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (editingDomainCourseId) {
+                          toast.error('Finish editing the current course row first.');
+                          return;
+                        }
+                        setCourseListSaving(true);
+                        try {
+                          const { data, error } = await supabase
+                            .from('course_list_domain_items')
+                            .insert({
+                              domain_id: courseListDomainId,
+                              course_title: '',
+                              course_type: null,
+                              status: null,
+                              updated_by: user?.id || null,
+                            })
+                            .select('*')
+                            .single();
+                          if (error) throw error;
+                          setCourseListItems((prev) => [...prev, data]);
+                          setEditingDomainCourseId(data.id);
+                          setEditingDomainCourseDraft({
+                            course_title: data.course_title || '',
+                            course_type: data.course_type || '',
+                            status: data.status || '',
+                          });
+                        } catch (err) {
+                          console.warn('Add course_list_domain_items error:', err);
+                          toast.error(err?.message || 'Failed to add course');
+                        } finally {
+                          setCourseListSaving(false);
+                        }
+                      }}
+                      disabled={courseListSaving}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                      style={{ backgroundColor: PRIMARY }}
+                    >
+                      {courseListSaving ? 'Adding…' : 'Add course'}
+                    </button>
+                  )}
+                </div>
+                <div className="overflow-x-auto">
+                  {courseListLoading ? (
+                    <div className="py-10 text-center text-sm text-gray-500">Loading courses…</div>
+                  ) : courseListItems.length === 0 ? (
+                    <div className="py-10 text-center text-sm text-gray-500">
+                      No courses yet for this domain.{' '}
+                      {canEditCourseList(userRole, userTeam) ? 'Use “Add course” to create the first row.' : ''}
+                    </div>
+                  ) : (
+                    <table className="min-w-full divide-y divide-gray-200 text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            Course title
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-32">
+                            G / S
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-40">
+                            Status
+                          </th>
+                          {canEditCourseList(userRole, userTeam) && (
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide w-32">
+                              Actions
+                            </th>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100">
+                        {courseListItems.map((row) => {
+                          const canEdit = canEditCourseList(userRole, userTeam);
+                          const isEditingRow = canEdit && editingDomainCourseId === row.id;
+                          const draft = isEditingRow ? editingDomainCourseDraft : null;
+                          return (
+                            <tr key={row.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-2">
+                                {isEditingRow ? (
+                                  <input
+                                    type="text"
+                                    value={draft?.course_title ?? ''}
+                                    onChange={(e) =>
+                                      setEditingDomainCourseDraft((prev) => ({
+                                        ...prev,
+                                        course_title: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Enter course title"
+                                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                                  />
+                                ) : (
+                                  <span className="text-gray-900">
+                                    {(row.course_title || '').trim() || '—'}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2">
+                                {isEditingRow ? (
+                                  <select
+                                    value={draft?.course_type ?? ''}
+                                    onChange={(e) =>
+                                      setEditingDomainCourseDraft((prev) => ({
+                                        ...prev,
+                                        course_type: e.target.value,
+                                      }))
+                                    }
+                                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                  >
+                                    <option value="">—</option>
+                                    <option value="G">G (Generic)</option>
+                                    <option value="S">S (Specialised)</option>
+                                  </select>
+                                ) : (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                    {row.course_type || '—'}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2">
+                                {isEditingRow ? (
+                                  <select
+                                    value={draft?.status ?? ''}
+                                    onChange={(e) =>
+                                      setEditingDomainCourseDraft((prev) => ({
+                                        ...prev,
+                                        status: e.target.value,
+                                      }))
+                                    }
+                                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                  >
+                                    <option value="">—</option>
+                                    <option value="done">Done</option>
+                                    <option value="has_issue">Has issue</option>
+                                    <option value="in_progress">In-Progress</option>
+                                    <option value="different_title">Different title / Not in domain</option>
+                                  </select>
+                                ) : (
+                                  <span
+                                    className={`
+                                      inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                      ${
+                                        !row.status
+                                          ? 'bg-gray-100 text-gray-500'
+                                          : row.status === 'done'
+                                          ? 'bg-emerald-100 text-emerald-700'
+                                          : row.status === 'has_issue'
+                                          ? 'bg-red-100 text-red-700'
+                                          : row.status === 'different_title'
+                                          ? 'bg-violet-100 text-violet-700'
+                                          : 'bg-amber-100 text-amber-700'
+                                      }
+                                    `}
+                                  >
+                                    {!row.status
+                                      ? '—'
+                                      : row.status === 'done'
+                                      ? 'Done'
+                                      : row.status === 'has_issue'
+                                      ? 'Has issue'
+                                      : row.status === 'different_title'
+                                      ? 'Different title / Not in domain'
+                                      : 'In-Progress'}
+                                  </span>
+                                )}
+                              </td>
+                              {canEdit && (
+                                <td className="px-4 py-2 text-right">
+                                  {isEditingRow ? (
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          const payload = {
+                                            course_title:
+                                              (editingDomainCourseDraft.course_title || '').trim() || 'New course',
+                                            course_type: editingDomainCourseDraft.course_type || null,
+                                            status: editingDomainCourseDraft.status || null,
+                                            updated_by: user?.id || null,
+                                            updated_at: new Date().toISOString(),
+                                          };
+                                          setCourseListSaving(true);
+                                          try {
+                                            await supabase
+                                              .from('course_list_domain_items')
+                                              .update(payload)
+                                              .eq('id', row.id);
+                                            setCourseListItems((prev) =>
+                                              prev.map((r) => (r.id === row.id ? { ...r, ...payload } : r))
+                                            );
+                                            setEditingDomainCourseId(null);
+                                          } catch (err) {
+                                            console.warn('Save course_list_domain_items error:', err);
+                                            toast.error(err?.message || 'Failed to save course');
+                                            fetchCourseListItems(courseListDomainId);
+                                          } finally {
+                                            setCourseListSaving(false);
+                                          }
+                                        }}
+                                        disabled={courseListSaving}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                                        style={{ backgroundColor: PRIMARY }}
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingDomainCourseId(null);
+                                          setEditingDomainCourseDraft({
+                                            course_title: '',
+                                            course_type: '',
+                                            status: '',
+                                          });
+                                          fetchCourseListItems(courseListDomainId);
+                                        }}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (editingDomainCourseId && editingDomainCourseId !== row.id) {
+                                            toast.error('You can only edit one course row at a time.');
+                                            return;
+                                          }
+                                          setEditingDomainCourseId(row.id);
+                                          setEditingDomainCourseDraft({
+                                            course_title: row.course_title || '',
+                                            course_type: row.course_type || '',
+                                            status: row.status || '',
+                                          });
+                                        }}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                      >
+                                        Edit
+                                      </button>
+                                      {canDeleteCourseList(userRole, userTeam) && (
+                                        <button
+                                          type="button"
+                                          onClick={async () => {
+                                            if (!window.confirm('Delete this course from this domain?')) return;
+                                            try {
+                                              await supabase
+                                                .from('course_list_domain_items')
+                                                .delete()
+                                                .eq('id', row.id);
+                                              setCourseListItems((prev) => prev.filter((r) => r.id !== row.id));
+                                              if (editingDomainCourseId === row.id) {
+                                                setEditingDomainCourseId(null);
+                                              }
+                                            } catch (err) {
+                                              console.warn('Delete course_list_domain_items error:', err);
+                                              toast.error(err?.message || 'Failed to delete course');
+                                            }
+                                          }}
+                                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-200 bg-white hover:bg-red-50"
+                                        >
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              {/* Corporate courses */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-gray-900">Corporate Courses</h3>
+                {CORPORATE_COURSE_CATEGORIES.map((category) => {
+                  const rows = corporateCourseItems.filter((r) => r.category === category);
+                  return (
+                    <div
+                      key={category}
+                      className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm"
+                    >
+                      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+                        <h4 className="text-sm font-semibold text-gray-900">{category}</h4>
+                        {canEditCourseList(userRole, userTeam) && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (editingCorporateCourseId) {
+                                toast.error('Finish editing the current course row first.');
+                                return;
+                              }
+                              setCorporateCourseLoading(true);
+                              try {
+                                const { data, error } = await supabase
+                                  .from('corporate_course_items')
+                                  .insert({
+                                    category,
+                                    domain_id: courseListDomainId,
+                                    course_title: '',
+                                    course_type: null,
+                                    status: null,
+                                    updated_by: user?.id || null,
+                                  })
+                                  .select('*')
+                                  .single();
+                                if (error) throw error;
+                                setCorporateCourseItems((prev) => [...prev, data]);
+                                setEditingCorporateCourseId(data.id);
+                                setEditingCorporateCourseDraft({
+                                  course_title: data.course_title || '',
+                                  course_type: data.course_type || '',
+                                  status: data.status || '',
+                                });
+                              } catch (err) {
+                                console.warn('Add corporate_course_items error:', err);
+                                toast.error(err?.message || 'Failed to add course');
+                              } finally {
+                                setCorporateCourseLoading(false);
+                              }
+                            }}
+                            disabled={corporateCourseLoading}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                            style={{ backgroundColor: PRIMARY }}
+                          >
+                            Add course
+                          </button>
+                        )}
+                      </div>
+                      <div className="overflow-x-auto">
+                        {rows.length === 0 ? (
+                          <div className="py-6 text-center text-xs text-gray-500">
+                            No courses yet for this category.
+                          </div>
+                        ) : (
+                          <table className="min-w-full divide-y divide-gray-200 text-sm">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                  Course title
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-28">
+                                  G / S
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-40">
+                                  Status
+                                </th>
+                                {canEditCourseList(userRole, userTeam) && (
+                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide w-32">
+                                    Actions
+                                  </th>
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-100">
+                              {rows.map((row) => {
+                                const canEdit = canEditCourseList(userRole, userTeam);
+                                const isEditingRow = canEdit && editingCorporateCourseId === row.id;
+                                const draft = isEditingRow ? editingCorporateCourseDraft : null;
+                                return (
+                                  <tr key={row.id} className="hover:bg-gray-50">
+                                    <td className="px-4 py-2">
+                                      {isEditingRow ? (
+                                        <input
+                                          type="text"
+                                          value={draft?.course_title ?? ''}
+                                          onChange={(e) =>
+                                            setEditingCorporateCourseDraft((prev) => ({
+                                              ...prev,
+                                              course_title: e.target.value,
+                                            }))
+                                          }
+                                          placeholder="Enter course title"
+                                          className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                                        />
+                                      ) : (
+                                        <span className="text-gray-900">
+                                          {(row.course_title || '').trim() || '—'}
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      {isEditingRow ? (
+                                        <select
+                                          value={draft?.course_type ?? ''}
+                                          onChange={(e) =>
+                                            setEditingCorporateCourseDraft((prev) => ({
+                                              ...prev,
+                                              course_type: e.target.value,
+                                            }))
+                                          }
+                                          className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                        >
+                                          <option value="">—</option>
+                                          <option value="G">G (Generic)</option>
+                                          <option value="S">S (Specialised)</option>
+                                        </select>
+                                      ) : (
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                          {row.course_type || '—'}
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      {isEditingRow ? (
+                                        <select
+                                          value={draft?.status ?? ''}
+                                          onChange={(e) =>
+                                            setEditingCorporateCourseDraft((prev) => ({
+                                              ...prev,
+                                              status: e.target.value,
+                                            }))
+                                          }
+                                          className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                        >
+                                          <option value="">—</option>
+                                          <option value="done">Done</option>
+                                          <option value="has_issue">Has issue</option>
+                                          <option value="in_progress">In-Progress</option>
+                                          <option value="different_title">Different title / Not in domain</option>
+                                        </select>
+                                      ) : (
+                                        <span
+                                          className={`
+                                            inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                            ${
+                                              !row.status
+                                                ? 'bg-gray-100 text-gray-500'
+                                                : row.status === 'done'
+                                                ? 'bg-emerald-100 text-emerald-700'
+                                                : row.status === 'has_issue'
+                                                ? 'bg-red-100 text-red-700'
+                                                : row.status === 'different_title'
+                                                ? 'bg-violet-100 text-violet-700'
+                                                : 'bg-amber-100 text-amber-700'
+                                            }
+                                          `}
+                                        >
+                                          {!row.status
+                                            ? '—'
+                                            : row.status === 'done'
+                                            ? 'Done'
+                                            : row.status === 'has_issue'
+                                            ? 'Has issue'
+                                            : row.status === 'different_title'
+                                            ? 'Different title / Not in domain'
+                                            : 'In-Progress'}
+                                        </span>
+                                      )}
+                                    </td>
+                                    {canEdit && (
+                                      <td className="px-4 py-2 text-right">
+                                        {isEditingRow ? (
+                                          <div className="flex items-center justify-end gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={async () => {
+                                                const payload = {
+                                                  course_title:
+                                                    (editingCorporateCourseDraft.course_title || '').trim() ||
+                                                    'New course',
+                                                  course_type: editingCorporateCourseDraft.course_type || null,
+                                                  status: editingCorporateCourseDraft.status || null,
+                                                  updated_by: user?.id || null,
+                                                  updated_at: new Date().toISOString(),
+                                                };
+                                                setCorporateCourseLoading(true);
+                                                try {
+                                                  await supabase
+                                                    .from('corporate_course_items')
+                                                    .update(payload)
+                                                    .eq('id', row.id);
+                                                  setCorporateCourseItems((prev) =>
+                                                    prev.map((r) => (r.id === row.id ? { ...r, ...payload } : r))
+                                                  );
+                                                  setEditingCorporateCourseId(null);
+                                                } catch (err) {
+                                                  console.warn('Save corporate_course_items error:', err);
+                                                  toast.error(err?.message || 'Failed to save course');
+                                                  fetchCorporateCourseItems(courseListDomainId);
+                                                } finally {
+                                                  setCorporateCourseLoading(false);
+                                                }
+                                              }}
+                                              disabled={corporateCourseLoading}
+                                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                                              style={{ backgroundColor: PRIMARY }}
+                                            >
+                                              Save
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingCorporateCourseId(null);
+                                                setEditingCorporateCourseDraft({
+                                                  course_title: '',
+                                                  course_type: '',
+                                                  status: '',
+                                                });
+                                                fetchCorporateCourseItems(courseListDomainId);
+                                              }}
+                                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center justify-end gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                if (editingCorporateCourseId && editingCorporateCourseId !== row.id) {
+                                                  toast.error('You can only edit one course row at a time.');
+                                                  return;
+                                                }
+                                                setEditingCorporateCourseId(row.id);
+                                                setEditingCorporateCourseDraft({
+                                                  course_title: row.course_title || '',
+                                                  course_type: row.course_type || '',
+                                                  status: row.status || '',
+                                                });
+                                              }}
+                                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                            >
+                                              Edit
+                                            </button>
+                                            {canDeleteCourseList(userRole, userTeam) && (
+                                              <button
+                                                type="button"
+                                                onClick={async () => {
+                                                  if (
+                                                    !window.confirm(
+                                                      'Delete this corporate course for this domain?'
+                                                    )
+                                                  ) {
+                                                    return;
+                                                  }
+                                                  try {
+                                                    await supabase
+                                                      .from('corporate_course_items')
+                                                      .delete()
+                                                      .eq('id', row.id);
+                                                    setCorporateCourseItems((prev) =>
+                                                      prev.filter((r) => r.id !== row.id)
+                                                    );
+                                                    if (editingCorporateCourseId === row.id) {
+                                                      setEditingCorporateCourseId(null);
+                                                    }
+                                                  } catch (err) {
+                                                    console.warn('Delete corporate_course_items error:', err);
+                                                    toast.error(err?.message || 'Failed to delete course');
+                                                  }
+                                                }}
+                                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-200 bg-white hover:bg-red-50"
+                                              >
+                                                Delete
+                                              </button>
+                                            )}
+                                          </div>
+                                        )}
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+              <div className="mb-4 rounded-full bg-gray-100 p-4">
+                <svg
+                  className="w-10 h-10 text-gray-400"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3 7h4l2-3h6l2 3h4v12H3V7z"
+                  />
+                </svg>
+              </div>
+              <p className="text-sm font-medium">Select a domain first.</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {activeMainTab === 'domains' && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1895,6 +2745,9 @@ export default function TaskAssignmentLog() {
             <div className="rounded-lg border border-blue-200 bg-blue-50/80 p-4 text-sm text-gray-800">
               <p className="font-semibold text-gray-900 mb-2">Default accounts for old domains (Intern Account WordPress &amp; SG Domain WordPress)</p>
               <p className="mb-3 text-gray-700">These two accounts are the default credentials used for WordPress plugin updates on old domains. You can view and update the values below.</p>
+              <p className="mb-3 font-semibold text-orange-600">
+                Take Note: WordPress Plugin Updates are scheduled to be finished every week. This means all plugins for all domains must be updated until Friday each week. When Monday comes, we will begin updating all domain plugins again for the new week.
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
                 <div className="bg-white/70 rounded-lg p-3 border border-blue-100 relative">
                   <p className="font-medium text-gray-900 mb-2">Intern Account WordPress</p>
@@ -2063,6 +2916,11 @@ export default function TaskAssignmentLog() {
           )}
 
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm overflow-x-auto">
+            {domainTypeFilter === 'new' && (
+              <p className="px-4 pt-4 pb-1 text-xs sm:text-sm font-semibold text-orange-600">
+                Take Note: WordPress Plugin Updates are scheduled to be finished every week. This means all plugins for all domains must be updated until Friday each week. When Monday comes, we will begin updating all domain plugins again for the new week.
+              </p>
+            )}
             {domainTypeFilter === 'old' ? (
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
