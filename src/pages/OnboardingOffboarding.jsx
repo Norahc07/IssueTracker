@@ -233,6 +233,8 @@ export default function OnboardingOffboarding() {
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [showOffboardingModal, setShowOffboardingModal] = useState(false);
   const [editingOnboardingId, setEditingOnboardingId] = useState(null);
+  const [terminateTarget, setTerminateTarget] = useState(null); // { onboarding: r, user: u }
+  const [terminatingIntern, setTerminatingIntern] = useState(false);
   const [viewOnboardingRequirementsRow, setViewOnboardingRequirementsRow] = useState(null); // { user, req }
   const [viewOffboardingRequirementsRow, setViewOffboardingRequirementsRow] = useState(null); // { user, req, off }
   const [onboardingVerifiedByName, setOnboardingVerifiedByName] = useState(null);
@@ -420,6 +422,58 @@ export default function OnboardingOffboarding() {
     return Array.from(map.values());
   }, [onboarding, internUsers]);
 
+  const handleTerminateOnboarding = async () => {
+    if (!editingOnboardingId) {
+      setShowTerminateOnboardingModal(false);
+      return;
+    }
+    setTerminatingOnboarding(true);
+    try {
+      const id = editingOnboardingId;
+
+      // Find the onboarding row we are terminating to get its email
+      const target = onboarding.find((r) => r.id === id) || null;
+      const targetEmail = (target?.email || onboardingForm.email || '').trim().toLowerCase() || null;
+
+      // Delete onboarding record
+      const { error } = await supabase.from('onboarding_records').delete().eq('id', id);
+      if (error) throw error;
+
+      // Optionally delete matching user account so the intern fully disappears from the system
+      if (targetEmail) {
+        try {
+          await supabase.from('users').delete().eq('email', targetEmail);
+          setInternUsers((prev) =>
+            prev.filter((u) => (u.email || '').trim().toLowerCase() !== targetEmail)
+          );
+        } catch (userErr) {
+          console.warn('Terminate onboarding: users delete error (continuing):', userErr);
+        }
+      }
+
+      setOnboarding((prev) => prev.filter((r) => r.id !== id));
+      queryCache.invalidate('onboarding:records');
+      toast.success('Intern has been terminated and removed from onboarding records.');
+      setEditingOnboardingId(null);
+      setShowOnboardingModal(false);
+      setShowTerminateOnboardingModal(false);
+      setOnboardingForm({
+        onboarding_date: '',
+        onboarding_time: '',
+        name: '',
+        email: '',
+        department: '',
+        team: '',
+        start_date: '',
+      });
+    } catch (err) {
+      console.error('Terminate onboarding error:', err);
+      toast.error(err?.message || 'Failed to terminate intern. Please try again.');
+    } finally {
+      setTerminatingOnboarding(false);
+    }
+  };
+
   const filteredOnboarding = mergedOnboardingRows.filter(({ onboarding: r, user: u }) => {
     const email = (r?.email || u?.email || '').trim().toLowerCase();
     const isOffboarded = email && offboardedEmailSet.has(email);
@@ -487,6 +541,32 @@ export default function OnboardingOffboarding() {
     } catch (err) {
       console.error('Onboarding insert error:', err);
       toast.error(err?.message || 'Failed to add onboarding record.');
+    }
+  };
+
+  const handleTerminateIntern = async () => {
+    if (!terminateTarget?.onboarding?.id) {
+      setTerminateTarget(null);
+      return;
+    }
+    setTerminatingIntern(true);
+    const target = terminateTarget.onboarding;
+    try {
+      const { error } = await supabase
+        .from('onboarding_records')
+        .delete()
+        .eq('id', target.id);
+      if (error) throw error;
+
+      setOnboarding((prev) => prev.filter((r) => r.id !== target.id));
+      queryCache.invalidate('onboarding:records');
+      toast.success('Intern terminated and onboarding record deleted.');
+    } catch (err) {
+      console.error('Terminate intern error:', err);
+      toast.error(err?.message || 'Failed to terminate intern.');
+    } finally {
+      setTerminatingIntern(false);
+      setTerminateTarget(null);
     }
   };
 
@@ -729,6 +809,9 @@ export default function OnboardingOffboarding() {
     });
   }, [offboarding, internUsers, offboardingRequirements, canManageRequirements]);
 
+  const [showTerminateOnboardingModal, setShowTerminateOnboardingModal] = useState(false);
+  const [terminatingOnboarding, setTerminatingOnboarding] = useState(false);
+
   // Load human-readable verifier name for onboarding/offboarding requirement modals
   useEffect(() => {
     const loadOnboardingVerifier = async () => {
@@ -856,61 +939,60 @@ export default function OnboardingOffboarding() {
 
       {/* Onboarding */}
       {activeTab === 'onboarding' && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="space-y-3">
+          <div className="space-y-1">
             <h2 className="text-base font-semibold text-gray-900">Onboarding ({activeYear})</h2>
-          </div>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              {/* Nested tabs: Records / Requirements */}
+              <div className="flex flex-wrap gap-2">
+                {onboardingTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setOnboardingInnerTab(tab.id);
+                      const next = new URLSearchParams(searchParams);
+                      next.set('onboarding_tab', tab.id);
+                      setSearchParams(next);
+                    }}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                      onboardingInnerTab === tab.id
+                        ? 'bg-white text-gray-900 border-gray-300 shadow-sm'
+                        : 'bg-gray-100 text-gray-700 border-transparent hover:bg-gray-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
 
-          {/* Nested tabs: Records / Requirements */}
-          <div className="flex flex-wrap gap-2 mt-1">
-            {onboardingTabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  setOnboardingInnerTab(tab.id);
-                  const next = new URLSearchParams(searchParams);
-                  next.set('onboarding_tab', tab.id);
-                  setSearchParams(next);
-                }}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                  onboardingInnerTab === tab.id
-                    ? 'bg-white text-gray-900 border-gray-300 shadow-sm'
-                    : 'bg-gray-100 text-gray-700 border-transparent hover:bg-gray-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+              {canManage && onboardingInnerTab === 'records' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingOnboardingId(null);
+                    setOnboardingForm({
+                      onboarding_date: '',
+                      onboarding_time: '',
+                      name: '',
+                      email: '',
+                      department: '',
+                      team: '',
+                      start_date: '',
+                    });
+                    setShowOnboardingModal(true);
+                  }}
+                  className="mt-1 sm:mt-0 px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Add onboarding
+                </button>
+              )}
+            </div>
           </div>
 
           {onboardingInnerTab === 'records' && (
-            <div className="space-y-3">
-              {canManage && (
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingOnboardingId(null);
-                      setOnboardingForm({
-                        onboarding_date: '',
-                        onboarding_time: '',
-                        name: '',
-                        email: '',
-                        department: '',
-                        team: '',
-                        start_date: '',
-                      });
-                      setShowOnboardingModal(true);
-                    }}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-                    style={{ backgroundColor: PRIMARY }}
-                  >
-                    Add onboarding
-                  </button>
-                </div>
-              )}
-
+            <div className="space-y-2">
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead>
@@ -1024,50 +1106,49 @@ export default function OnboardingOffboarding() {
 
       {/* Offboarding */}
       {activeTab === 'offboarding' && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="space-y-3">
+          <div className="space-y-1">
             <h2 className="text-base font-semibold text-gray-900">Offboarding ({activeYear})</h2>
-          </div>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              {/* Nested tabs: Records / Requirements / Requirements tracker */}
+              <div className="flex flex-wrap gap-2">
+                {offboardingTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setOffboardingInnerTab(tab.id);
+                      const next = new URLSearchParams(searchParams);
+                      next.set('offboarding', '');
+                      next.set('offboarding_tab', tab.id);
+                      setSearchParams(next);
+                    }}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                      offboardingInnerTab === tab.id
+                        ? 'bg-white text-gray-900 border-gray-300 shadow-sm'
+                        : 'bg-gray-100 text-gray-700 border-transparent hover:bg-gray-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
 
-          {/* Nested tabs: Records / Requirements / Requirements tracker */}
-          <div className="flex flex-wrap gap-2 mt-1">
-            {offboardingTabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  setOffboardingInnerTab(tab.id);
-                  const next = new URLSearchParams(searchParams);
-                  next.set('offboarding', '');
-                  next.set('offboarding_tab', tab.id);
-                  setSearchParams(next);
-                }}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                  offboardingInnerTab === tab.id
-                    ? 'bg-white text-gray-900 border-gray-300 shadow-sm'
-                    : 'bg-gray-100 text-gray-700 border-transparent hover:bg-gray-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+              {canManage && offboardingInnerTab === 'records' && (
+                <button
+                  type="button"
+                  onClick={() => setShowOffboardingModal(true)}
+                  className="mt-1 sm:mt-0 px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Add offboarding
+                </button>
+              )}
+            </div>
           </div>
 
           {offboardingInnerTab === 'records' && (
-            <div className="space-y-3">
-              {canManage && (
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowOffboardingModal(true)}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-                    style={{ backgroundColor: PRIMARY }}
-                  >
-                    Add offboarding
-                  </button>
-                </div>
-              )}
-
+            <div className="space-y-2">
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead>
@@ -1934,13 +2015,22 @@ export default function OnboardingOffboarding() {
       )}
       {/* Onboarding modal form */}
       {canManage && (
-        <Modal open={showOnboardingModal} onClose={() => setShowOnboardingModal(false)}>
+        <Modal
+          open={showOnboardingModal}
+          onClose={() => {
+            if (!terminatingOnboarding) setShowOnboardingModal(false);
+          }}
+        >
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-gray-200">
             <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-900">Add onboarding record</h2>
+              <h2 className="text-base font-semibold text-gray-900">
+                {editingOnboardingId ? 'Edit onboarding record' : 'Add onboarding record'}
+              </h2>
               <button
                 type="button"
-                onClick={() => setShowOnboardingModal(false)}
+                onClick={() => {
+                  if (!terminatingOnboarding) setShowOnboardingModal(false);
+                }}
                 className="text-gray-400 hover:text-gray-600 text-xl leading-none"
                 aria-label="Close"
               >
@@ -2041,23 +2131,89 @@ export default function OnboardingOffboarding() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowOnboardingModal(false)}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-                  style={{ backgroundColor: PRIMARY }}
-                >
-                  Save onboarding
-                </button>
+              <div className="pt-3 border-t border-gray-100 mt-2 space-y-3">
+                {editingOnboardingId && (
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div className="text-[11px] leading-snug text-red-600 sm:max-w-xs">
+                      Terminating this intern will permanently remove their onboarding record from the database.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowTerminateOnboardingModal(true)}
+                      disabled={terminatingOnboarding}
+                      className="self-start sm:self-auto px-3 py-2 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 shadow-sm"
+                    >
+                      {terminatingOnboarding ? 'Terminating…' : 'Terminate intern'}
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowOnboardingModal(false)}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                    disabled={terminatingOnboarding}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm"
+                    style={{ backgroundColor: PRIMARY }}
+                    disabled={terminatingOnboarding}
+                  >
+                    {editingOnboardingId ? 'Save changes' : 'Save onboarding'}
+                  </button>
+                </div>
               </div>
             </form>
+          </div>
+        </Modal>
+      )}
+
+      {/* Terminate onboarding confirmation modal */}
+      {canManage && (
+        <Modal
+          open={showTerminateOnboardingModal}
+          onClose={() => {
+            if (!terminatingOnboarding) setShowTerminateOnboardingModal(false);
+          }}
+        >
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-200">
+            <div className="px-5 py-4 border-b border-gray-200">
+              <h2 className="text-base font-semibold text-gray-900">Terminate intern</h2>
+            </div>
+            <div className="px-5 py-4 space-y-3 text-sm text-gray-700">
+              <p>
+                Are you sure you want to{' '}
+                <span className="font-semibold text-red-600">terminate this intern</span>?
+              </p>
+              <p>
+                This action will automatically remove the intern&apos;s onboarding record from the database. This
+                cannot be undone.
+              </p>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!terminatingOnboarding) setShowTerminateOnboardingModal(false);
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                disabled={terminatingOnboarding}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleTerminateOnboarding}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                disabled={terminatingOnboarding}
+              >
+                {terminatingOnboarding ? 'Terminating…' : 'Yes, terminate intern'}
+              </button>
+            </div>
           </div>
         </Modal>
       )}

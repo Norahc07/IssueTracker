@@ -296,6 +296,8 @@ export default function TaskAssignmentLog() {
   const [corporateCourseItems, setCorporateCourseItems] = useState([]);
   const [corporateCourseLoading, setCorporateCourseLoading] = useState(false);
   const [hasLoadedSavedCourseDomain, setHasLoadedSavedCourseDomain] = useState(false);
+  const [courseListPage, setCourseListPage] = useState(1);
+  const [corporateCoursePages, setCorporateCoursePages] = useState({});
   const [editingDomainCourseId, setEditingDomainCourseId] = useState(null);
   const [editingDomainCourseDraft, setEditingDomainCourseDraft] = useState({
     course_title: '',
@@ -415,6 +417,11 @@ export default function TaskAssignmentLog() {
       setCorporateCourseItems([]);
     }
   }, [activeMainTab, courseListDomainId]);
+
+  // Reset Course List pagination when domain or items change
+  useEffect(() => {
+    setCourseListPage(1);
+  }, [courseListDomainId, courseListItems.length]);
 
   const isTaskFormValid = () => {
     const name = (createTaskForm.name || '').trim();
@@ -2169,9 +2176,10 @@ export default function TaskAssignmentLog() {
                                     }
                                     className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
                                   >
-                                    <option value="">—</option>
-                                    <option value="G">G (Generic)</option>
-                                    <option value="S">S (Specialised)</option>
+                                <option value="">—</option>
+                                <option value="G">G (Generic)</option>
+                                <option value="S">S (Specialised)</option>
+                                <option value="G/S">G/S (Both)</option>
                                   </select>
                                 ) : (
                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
@@ -2462,6 +2470,7 @@ export default function TaskAssignmentLog() {
                                           <option value="">—</option>
                                           <option value="G">G (Generic)</option>
                                           <option value="S">S (Specialised)</option>
+                                          <option value="G/S">G/S (Both)</option>
                                         </select>
                                       ) : (
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
