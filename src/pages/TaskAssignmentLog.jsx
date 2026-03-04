@@ -94,7 +94,7 @@ const canEditCourseList = (userRole, userTeam) => {
   const team = String(userTeam || '').toLowerCase();
   if (userRole === 'admin' || userRole === 'tla') return true;
   if ((userRole === 'tl' || userRole === 'vtl') && team === 'tla') return true;
-  // TLA interns are view-only in Course List
+  if (userRole === 'intern') return true;
   return false;
 };
 
@@ -102,6 +102,7 @@ const canDeleteCourseList = (userRole, userTeam) => {
   const team = String(userTeam || '').toLowerCase();
   if (userRole === 'admin') return true;
   if ((userRole === 'tl' || userRole === 'vtl') && team === 'tla') return true;
+  if (userRole === 'intern') return true;
   return false;
 };
 
