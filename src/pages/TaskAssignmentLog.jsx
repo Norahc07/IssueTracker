@@ -86,7 +86,7 @@ const canAccessCourseListTab = (userRole, userTeam) => {
   const team = String(userTeam || '').toLowerCase();
   if (userRole === 'admin' || userRole === 'tla') return true;
   if ((userRole === 'tl' || userRole === 'vtl') && team === 'tla') return true;
-  if (userRole === 'intern' && team === 'tla') return true;
+  if (userRole === 'intern') return true; // all interns can access (view-only unless TLA; edit via canEditCourseList)
   return false;
 };
 
