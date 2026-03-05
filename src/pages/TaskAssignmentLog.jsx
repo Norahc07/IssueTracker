@@ -131,6 +131,23 @@ const COURSE_LIST_DOMAIN_COUNTRIES = [
   'UK',
 ];
 
+const courseTypeToDb = (value) => {
+  if (!value) return null;
+  const v = String(value).trim();
+  if (!v) return null;
+  // Some DBs use 'GS' instead of 'G/S' (check constraints can differ per environment).
+  if (v === 'G/S') return 'GS';
+  return v;
+};
+
+const courseTypeToUi = (value) => {
+  if (!value) return '';
+  const v = String(value).trim();
+  if (!v) return '';
+  if (v === 'GS') return 'G/S';
+  return v;
+};
+
 const CORPORATE_COURSE_CATEGORIES = [
   'Career Skills Course',
   'Communication Skills Courses',
@@ -1924,7 +1941,7 @@ export default function TaskAssignmentLog() {
                         setEditingDomainCourseId(data.id);
                         setEditingDomainCourseDraft({
                           course_title: data.course_title || '',
-                          course_type: data.course_type || '',
+                          course_type: courseTypeToUi(data.course_type) || '',
                           status: data.status || '',
                         });
                       } catch (err) {
@@ -2022,7 +2039,7 @@ export default function TaskAssignmentLog() {
                                   </select>
                                 ) : (
                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                                    {row.course_type || '—'}
+                                    {courseTypeToUi(row.course_type) || '—'}
                                   </span>
                                 )}
                               </td>
@@ -2087,9 +2104,10 @@ export default function TaskAssignmentLog() {
                                           ).trim();
                                           const payload = {
                                             course_title: safeTitle || 'New course',
-                                            course_type:
-                                              (editingDomainCourseDraft.course_type ??
-                                                row.course_type) || null,
+                                            course_type: courseTypeToDb(
+                                              editingDomainCourseDraft.course_type ??
+                                                courseTypeToUi(row.course_type)
+                                            ),
                                             status:
                                               (editingDomainCourseDraft.status ??
                                                 row.status) || null,
@@ -2098,10 +2116,11 @@ export default function TaskAssignmentLog() {
                                           };
                                           setCourseListSaving(true);
                                           try {
-                                            await supabase
+                                            const { error } = await supabase
                                               .from('course_list_domain_items')
                                               .update(payload)
                                               .eq('id', row.id);
+                                            if (error) throw error;
                                             setCourseListItems((prev) =>
                                               prev.map((r) => (r.id === row.id ? { ...r, ...payload } : r))
                                             );
@@ -2148,7 +2167,7 @@ export default function TaskAssignmentLog() {
                                           setEditingDomainCourseId(row.id);
                                           setEditingDomainCourseDraft({
                                             course_title: row.course_title || '',
-                                            course_type: row.course_type || '',
+                                            course_type: courseTypeToUi(row.course_type) || '',
                                             status: row.status || '',
                                           });
                                         }}
@@ -2267,7 +2286,7 @@ export default function TaskAssignmentLog() {
                                 setEditingCorporateCourseId(data.id);
                                 setEditingCorporateCourseDraft({
                                   course_title: data.course_title || '',
-                                  course_type: data.course_type || '',
+                                  course_type: courseTypeToUi(data.course_type) || '',
                                   status: data.status || '',
                                 });
                               } catch (err) {
@@ -2360,7 +2379,7 @@ export default function TaskAssignmentLog() {
                                         </select>
                                       ) : (
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                                          {row.course_type || '—'}
+                                          {courseTypeToUi(row.course_type) || '—'}
                                         </span>
                                       )}
                                     </td>
@@ -2425,9 +2444,10 @@ export default function TaskAssignmentLog() {
                                                 ).trim();
                                                 const payload = {
                                                   course_title: safeTitle || 'New course',
-                                                  course_type:
-                                                    (editingCorporateCourseDraft.course_type ??
-                                                      row.course_type) || null,
+                                                  course_type: courseTypeToDb(
+                                                    editingCorporateCourseDraft.course_type ??
+                                                      courseTypeToUi(row.course_type)
+                                                  ),
                                                   status:
                                                     (editingCorporateCourseDraft.status ??
                                                       row.status) || null,
@@ -2436,10 +2456,11 @@ export default function TaskAssignmentLog() {
                                                 };
                                                 setCorporateCourseLoading(true);
                                                 try {
-                                                  await supabase
+                                                  const { error } = await supabase
                                                     .from('corporate_course_items')
                                                     .update(payload)
                                                     .eq('id', row.id);
+                                                  if (error) throw error;
                                                   setCorporateCourseItems((prev) =>
                                                     prev.map((r) => (r.id === row.id ? { ...r, ...payload } : r))
                                                   );
@@ -2486,7 +2507,7 @@ export default function TaskAssignmentLog() {
                                                 setEditingCorporateCourseId(row.id);
                                                 setEditingCorporateCourseDraft({
                                                   course_title: row.course_title || '',
-                                                  course_type: row.course_type || '',
+                                                  course_type: courseTypeToUi(row.course_type) || '',
                                                   status: row.status || '',
                                                 });
                                               }}
@@ -2627,7 +2648,7 @@ export default function TaskAssignmentLog() {
                                   setEditingCorporateCourseId(data.id);
                                   setEditingCorporateCourseDraft({
                                     course_title: data.course_title || '',
-                                    course_type: data.course_type || '',
+                                    course_type: courseTypeToUi(data.course_type) || '',
                                     status: data.status || '',
                                   });
                                 } catch (err) {
@@ -2719,7 +2740,7 @@ export default function TaskAssignmentLog() {
                                               </select>
                                             ) : (
                                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                                                {row.course_type || '—'}
+                                                  {courseTypeToUi(row.course_type) || '—'}
                                               </span>
                                             )}
                                           </td>
@@ -2784,9 +2805,10 @@ export default function TaskAssignmentLog() {
                                                       ).trim();
                                                       const payload = {
                                                         course_title: safeTitle || 'New course',
-                                                        course_type:
-                                                          (editingCorporateCourseDraft.course_type ??
-                                                            row.course_type) || null,
+                                                        course_type: courseTypeToDb(
+                                                          editingCorporateCourseDraft.course_type ??
+                                                            courseTypeToUi(row.course_type)
+                                                        ),
                                                         status:
                                                           (editingCorporateCourseDraft.status ??
                                                             row.status) || null,
@@ -2795,10 +2817,11 @@ export default function TaskAssignmentLog() {
                                                       };
                                                       setCorporateCourseLoading(true);
                                                       try {
-                                                        await supabase
+                                                        const { error } = await supabase
                                                           .from('corporate_course_items')
                                                           .update(payload)
                                                           .eq('id', row.id);
+                                                        if (error) throw error;
                                                         setCorporateCourseItems((prev) =>
                                                           prev.map((r) =>
                                                             r.id === row.id ? { ...r, ...payload } : r
@@ -2852,7 +2875,7 @@ export default function TaskAssignmentLog() {
                                                       setEditingCorporateCourseId(row.id);
                                                       setEditingCorporateCourseDraft({
                                                         course_title: row.course_title || '',
-                                                        course_type: row.course_type || '',
+                                                        course_type: courseTypeToUi(row.course_type) || '',
                                                         status: row.status || '',
                                                       });
                                                     }}
