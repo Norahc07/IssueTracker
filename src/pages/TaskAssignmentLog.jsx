@@ -2118,6 +2118,7 @@ export default function TaskAssignmentLog() {
                       {canEditCourseList(userRole, userTeam) ? 'Use “Add course” to create the first row.' : ''}
                     </div>
                   ) : (
+                    <>
                     <table className="min-w-full divide-y divide-gray-200 text-sm">
                       <thead className="bg-gray-50">
                         <tr>
@@ -2138,7 +2139,9 @@ export default function TaskAssignmentLog() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-100">
-                        {courseListItems.map((row) => {
+                        {courseListItems
+                          .slice((courseListPage - 1) * 10, courseListPage * 10)
+                          .map((row) => {
                           const canEdit = canEditCourseList(userRole, userTeam);
                           const isEditingRow = canEdit && editingDomainCourseId === row.id;
                           const draft = isEditingRow ? editingDomainCourseDraft : null;
@@ -2342,6 +2345,34 @@ export default function TaskAssignmentLog() {
                         })}
                       </tbody>
                     </table>
+                    {courseListItems.length > 10 && (
+                      <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 border-t border-gray-100">
+                        <span>
+                          Page {courseListPage} of {Math.ceil(courseListItems.length / 10)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCourseListPage((p) => Math.max(1, p - 1))}
+                          disabled={courseListPage === 1}
+                          className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                        >
+                          Prev
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCourseListPage((p) =>
+                              Math.min(Math.ceil(courseListItems.length / 12), p + 1)
+                            )
+                          }
+                          disabled={courseListPage >= Math.ceil(courseListItems.length / 10)}
+                          className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
+                    </>
                   )}
                 </div>
               </div>
@@ -2351,6 +2382,8 @@ export default function TaskAssignmentLog() {
                 <h3 className="text-sm font-semibold text-gray-900">Corporate Courses</h3>
                 {CORPORATE_COURSE_CATEGORIES.map((category) => {
                   const rows = corporateCourseItems.filter((r) => r.category === category);
+                  const page = corporateCoursePages[category] || 1;
+                  const totalPages = Math.max(1, Math.ceil(rows.length / 10));
                   return (
                     <div
                       key={category}
@@ -2409,6 +2442,7 @@ export default function TaskAssignmentLog() {
                             No courses yet for this category.
                           </div>
                         ) : (
+                          <>
                           <table className="min-w-full divide-y divide-gray-200 text-sm">
                             <thead className="bg-gray-50">
                               <tr>
@@ -2429,7 +2463,9 @@ export default function TaskAssignmentLog() {
                               </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-100">
-                              {rows.map((row) => {
+                              {rows
+                                .slice((page - 1) * 10, page * 10)
+                                .map((row) => {
                                 const canEdit = canEditCourseList(userRole, userTeam);
                                 const isEditingRow = canEdit && editingCorporateCourseId === row.id;
                                 const draft = isEditingRow ? editingCorporateCourseDraft : null;
@@ -2642,6 +2678,40 @@ export default function TaskAssignmentLog() {
                               })}
                             </tbody>
                           </table>
+                          {rows.length > 10 && (
+                            <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 border-t border-gray-100">
+                              <span>
+                                Page {page} of {totalPages}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCorporateCoursePages((prev) => ({
+                                    ...prev,
+                                    [category]: Math.max(1, page - 1),
+                                  }))
+                                }
+                                disabled={page === 1}
+                                className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                              >
+                                Prev
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCorporateCoursePages((prev) => ({
+                                    ...prev,
+                                    [category]: Math.min(totalPages, page + 1),
+                                  }))
+                                }
+                                disabled={page >= totalPages}
+                                className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                              >
+                                Next
+                              </button>
+                            </div>
+                          )}
+                          </>
                         )}
                       </div>
                     </div>
