@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Navigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
@@ -72,17 +72,6 @@ const canAccessScheduleFormTab = (userRole, userTeam) => {
   return false;
 };
 
-const canAccessTLVTLTracker = (userRole, userTeam) => {
-  const isTlaTeam = userTeam && String(userTeam).toLowerCase() === 'tla';
-  return (
-    userRole === 'admin' ||
-    userRole === 'tla' ||
-    userRole === 'intern' ||
-    isTlaTeam ||
-    ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam)
-  );
-};
-
 const canAccessCourseListTab = (userRole, userTeam) => {
   const team = String(userTeam || '').toLowerCase();
   if (userRole === 'admin' || userRole === 'tla') return true;
@@ -106,10 +95,6 @@ const canDeleteCourseList = (userRole, userTeam) => {
   if (userRole === 'intern') return true;
   return false;
 };
-
-const TL_VTL_DEPARTMENTS = ['IT', 'HR', 'Marketing'];
-const TL_VTL_TEAMS = ['Team Lead Assistant', 'Monitoring Team', 'PAT1', 'HR Intern', 'Marketing Intern'];
-const TL_VTL_ROLES = ['Team Leader', 'Vice Team Leader', 'Representative'];
 
 const INTERN_SCHEDULE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const INTERN_SCHEDULE_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
@@ -216,6 +201,7 @@ export default function TaskAssignmentLog() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab'); // 'domains' opens Domains tab
   const scheduleSubTabParam = searchParams.get('schedule'); // 'form' | 'responses' | 'interns'
+  if (tabParam === 'tl-vtl-tracker') return <Navigate to="/tracker" replace />;
   const isTlaIntern = userRole === 'intern' && String(userTeam || '').toLowerCase() === 'tla';
   const [tasks, setTasks] = useState([]);
   const [domains, setDomains] = useState([]);
@@ -229,8 +215,6 @@ export default function TaskAssignmentLog() {
       ? 'domain-claims'
       : tabParam === 'schedule-form'
       ? 'schedule-form'
-      : tabParam === 'tl-vtl-tracker'
-      ? 'tl-vtl-tracker'
       : tabParam === 'udemy-course'
       ? 'udemy-course'
       : tabParam === 'course-list'
@@ -238,7 +222,7 @@ export default function TaskAssignmentLog() {
       : tabParam === 'domain-updates'
       ? 'domain-updates'
       : 'tasks'
-  ); // 'tasks' | 'udemy-course' | 'course-list' | 'domains' | 'domain-claims' | 'domain-updates' | 'schedule-form' | 'tl-vtl-tracker'
+  ); // 'tasks' | 'udemy-course' | 'course-list' | 'domains' | 'domain-claims' | 'domain-updates' | 'schedule-form'
   const [scheduleSubTab, setScheduleSubTab] = useState(
     isTlaIntern
       ? 'interns'
@@ -268,13 +252,12 @@ export default function TaskAssignmentLog() {
     if (selectedTask) setIsEditingAllTasks(false);
   }, [selectedTask]);
 
-  // Open Domains, Domain Claims, Domain Updates, Schedule Form, or TL/VTL Tracker tab when URL has ?tab=...
+  // Open Domains, Domain Claims, Domain Updates, or Schedule Form tab when URL has ?tab=...
   useEffect(() => {
     if (tabParam === 'domains') setActiveMainTab('domains');
     if (tabParam === 'domain-claims') setActiveMainTab('domain-claims');
     if (tabParam === 'domain-updates') setActiveMainTab('domain-updates');
     if (tabParam === 'schedule-form') setActiveMainTab('schedule-form');
-    if (tabParam === 'tl-vtl-tracker') setActiveMainTab('tl-vtl-tracker');
     if (tabParam === 'udemy-course') setActiveMainTab('udemy-course');
     if (tabParam === 'course-list') setActiveMainTab('course-list');
   }, [tabParam]);
@@ -362,15 +345,6 @@ export default function TaskAssignmentLog() {
   const [selectedInternOnboardingId, setSelectedInternOnboardingId] = useState('');
 
   // TL/VTL Tracker (admin, TL/VTL of TLA only)
-  const [tlVtlTrackerRows, setTlVtlTrackerRows] = useState([]);
-  const [savingTlVtlTracker, setSavingTlVtlTracker] = useState(false);
-  const [isTlVtlTrackerEditMode, setIsTlVtlTrackerEditMode] = useState(false);
-
-  const tlVtlAssignableUsers = useMemo(
-    () => users.filter((u) => u.role === 'intern' || u.role === 'tl' || u.role === 'vtl'),
-    [users]
-  );
-
   useEffect(() => {
     fetchTasks();
     fetchDomains();
@@ -392,12 +366,6 @@ export default function TaskAssignmentLog() {
     if (activeMainTab === 'schedule-form') {
       fetchScheduleFormData();
       fetchScheduleOnboardingRecords();
-    }
-  }, [activeMainTab, supabase]);
-
-  useEffect(() => {
-    if (activeMainTab === 'tl-vtl-tracker') {
-      fetchTlVtlTracker();
     }
   }, [activeMainTab, supabase]);
 
@@ -634,158 +602,6 @@ export default function TaskAssignmentLog() {
     } catch (err) {
       console.warn('domain_claims fetch error:', err);
       setDomainClaims([]);
-    }
-  };
-
-  const fetchTlVtlTracker = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('tl_vtl_tracker')
-        .select('*')
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      setTlVtlTrackerRows(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.warn('tl_vtl_tracker fetch error:', err);
-      setTlVtlTrackerRows([]);
-    }
-  };
-
-  const addTlVtlTrackerRow = async () => {
-    setSavingTlVtlTracker(true);
-    try {
-      const { data, error } = await supabase
-        .from('tl_vtl_tracker')
-        .insert({
-          department: 'IT',
-          team: 'Team Lead Assistant',
-          name: '',
-          role: 'Team Leader',
-          updated_at: new Date().toISOString(),
-        })
-        .select('*')
-        .single();
-      if (error) throw error;
-      setTlVtlTrackerRows((prev) => [...prev, data]);
-      toast.success('Row added');
-    } catch (err) {
-      toast.error(err?.message || 'Failed to add row');
-    } finally {
-      setSavingTlVtlTracker(false);
-    }
-  };
-
-  const updateTlVtlTrackerRow = async (id, field, value) => {
-    try {
-      const { error } = await supabase
-        .from('tl_vtl_tracker')
-        .update({ [field]: value, updated_at: new Date().toISOString() })
-        .eq('id', id);
-      if (error) throw error;
-      setTlVtlTrackerRows((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, [field]: value } : r))
-      );
-    } catch (err) {
-      toast.error(err?.message || 'Failed to update');
-    }
-  };
-
-  const normalizeUserTeamFromTracker = (teamLabel) => {
-    const t = (teamLabel || '').toLowerCase();
-    if (t.includes('team lead assistant')) return 'tla';
-    if (t.includes('monitoring')) return 'monitoring_team';
-    if (t.includes('pat1')) return 'pat1';
-    if (t.includes('hr')) return 'hr';
-    if (t.includes('marketing')) return 'marketing';
-    return null;
-  };
-
-  const mapTrackerRoleToUserRole = (roleLabel) => {
-    if (!roleLabel) return null;
-    const r = roleLabel.toLowerCase();
-    if (r.includes('team leader')) return 'tl';
-    if (r.includes('vice')) return 'vtl';
-    return null;
-  };
-
-  const saveAllTlVtlTrackerRows = async () => {
-    setSavingTlVtlTracker(true);
-    try {
-      for (const row of tlVtlTrackerRows) {
-        const nowIso = new Date().toISOString();
-
-        // Save tracker row itself
-        const { error } = await supabase
-          .from('tl_vtl_tracker')
-          .update({
-            department: row.department || 'IT',
-            team: row.team || 'Team Lead Assistant',
-            name: (row.name || '').trim(),
-            role: row.role || 'Team Leader',
-            updated_at: nowIso,
-          })
-          .eq('id', row.id);
-        if (error) throw error;
-
-        // Promotion logic: if this row represents a TL or VTL, update their app role
-        const targetRole = mapTrackerRoleToUserRole(row.role);
-        const trimmedName = (row.name || '').trim();
-        if (targetRole && trimmedName) {
-          try {
-            const { data: userMatch, error: userErr } = await supabase
-              .from('users')
-              .select('id, full_name, team')
-              .eq('full_name', trimmedName)
-              .maybeSingle();
-
-            if (!userErr && userMatch) {
-              const mappedTeam = normalizeUserTeamFromTracker(row.team);
-              const updatePayload = {
-                role: targetRole,
-                updated_at: nowIso,
-              };
-              if (mappedTeam) {
-                updatePayload.team = mappedTeam;
-              }
-
-              const { error: updateUserErr } = await supabase
-                .from('users')
-                .update(updatePayload)
-                .eq('id', userMatch.id);
-              if (updateUserErr) {
-                console.warn('Failed to update user role from TL/VTL tracker:', updateUserErr);
-              }
-            }
-          } catch (userUpdateErr) {
-            console.warn('User role promotion error:', userUpdateErr);
-          }
-        }
-      }
-      toast.success('Changes saved and promotions applied');
-      setIsTlVtlTrackerEditMode(false);
-    } catch (err) {
-      toast.error(err?.message || 'Failed to save');
-    } finally {
-      setSavingTlVtlTracker(false);
-    }
-  };
-
-  const cancelTlVtlTrackerEdit = () => {
-    fetchTlVtlTracker();
-    setIsTlVtlTrackerEditMode(false);
-  };
-
-  const deleteTlVtlTrackerRow = async (id) => {
-    setSavingTlVtlTracker(true);
-    try {
-      const { error } = await supabase.from('tl_vtl_tracker').delete().eq('id', id);
-      if (error) throw error;
-      setTlVtlTrackerRows((prev) => prev.filter((r) => r.id !== id));
-      toast.success('Row removed');
-    } catch (err) {
-      toast.error(err?.message || 'Failed to delete');
-    } finally {
-      setSavingTlVtlTracker(false);
     }
   };
 
@@ -1616,18 +1432,6 @@ export default function TaskAssignmentLog() {
             Schedule
           </button>
         )}
-        {canAccessTLVTLTracker(userRole, userTeam) && (
-          <button
-            type="button"
-            onClick={() => { setActiveMainTab('tl-vtl-tracker'); setSearchParams({ tab: 'tl-vtl-tracker' }); }}
-            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-              activeMainTab === 'tl-vtl-tracker' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-            style={activeMainTab === 'tl-vtl-tracker' ? { borderTopColor: PRIMARY } : {}}
-          >
-            TL/VTL Tracker
-          </button>
-        )}
       </div>
 
       {activeMainTab === 'tasks' && (
@@ -2088,57 +1892,59 @@ export default function TaskAssignmentLog() {
           </div>
           {courseListDomainId ? (
             <>
-              {/* Per-domain course list */}
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-end gap-3">
-                  {canEditCourseList(userRole, userTeam) && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (editingDomainCourseId) {
-                          toast.error('Finish editing the current course row first.');
-                          return;
-                        }
-                        setCourseListSaving(true);
-                        try {
-                          const { data, error } = await supabase
-                            .from('course_list_domain_items')
-                            .insert({
-                              domain_id: courseListDomainId,
-                              course_title: '',
-                              course_type: null,
-                              status: null,
-                              updated_by: user?.id || null,
-                            })
-                            .select('*')
-                            .single();
-                          if (error) throw error;
-                          setCourseListItems((prev) => {
-                            const next = [...prev, data];
-                            setCourseListPage(Math.ceil(next.length / 10));
-                            return next;
-                          });
-                          setEditingDomainCourseId(data.id);
-                          setEditingDomainCourseDraft({
-                            course_title: data.course_title || '',
-                            course_type: data.course_type || '',
-                            status: data.status || '',
-                          });
-                        } catch (err) {
-                          console.warn('Add course_list_domain_items error:', err);
-                          toast.error(err?.message || 'Failed to add course');
-                        } finally {
-                          setCourseListSaving(false);
-                        }
-                      }}
-                      disabled={courseListSaving}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
-                      style={{ backgroundColor: PRIMARY }}
-                    >
-                      {courseListSaving ? 'Adding…' : 'Add course'}
-                    </button>
-                  )}
+              {/* Per-domain: Add course button (separate from table) */}
+              {canEditCourseList(userRole, userTeam) && (
+                <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (editingDomainCourseId) {
+                        toast.error('Finish editing the current course row first.');
+                        return;
+                      }
+                      setCourseListSaving(true);
+                      try {
+                        const { data, error } = await supabase
+                          .from('course_list_domain_items')
+                          .insert({
+                            domain_id: courseListDomainId,
+                            course_title: '',
+                            course_type: null,
+                            status: null,
+                            updated_by: user?.id || null,
+                          })
+                          .select('*')
+                          .single();
+                        if (error) throw error;
+                        setCourseListItems((prev) => {
+                          const next = [...prev, data];
+                          setCourseListPage(Math.ceil(next.length / 10));
+                          return next;
+                        });
+                        setEditingDomainCourseId(data.id);
+                        setEditingDomainCourseDraft({
+                          course_title: data.course_title || '',
+                          course_type: data.course_type || '',
+                          status: data.status || '',
+                        });
+                      } catch (err) {
+                        console.warn('Add course_list_domain_items error:', err);
+                        toast.error(err?.message || 'Failed to add course');
+                      } finally {
+                        setCourseListSaving(false);
+                      }
+                    }}
+                    disabled={courseListSaving}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                    style={{ backgroundColor: PRIMARY }}
+                  >
+                    {courseListSaving ? 'Adding…' : 'Add course'}
+                  </button>
                 </div>
+              )}
+
+              {/* Per-domain course list table */}
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   {courseListLoading ? (
                     <div className="py-10 text-center text-sm text-gray-500">Loading courses…</div>
@@ -2274,11 +2080,19 @@ export default function TaskAssignmentLog() {
                                       <button
                                         type="button"
                                         onClick={async () => {
+                                          const safeTitle = (
+                                            editingDomainCourseDraft.course_title ??
+                                            row.course_title ??
+                                            ''
+                                          ).trim();
                                           const payload = {
-                                            course_title:
-                                              (editingDomainCourseDraft.course_title || '').trim() || 'New course',
-                                            course_type: editingDomainCourseDraft.course_type || null,
-                                            status: editingDomainCourseDraft.status || null,
+                                            course_title: safeTitle || 'New course',
+                                            course_type:
+                                              (editingDomainCourseDraft.course_type ??
+                                                row.course_type) || null,
+                                            status:
+                                              (editingDomainCourseDraft.status ??
+                                                row.status) || null,
                                             updated_by: user?.id || null,
                                             updated_at: new Date().toISOString(),
                                           };
@@ -2317,7 +2131,7 @@ export default function TaskAssignmentLog() {
                                           });
                                           fetchCourseListItems(courseListDomainId);
                                         }}
-                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
                                       >
                                         Cancel
                                       </button>
@@ -2338,7 +2152,7 @@ export default function TaskAssignmentLog() {
                                             status: row.status || '',
                                           });
                                         }}
-                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
                                       >
                                         Edit
                                       </button>
@@ -2415,11 +2229,8 @@ export default function TaskAssignmentLog() {
                   const page = corporateCoursePages[category] || 1;
                   const totalPages = Math.max(1, Math.ceil(rows.length / 10));
                   return (
-                    <div
-                      key={category}
-                      className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm"
-                    >
-                      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+                    <div key={category} className="space-y-0">
+                      <div className="flex items-center justify-between gap-3 px-4 py-3">
                         <h4 className="text-sm font-semibold text-gray-900">{category}</h4>
                         {canEditCourseList(userRole, userTeam) && (
                           <button
@@ -2474,7 +2285,8 @@ export default function TaskAssignmentLog() {
                           </button>
                         )}
                       </div>
-                      <div className="overflow-x-auto">
+                      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                        <div className="overflow-x-auto">
                         {rows.length === 0 ? (
                           <div className="py-6 text-center text-xs text-gray-500">
                             No courses yet for this category.
@@ -2606,12 +2418,19 @@ export default function TaskAssignmentLog() {
                                             <button
                                               type="button"
                                               onClick={async () => {
+                                                const safeTitle = (
+                                                  editingCorporateCourseDraft.course_title ??
+                                                  row.course_title ??
+                                                  ''
+                                                ).trim();
                                                 const payload = {
-                                                  course_title:
-                                                    (editingCorporateCourseDraft.course_title || '').trim() ||
-                                                    'New course',
-                                                  course_type: editingCorporateCourseDraft.course_type || null,
-                                                  status: editingCorporateCourseDraft.status || null,
+                                                  course_title: safeTitle || 'New course',
+                                                  course_type:
+                                                    (editingCorporateCourseDraft.course_type ??
+                                                      row.course_type) || null,
+                                                  status:
+                                                    (editingCorporateCourseDraft.status ??
+                                                      row.status) || null,
                                                   updated_by: user?.id || null,
                                                   updated_at: new Date().toISOString(),
                                                 };
@@ -2650,7 +2469,7 @@ export default function TaskAssignmentLog() {
                                                 });
                                                 fetchCorporateCourseItems(courseListDomainId);
                                               }}
-                                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
                                             >
                                               Cancel
                                             </button>
@@ -2671,7 +2490,7 @@ export default function TaskAssignmentLog() {
                                                   status: row.status || '',
                                                 });
                                               }}
-                                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
                                             >
                                               Edit
                                             </button>
@@ -2752,6 +2571,7 @@ export default function TaskAssignmentLog() {
                           </>
                         )}
                       </div>
+                    </div>
                     </div>
                   );
                 })}
@@ -2957,13 +2777,19 @@ export default function TaskAssignmentLog() {
                                                   <button
                                                     type="button"
                                                     onClick={async () => {
+                                                      const safeTitle = (
+                                                        editingCorporateCourseDraft.course_title ??
+                                                        row.course_title ??
+                                                        ''
+                                                      ).trim();
                                                       const payload = {
-                                                        course_title:
-                                                          (editingCorporateCourseDraft.course_title || '').trim() ||
-                                                          'New course',
+                                                        course_title: safeTitle || 'New course',
                                                         course_type:
-                                                          editingCorporateCourseDraft.course_type || null,
-                                                        status: editingCorporateCourseDraft.status || null,
+                                                          (editingCorporateCourseDraft.course_type ??
+                                                            row.course_type) || null,
+                                                        status:
+                                                          (editingCorporateCourseDraft.status ??
+                                                            row.status) || null,
                                                         updated_by: user?.id || null,
                                                         updated_at: new Date().toISOString(),
                                                       };
@@ -3004,7 +2830,7 @@ export default function TaskAssignmentLog() {
                                                       });
                                                       fetchCorporateCourseItems(courseListDomainId);
                                                     }}
-                                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
                                                   >
                                                     Cancel
                                                   </button>
@@ -3030,7 +2856,7 @@ export default function TaskAssignmentLog() {
                                                         status: row.status || '',
                                                       });
                                                     }}
-                                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
                                                   >
                                                     Edit
                                                   </button>
@@ -4696,165 +4522,6 @@ export default function TaskAssignmentLog() {
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {activeMainTab === 'tl-vtl-tracker' && canAccessTLVTLTracker(userRole, userTeam) && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-          <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
-                TL/VTL Tracker
-              </h2>
-              <p className="mt-1 text-sm text-gray-600">
-                Track Team Leaders, Vice Team Leaders, and Representatives by department and team. Click Edit to change data, then Save.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {!isTlVtlTrackerEditMode ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setIsTlVtlTrackerEditMode(true)}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-                    style={{ backgroundColor: PRIMARY }}
-                  >
-                    Edit
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={addTlVtlTrackerRow}
-                    disabled={savingTlVtlTracker}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-60"
-                  >
-                    {savingTlVtlTracker ? 'Adding...' : 'Add row'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveAllTlVtlTrackerRows}
-                    disabled={savingTlVtlTracker}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
-                    style={{ backgroundColor: PRIMARY }}
-                  >
-                    {savingTlVtlTracker ? 'Saving...' : 'Save'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelTlVtlTrackerEdit}
-                    disabled={savingTlVtlTracker}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            {tlVtlTrackerRows.length === 0 ? (
-              <div className="py-12 text-center text-sm text-gray-500">
-                {isTlVtlTrackerEditMode ? 'No rows yet. Click &quot;Add row&quot; to add one.' : 'No rows yet. Click Edit then Add row to add one.'}
-              </div>
-            ) : (
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                    {isTlVtlTrackerEditMode && (
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Actions</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {tlVtlTrackerRows.map((row) => (
-                    <tr key={row.id} className="hover:bg-gray-50">
-                      {isTlVtlTrackerEditMode ? (
-                        <>
-                          <td className="px-4 py-2">
-                            <select
-                              value={row.department || 'IT'}
-                              onChange={(e) => setTlVtlTrackerRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, department: e.target.value } : r)))}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
-                            >
-                              {TL_VTL_DEPARTMENTS.map((d) => (
-                                <option key={d} value={d}>{d}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-4 py-2">
-                            <select
-                              value={row.team || 'Team Lead Assistant'}
-                              onChange={(e) => setTlVtlTrackerRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, team: e.target.value } : r)))}
-                              className="w-full min-w-[160px] rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
-                            >
-                              {TL_VTL_TEAMS.map((t) => (
-                                <option key={t} value={t}>{t}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-4 py-2">
-                            <select
-                              value={row.name || ''}
-                              onChange={(e) =>
-                                setTlVtlTrackerRows((prev) =>
-                                  prev.map((r) => (r.id === row.id ? { ...r, name: e.target.value } : r))
-                                )
-                              }
-                              className="w-full min-w-[160px] rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
-                            >
-                              <option value="">Select intern / TL / VTL</option>
-                              {tlVtlAssignableUsers.map((u) => (
-                                <option key={u.id} value={u.full_name || ''}>
-                                  {(u.full_name || '').trim() || u.email || 'Unnamed'}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-4 py-2">
-                            <select
-                              value={row.role || 'Team Leader'}
-                              onChange={(e) => setTlVtlTrackerRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, role: e.target.value } : r)))}
-                              className="w-full min-w-[140px] rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
-                            >
-                              {TL_VTL_ROLES.map((r) => (
-                                <option key={r} value={r}>{r}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-4 py-2">
-                            <button
-                              type="button"
-                              onClick={() => deleteTlVtlTrackerRow(row.id)}
-                              disabled={savingTlVtlTracker}
-                              className="p-1.5 rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
-                              title="Delete row"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="px-4 py-3 text-sm text-gray-900">{row.department || 'IT'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{row.team || 'Team Lead Assistant'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{row.name || ''}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{row.role || 'Team Leader'}</td>
-                        </>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
         </div>
       )}
 

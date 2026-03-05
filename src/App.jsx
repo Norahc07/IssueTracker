@@ -24,6 +24,7 @@ const OnboardingOffboarding = lazy(() => import('./pages/OnboardingOffboarding')
 const DailyReportForm = lazy(() => import('./pages/DailyReportForm'));
 const DailyReportManage = lazy(() => import('./pages/DailyReportManage'));
 const ScheduleFormPage = lazy(() => import('./pages/ScheduleFormPage'));
+const TrackerPage = lazy(() => import('./pages/TrackerPage'));
 
 function PageFallback() {
   return (
@@ -91,6 +92,7 @@ function AppContent() {
                 <Route path="/kanban" element={<Kanban />} />
                 <Route path="/organized-tickets" element={<OrganizedTickets />} />
                 <Route path="/tasks" element={<TaskAssignmentLog />} />
+                <Route path="/tracker" element={<TrackerPage />} />
                 <Route path="/domain-updates" element={<Navigate to="/tasks?tab=domain-updates" replace />} />
                 <Route path="/repository" element={<CentralizedRepository />} />
                 <Route path="/repository/view/:slug" element={<RepositoryView />} />
@@ -120,12 +122,10 @@ function AppContent() {
   );
 }
 
-function App() {
+export default function App() {
   return (
     <SupabaseProvider>
       <AppContent />
     </SupabaseProvider>
   );
 }
-
-export default App;
