@@ -15,7 +15,6 @@ const Kanban = lazy(() => import('./pages/Kanban'));
 const ReportIssue = lazy(() => import('./pages/ReportIssue'));
 const OrganizedTickets = lazy(() => import('./pages/OrganizedTickets'));
 const TaskAssignmentLog = lazy(() => import('./pages/TaskAssignmentLog'));
-const DomainUpdates = lazy(() => import('./pages/DomainUpdates'));
 const CentralizedRepository = lazy(() => import('./pages/CentralizedRepository'));
 const RepositoryView = lazy(() => import('./pages/RepositoryView'));
 const RolePermissions = lazy(() => import('./pages/RolePermissions'));
@@ -92,14 +91,7 @@ function AppContent() {
                 <Route path="/kanban" element={<Kanban />} />
                 <Route path="/organized-tickets" element={<OrganizedTickets />} />
                 <Route path="/tasks" element={<TaskAssignmentLog />} />
-                <Route
-                  path="/domain-updates"
-                  element={
-                    (role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl' || role === 'intern' || userTeam === 'tla')
-                      ? <DomainUpdates />
-                      : <Navigate to={getDashboardRoute()} replace />
-                  }
-                />
+                <Route path="/domain-updates" element={<Navigate to="/tasks?tab=domain-updates" replace />} />
                 <Route path="/repository" element={<CentralizedRepository />} />
                 <Route path="/repository/view/:slug" element={<RepositoryView />} />
                 <Route path="/role-permissions" element={(role === 'admin' || role === 'tla') ? <RolePermissions /> : <Navigate to={getDashboardRoute()} replace />} />

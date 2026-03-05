@@ -26,6 +26,7 @@ export default function DomainUpdates() {
     notes: '',
   });
   const [savingUpdate, setSavingUpdate] = useState(false);
+  const [showAddUpdateModal, setShowAddUpdateModal] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -115,6 +116,21 @@ export default function DomainUpdates() {
       ...prev,
       domain_id: domainId,
     }));
+    setShowAddUpdateModal(true);
+  };
+
+  const closeAddUpdateModal = () => {
+    setShowAddUpdateModal(false);
+    setCreateUpdateForm({
+      domain_id: '',
+      plugin_names: '',
+      version_before: '',
+      version_after: '',
+      update_status: 'Updated',
+      post_update_check: 'Ok',
+      status: '',
+      notes: '',
+    });
   };
 
   const handleCreateUpdate = async (e) => {
@@ -178,6 +194,7 @@ export default function DomainUpdates() {
         status: '',
         notes: '',
       });
+      setShowAddUpdateModal(false);
     } catch (err) {
       console.error('Create domain update error:', err);
       toast.error(err?.message || 'Failed to add domain update row.');
@@ -189,175 +206,201 @@ export default function DomainUpdates() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="animate-spin rounded-full h-10 w-10 border-2 border-[#6795BE] border-t-transparent" aria-label="Loading" />
+      <div className="flex items-center justify-center py-10">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#6795BE] border-t-transparent" aria-label="Loading" />
       </div>
     );
   }
 
   return (
-    <div className="w-full space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
-            Domain Updates
-          </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            View plugin update history for all old and new domains.
-          </p>
+    <div className="w-full">
+      <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setDomainTypeFilter('old');
+            }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              domainTypeFilter === 'old' ? 'text-white' : 'bg-gray-100 text-gray-700'
+            }`}
+            style={domainTypeFilter === 'old' ? { backgroundColor: PRIMARY } : {}}
+          >
+            Old Domains
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDomainTypeFilter('new');
+            }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              domainTypeFilter === 'new' ? 'text-white' : 'bg-gray-100 text-gray-700'
+            }`}
+            style={domainTypeFilter === 'new' ? { backgroundColor: PRIMARY } : {}}
+          >
+            New Domains
+          </button>
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 pb-3">
         <button
           type="button"
-          onClick={() => {
-            setDomainTypeFilter('old');
-          }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${
-            domainTypeFilter === 'old' ? 'text-white' : 'bg-gray-100 text-gray-700'
-          }`}
-          style={domainTypeFilter === 'old' ? { backgroundColor: PRIMARY } : {}}
+          onClick={() => setShowAddUpdateModal(true)}
+          className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+          style={{ backgroundColor: PRIMARY }}
         >
-          Old Domains
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setDomainTypeFilter('new');
-          }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${
-            domainTypeFilter === 'new' ? 'text-white' : 'bg-gray-100 text-gray-700'
-          }`}
-          style={domainTypeFilter === 'new' ? { backgroundColor: PRIMARY } : {}}
-        >
-          New Domains
+          Add update
         </button>
       </div>
 
-      {/* Add new update row for a domain */}
-      <form
-        onSubmit={handleCreateUpdate}
-        className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 space-y-3"
-      >
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Domain (no update yet)</label>
-            <select
-              value={createUpdateForm.domain_id}
-              onChange={(e) => setCreateUpdateForm((f) => ({ ...f, domain_id: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:ring-2 focus:ring-[#6795BE]"
-            >
-              <option value="">Select domain…</option>
-              {availableDomainsForNewUpdate.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.country || 'Unknown'}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex-1 min-w-[160px]">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Plugins updated</label>
-            <input
-              type="text"
-              value={createUpdateForm.plugin_names}
-              onChange={(e) => setCreateUpdateForm((f) => ({ ...f, plugin_names: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-              placeholder="e.g. Yoast SEO, WPForms"
-            />
-          </div>
-          <div className="flex-1 min-w-[120px]">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Version before</label>
-            <input
-              type="text"
-              value={createUpdateForm.version_before}
-              onChange={(e) => setCreateUpdateForm((f) => ({ ...f, version_before: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-              placeholder="e.g. 6.4.2"
-            />
-          </div>
-          <div className="flex-1 min-w-[120px]">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Version after</label>
-            <input
-              type="text"
-              value={createUpdateForm.version_after}
-              onChange={(e) => setCreateUpdateForm((f) => ({ ...f, version_after: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-              placeholder="e.g. 6.4.3"
-            />
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="min-w-[140px]">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Update status</label>
-            <select
-              value={createUpdateForm.update_status}
-              onChange={(e) => setCreateUpdateForm((f) => ({ ...f, update_status: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-            >
-              {UPDATE_STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="min-w-[150px]">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Post-update check</label>
-            <select
-              value={createUpdateForm.post_update_check}
-              onChange={(e) => setCreateUpdateForm((f) => ({ ...f, post_update_check: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-            >
-              {POST_UPDATE_CHECK_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          {domainTypeFilter === 'new' && (
-            <div className="min-w-[160px]">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Row Status</label>
-              <select
-                value={createUpdateForm.status}
-                onChange={(e) => setCreateUpdateForm((f) => ({ ...f, status: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+      {/* Add update modal */}
+      {showAddUpdateModal && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !savingUpdate) closeAddUpdateModal();
+          }}
+        >
+          <div className="min-h-[100dvh] w-full p-4 flex items-center justify-center">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg border border-gray-200 max-h-[90vh] overflow-y-auto">
+              <div className="p-5 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                  Add domain update
+                </h3>
+              </div>
+              <form
+                onSubmit={handleCreateUpdate}
+                className="p-5 space-y-4"
               >
-                <option value="">—</option>
-                {DOMAIN_ROW_STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Domain (no update yet)</label>
+              <select
+                value={createUpdateForm.domain_id}
+                onChange={(e) => setCreateUpdateForm((f) => ({ ...f, domain_id: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+              >
+                <option value="">Select domain…</option>
+                {filteredDomains.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.country || 'Unknown'}
                   </option>
                 ))}
               </select>
             </div>
-          )}
-          <div className="w-full sm:w-72">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Notes (optional)</label>
-            <input
-              type="text"
-              value={createUpdateForm.notes}
-              onChange={(e) => setCreateUpdateForm((f) => ({ ...f, notes: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
-              placeholder="Remarks, issues, etc."
-            />
-          </div>
-          <div className="flex items-end ml-auto">
-            <button
-              type="submit"
-              disabled={savingUpdate}
-              className="px-4 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50"
-              style={{ backgroundColor: PRIMARY }}
-            >
-              {savingUpdate ? 'Saving…' : 'Add update'}
-            </button>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Plugins updated</label>
+              <input
+                type="text"
+                value={createUpdateForm.plugin_names}
+                onChange={(e) => setCreateUpdateForm((f) => ({ ...f, plugin_names: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400"
+                placeholder="e.g. Yoast SEO, WPForms"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Version before</label>
+                <input
+                  type="text"
+                  value={createUpdateForm.version_before}
+                  onChange={(e) => setCreateUpdateForm((f) => ({ ...f, version_before: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400"
+                  placeholder="e.g. 6.4.2"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Version after</label>
+                <input
+                  type="text"
+                  value={createUpdateForm.version_after}
+                  onChange={(e) => setCreateUpdateForm((f) => ({ ...f, version_after: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400"
+                  placeholder="e.g. 6.4.3"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Update status</label>
+                <select
+                  value={createUpdateForm.update_status}
+                  onChange={(e) => setCreateUpdateForm((f) => ({ ...f, update_status: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  {UPDATE_STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Post-update check</label>
+                <select
+                  value={createUpdateForm.post_update_check}
+                  onChange={(e) => setCreateUpdateForm((f) => ({ ...f, post_update_check: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  {POST_UPDATE_CHECK_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {domainTypeFilter === 'new' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Row Status</label>
+                <select
+                  value={createUpdateForm.status}
+                  onChange={(e) => setCreateUpdateForm((f) => ({ ...f, status: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">—</option>
+                  {DOMAIN_ROW_STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+              <input
+                type="text"
+                value={createUpdateForm.notes}
+                onChange={(e) => setCreateUpdateForm((f) => ({ ...f, notes: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400"
+                placeholder="Remarks, issues, etc."
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={closeAddUpdateModal}
+                disabled={savingUpdate}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingUpdate}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                style={{ backgroundColor: PRIMARY }}
+              >
+                {savingUpdate ? 'Saving…' : 'Add update'}
+              </button>
+            </div>
+          </form>
+            </div>
           </div>
         </div>
-      </form>
+      )}
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+      <div className="overflow-x-auto">
           {updatesLoading ? (
             <div className="py-8 text-center text-sm text-gray-500">Loading domain updates…</div>
           ) : updatesForView.length === 0 ? (
@@ -468,7 +511,6 @@ export default function DomainUpdates() {
               </tbody>
             </table>
           )}
-        </div>
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { logAction } from '../utils/auditTrail.js';
 import { permissions } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
 import UdemyCourseTab from '../components/UdemyCourseTab.jsx';
+import DomainUpdates from './DomainUpdates.jsx';
 
 const PRIMARY = '#6795BE';
 const TASK_STATUSES = {
@@ -234,8 +235,10 @@ export default function TaskAssignmentLog() {
       ? 'udemy-course'
       : tabParam === 'course-list'
       ? 'course-list'
+      : tabParam === 'domain-updates'
+      ? 'domain-updates'
       : 'tasks'
-  ); // 'tasks' | 'udemy-course' | 'course-list' | 'domains' | 'domain-claims' | 'schedule-form' | 'tl-vtl-tracker'
+  ); // 'tasks' | 'udemy-course' | 'course-list' | 'domains' | 'domain-claims' | 'domain-updates' | 'schedule-form' | 'tl-vtl-tracker'
   const [scheduleSubTab, setScheduleSubTab] = useState(
     isTlaIntern
       ? 'interns'
@@ -265,10 +268,11 @@ export default function TaskAssignmentLog() {
     if (selectedTask) setIsEditingAllTasks(false);
   }, [selectedTask]);
 
-  // Open Domains, Domain Claims, Schedule Form, or TL/VTL Tracker tab when URL has ?tab=...
+  // Open Domains, Domain Claims, Domain Updates, Schedule Form, or TL/VTL Tracker tab when URL has ?tab=...
   useEffect(() => {
     if (tabParam === 'domains') setActiveMainTab('domains');
     if (tabParam === 'domain-claims') setActiveMainTab('domain-claims');
+    if (tabParam === 'domain-updates') setActiveMainTab('domain-updates');
     if (tabParam === 'schedule-form') setActiveMainTab('schedule-form');
     if (tabParam === 'tl-vtl-tracker') setActiveMainTab('tl-vtl-tracker');
     if (tabParam === 'udemy-course') setActiveMainTab('udemy-course');
@@ -425,11 +429,6 @@ export default function TaskAssignmentLog() {
       setCorporateCourseItems([]);
     }
   }, [activeMainTab, courseListDomainId]);
-
-  // Reset Course List pagination when domain or items change
-  useEffect(() => {
-    setCourseListPage(1);
-  }, [courseListDomainId, courseListItems.length]);
 
   const isTaskFormValid = () => {
     const name = (createTaskForm.name || '').trim();
@@ -1594,6 +1593,18 @@ export default function TaskAssignmentLog() {
             Domain Claims
           </button>
         )}
+        {(userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl' || (userRole === 'intern' && String(userTeam || '').toLowerCase() === 'tla')) && (
+          <button
+            type="button"
+            onClick={() => { setActiveMainTab('domain-updates'); setSearchParams({ tab: 'domain-updates' }); }}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeMainTab === 'domain-updates' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+            style={activeMainTab === 'domain-updates' ? { borderTopColor: PRIMARY } : {}}
+          >
+            Domain Updates
+          </button>
+        )}
         {canAccessScheduleFormTab(userRole, userTeam) && (
           <button
             type="button"
@@ -2102,7 +2113,11 @@ export default function TaskAssignmentLog() {
                             .select('*')
                             .single();
                           if (error) throw error;
-                          setCourseListItems((prev) => [...prev, data]);
+                          setCourseListItems((prev) => {
+                            const next = [...prev, data];
+                            setCourseListPage(Math.ceil(next.length / 10));
+                            return next;
+                          });
                           setEditingDomainCourseId(data.id);
                           setEditingDomainCourseDraft({
                             course_title: data.course_title || '',
@@ -2429,7 +2444,15 @@ export default function TaskAssignmentLog() {
                                   .select('*')
                                   .single();
                                 if (error) throw error;
-                                setCorporateCourseItems((prev) => [...prev, data]);
+                                setCorporateCourseItems((prev) => {
+                                  const next = [...prev, data];
+                                  const categoryRows = next.filter((r) => r.category === category);
+                                  setCorporateCoursePages((p) => ({
+                                    ...p,
+                                    [category]: Math.ceil(categoryRows.length / 10),
+                                  }));
+                                  return next;
+                                });
                                 setEditingCorporateCourseId(data.id);
                                 setEditingCorporateCourseDraft({
                                   course_title: data.course_title || '',
@@ -2772,7 +2795,15 @@ export default function TaskAssignmentLog() {
                                     .select('*')
                                     .single();
                                   if (error) throw error;
-                                  setCorporateCourseItems((prev) => [...prev, data]);
+                                  setCorporateCourseItems((prev) => {
+                                    const next = [...prev, data];
+                                    const categoryRows = next.filter((r) => r.category === category);
+                                    setCorporateCoursePages((p) => ({
+                                      ...p,
+                                      [category]: Math.ceil(categoryRows.length / 10),
+                                    }));
+                                    return next;
+                                  });
                                   setEditingCorporateCourseId(data.id);
                                   setEditingCorporateCourseDraft({
                                     course_title: data.course_title || '',
@@ -4035,6 +4066,26 @@ export default function TaskAssignmentLog() {
           )}
         </>
       )}
+
+      {activeMainTab === 'domain-updates' &&
+        (userRole === 'admin' ||
+          userRole === 'tla' ||
+          userRole === 'tl' ||
+          userRole === 'vtl' ||
+          (userRole === 'intern' && String(userTeam || '').toLowerCase() === 'tla')) && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                Domain Updates
+              </h2>
+              <p className="mt-1 text-sm text-gray-600">
+                View plugin update history for all old and new domains.
+              </p>
+            </div>
+
+            <DomainUpdates />
+          </div>
+        )}
 
       {activeMainTab === 'domain-claims' && (userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl' || (userRole === 'intern' && String(userTeam || '').toLowerCase() === 'tla')) && (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
