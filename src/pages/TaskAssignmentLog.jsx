@@ -162,6 +162,13 @@ const CORPORATE_COURSE_CATEGORIES = [
   'Teamwork and Collaboration Skill Courses',
 ];
 
+const SINGAPORE_COURSE_CATEGORIES = [
+  'Lunch Talk Course',
+  'Other Course',
+  'Determined Price Category',
+  '2025',
+];
+
 const formatHourLabel = (hour24) => {
   const h = ((hour24 + 11) % 12) + 1;
   const ampm = hour24 >= 12 ? 'PM' : 'AM';
@@ -410,6 +417,7 @@ export default function TaskAssignmentLog() {
   useEffect(() => {
     if (activeMainTab !== 'course-list') return;
     if (courseListDomainId) {
+      setCourseListPage(1);
       fetchCourseListItems(courseListDomainId);
       fetchCorporateCourseItems(courseListDomainId);
     } else {
@@ -1509,6 +1517,13 @@ export default function TaskAssignmentLog() {
 
   const filteredTasks = getFilteredTasks();
   const filteredDomains = getFilteredDomains();
+  const selectedCourseListDomain =
+    domains.find((d) => d.id === courseListDomainId) || null;
+  const isSingaporeCourseDomain =
+    selectedCourseListDomain &&
+    String(selectedCourseListDomain.country || '')
+      .trim()
+      .toLowerCase() === 'singapore';
 
   return (
     <div className="w-full space-y-4 sm:space-y-6">
@@ -2180,9 +2195,9 @@ export default function TaskAssignmentLog() {
                                     className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
                                   >
                                 <option value="">—</option>
-                                <option value="G">G (Generic)</option>
-                                <option value="S">S (Specialised)</option>
-                                <option value="G/S">G/S (Both)</option>
+                                <option value="G">G</option>
+                                <option value="S">S</option>
+                                <option value="G/S">G/S</option>
                                   </select>
                                 ) : (
                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
@@ -2362,7 +2377,7 @@ export default function TaskAssignmentLog() {
                           type="button"
                           onClick={() =>
                             setCourseListPage((p) =>
-                              Math.min(Math.ceil(courseListItems.length / 12), p + 1)
+                              Math.min(Math.ceil(courseListItems.length / 10), p + 1)
                             )
                           }
                           disabled={courseListPage >= Math.ceil(courseListItems.length / 10)}
@@ -2504,9 +2519,9 @@ export default function TaskAssignmentLog() {
                                           className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
                                         >
                                           <option value="">—</option>
-                                          <option value="G">G (Generic)</option>
-                                          <option value="S">S (Specialised)</option>
-                                          <option value="G/S">G/S (Both)</option>
+                                          <option value="G">G</option>
+                                          <option value="S">S</option>
+                                          <option value="G/S">G/S</option>
                                         </select>
                                       ) : (
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
@@ -2718,6 +2733,358 @@ export default function TaskAssignmentLog() {
                   );
                 })}
               </div>
+
+              {/* Singapore-specific course categories */}
+              {isSingaporeCourseDomain && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900">Singapore Course Categories</h3>
+                  {SINGAPORE_COURSE_CATEGORIES.map((category) => {
+                    const rows = corporateCourseItems.filter((r) => r.category === category);
+                    const page = corporateCoursePages[category] || 1;
+                    const totalPages = Math.max(1, Math.ceil(rows.length / 10));
+                    return (
+                      <div
+                        key={category}
+                        className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm"
+                      >
+                        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+                          <h4 className="text-sm font-semibold text-gray-900">{category}</h4>
+                          {canEditCourseList(userRole, userTeam) && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (editingCorporateCourseId) {
+                                  toast.error('Finish editing the current course row first.');
+                                  return;
+                                }
+                                setCorporateCourseLoading(true);
+                                try {
+                                  const { data, error } = await supabase
+                                    .from('corporate_course_items')
+                                    .insert({
+                                      category,
+                                      domain_id: courseListDomainId,
+                                      course_title: '',
+                                      course_type: null,
+                                      status: null,
+                                      updated_by: user?.id || null,
+                                    })
+                                    .select('*')
+                                    .single();
+                                  if (error) throw error;
+                                  setCorporateCourseItems((prev) => [...prev, data]);
+                                  setEditingCorporateCourseId(data.id);
+                                  setEditingCorporateCourseDraft({
+                                    course_title: data.course_title || '',
+                                    course_type: data.course_type || '',
+                                    status: data.status || '',
+                                  });
+                                } catch (err) {
+                                  console.warn('Add corporate_course_items error (Singapore):', err);
+                                  toast.error(err?.message || 'Failed to add course');
+                                } finally {
+                                  setCorporateCourseLoading(false);
+                                }
+                              }}
+                              disabled={corporateCourseLoading}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                              style={{ backgroundColor: PRIMARY }}
+                            >
+                              Add course
+                            </button>
+                          )}
+                        </div>
+                        <div className="overflow-x-auto">
+                          {rows.length === 0 ? (
+                            <div className="py-6 text-center text-xs text-gray-500">
+                              No courses yet for this category.
+                            </div>
+                          ) : (
+                            <>
+                              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                      Course title
+                                    </th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-28">
+                                      G / S
+                                    </th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-40">
+                                      Status
+                                    </th>
+                                    {canEditCourseList(userRole, userTeam) && (
+                                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide w-32">
+                                        Actions
+                                      </th>
+                                    )}
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-100">
+                                  {rows
+                                    .slice((page - 1) * 10, page * 10)
+                                    .map((row) => {
+                                      const canEdit = canEditCourseList(userRole, userTeam);
+                                      const isEditingRow = canEdit && editingCorporateCourseId === row.id;
+                                      const draft = isEditingRow ? editingCorporateCourseDraft : null;
+                                      return (
+                                        <tr key={row.id} className="hover:bg-gray-50">
+                                          <td className="px-4 py-2">
+                                            {isEditingRow ? (
+                                              <input
+                                                type="text"
+                                                value={draft?.course_title ?? ''}
+                                                onChange={(e) =>
+                                                  setEditingCorporateCourseDraft((prev) => ({
+                                                    ...prev,
+                                                    course_title: e.target.value,
+                                                  }))
+                                                }
+                                                placeholder="Enter course title"
+                                                className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                                              />
+                                            ) : (
+                                              <span className="text-gray-900">
+                                                {(row.course_title || '').trim() || '—'}
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="px-4 py-2">
+                                            {isEditingRow ? (
+                                              <select
+                                                value={draft?.course_type ?? ''}
+                                                onChange={(e) =>
+                                                  setEditingCorporateCourseDraft((prev) => ({
+                                                    ...prev,
+                                                    course_type: e.target.value,
+                                                  }))
+                                                }
+                                                className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                              >
+                                                <option value="">—</option>
+                                                <option value="G">G</option>
+                                                <option value="S">S</option>
+                                                <option value="G/S">G/S</option>
+                                              </select>
+                                            ) : (
+                                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                                {row.course_type || '—'}
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="px-4 py-2">
+                                            {isEditingRow ? (
+                                              <select
+                                                value={draft?.status ?? ''}
+                                                onChange={(e) =>
+                                                  setEditingCorporateCourseDraft((prev) => ({
+                                                    ...prev,
+                                                    status: e.target.value,
+                                                  }))
+                                                }
+                                                className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                              >
+                                                <option value="">—</option>
+                                                <option value="done">Done</option>
+                                                <option value="has_issue">Has issue</option>
+                                                <option value="in_progress">In-Progress</option>
+                                                <option value="different_title">Different title / Not in domain</option>
+                                              </select>
+                                            ) : (
+                                              <span
+                                                className={`
+                                                  inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                                  ${
+                                                    !row.status
+                                                      ? 'bg-gray-100 text-gray-500'
+                                                      : row.status === 'done'
+                                                      ? 'bg-emerald-100 text-emerald-700'
+                                                      : row.status === 'has_issue'
+                                                      ? 'bg-red-100 text-red-700'
+                                                      : row.status === 'different_title'
+                                                      ? 'bg-violet-100 text-violet-700'
+                                                      : 'bg-amber-100 text-amber-700'
+                                                  }
+                                                `}
+                                              >
+                                                {!row.status
+                                                  ? '—'
+                                                  : row.status === 'done'
+                                                  ? 'Done'
+                                                  : row.status === 'has_issue'
+                                                  ? 'Has issue'
+                                                  : row.status === 'different_title'
+                                                  ? 'Different title / Not in domain'
+                                                  : 'In-Progress'}
+                                              </span>
+                                            )}
+                                          </td>
+                                          {canEdit && (
+                                            <td className="px-4 py-2 text-right">
+                                              {isEditingRow ? (
+                                                <div className="flex items-center justify-end gap-2">
+                                                  <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                      const payload = {
+                                                        course_title:
+                                                          (editingCorporateCourseDraft.course_title || '').trim() ||
+                                                          'New course',
+                                                        course_type:
+                                                          editingCorporateCourseDraft.course_type || null,
+                                                        status: editingCorporateCourseDraft.status || null,
+                                                        updated_by: user?.id || null,
+                                                        updated_at: new Date().toISOString(),
+                                                      };
+                                                      setCorporateCourseLoading(true);
+                                                      try {
+                                                        await supabase
+                                                          .from('corporate_course_items')
+                                                          .update(payload)
+                                                          .eq('id', row.id);
+                                                        setCorporateCourseItems((prev) =>
+                                                          prev.map((r) =>
+                                                            r.id === row.id ? { ...r, ...payload } : r
+                                                          )
+                                                        );
+                                                        setEditingCorporateCourseId(null);
+                                                      } catch (err) {
+                                                        console.warn('Save corporate_course_items error:', err);
+                                                        toast.error(err?.message || 'Failed to save course');
+                                                        fetchCorporateCourseItems(courseListDomainId);
+                                                      } finally {
+                                                        setCorporateCourseLoading(false);
+                                                      }
+                                                    }}
+                                                    disabled={corporateCourseLoading}
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                                                    style={{ backgroundColor: PRIMARY }}
+                                                  >
+                                                    Save
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setEditingCorporateCourseId(null);
+                                                      setEditingCorporateCourseDraft({
+                                                        course_title: '',
+                                                        course_type: '',
+                                                        status: '',
+                                                      });
+                                                      fetchCorporateCourseItems(courseListDomainId);
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                                  >
+                                                    Cancel
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <div className="flex items-center justify-end gap-2">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      if (
+                                                        editingCorporateCourseId &&
+                                                        editingCorporateCourseId !== row.id
+                                                      ) {
+                                                        toast.error(
+                                                          'You can only edit one course row at a time.'
+                                                        );
+                                                        return;
+                                                      }
+                                                      setEditingCorporateCourseId(row.id);
+                                                      setEditingCorporateCourseDraft({
+                                                        course_title: row.course_title || '',
+                                                        course_type: row.course_type || '',
+                                                        status: row.status || '',
+                                                      });
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50"
+                                                  >
+                                                    Edit
+                                                  </button>
+                                                  {canDeleteCourseList(userRole, userTeam) && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={async () => {
+                                                        if (
+                                                          !window.confirm(
+                                                            'Delete this corporate course for this domain?'
+                                                          )
+                                                        ) {
+                                                          return;
+                                                        }
+                                                        try {
+                                                          await supabase
+                                                            .from('corporate_course_items')
+                                                            .delete()
+                                                            .eq('id', row.id);
+                                                          setCorporateCourseItems((prev) =>
+                                                            prev.filter((r) => r.id !== row.id)
+                                                          );
+                                                          if (editingCorporateCourseId === row.id) {
+                                                            setEditingCorporateCourseId(null);
+                                                          }
+                                                        } catch (err) {
+                                                          console.warn('Delete corporate_course_items error:', err);
+                                                          toast.error(err?.message || 'Failed to delete course');
+                                                        }
+                                                      }}
+                                                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-200 bg-white hover:bg-red-50"
+                                                    >
+                                                      Delete
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </td>
+                                          )}
+                                        </tr>
+                                      );
+                                    })}
+                                </tbody>
+                              </table>
+                              {rows.length > 10 && (
+                                <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 border-t border-gray-100">
+                                  <span>
+                                    Page {page} of {totalPages}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setCorporateCoursePages((prev) => ({
+                                        ...prev,
+                                        [category]: Math.max(1, page - 1),
+                                      }))
+                                    }
+                                    disabled={page === 1}
+                                    className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                                  >
+                                    Prev
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setCorporateCoursePages((prev) => ({
+                                        ...prev,
+                                        [category]: Math.min(totalPages, page + 1),
+                                      }))
+                                    }
+                                    disabled={page >= totalPages}
+                                    className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                                  >
+                                    Next
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </>
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-gray-500">
