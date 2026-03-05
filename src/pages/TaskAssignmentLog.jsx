@@ -135,8 +135,8 @@ const courseTypeToDb = (value) => {
   if (!value) return null;
   const v = String(value).trim();
   if (!v) return null;
-  // Some DBs use 'GS' instead of 'G/S' (check constraints can differ per environment).
-  if (v === 'G/S') return 'GS';
+  // DB check constraint allows only 'G', 'S', or 'G/S'.
+  if (v === 'GS') return 'G/S';
   return v;
 };
 
@@ -144,6 +144,7 @@ const courseTypeToUi = (value) => {
   if (!value) return '';
   const v = String(value).trim();
   if (!v) return '';
+  // Normalize any legacy 'GS' values back to 'G/S' for display.
   if (v === 'GS') return 'G/S';
   return v;
 };
