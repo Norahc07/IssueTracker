@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import { permissions } from '../utils/rolePermissions.js';
 import { getRoleDisplayName } from '../utils/rolePermissions.js';
 import DailyReportForm from './DailyReportForm.jsx';
+import { queryCache } from '../utils/queryCache.js';
 
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -55,6 +56,7 @@ export default function DailyReportManage() {
   const [interns, setInterns] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [questions, setQuestions] = useState([]);
+  const [onboardingRecords, setOnboardingRecords] = useState([]);
   const [savingQuestion, setSavingQuestion] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [newQuestionText, setNewQuestionText] = useState('');
@@ -75,6 +77,27 @@ export default function DailyReportManage() {
       fetchTeamReport();
     }
   }, [canManage, selectedDate, activeTab, teamReportDate]);
+
+  // Onboarding records contain department (source of truth for IT/HR/Marketing)
+  useEffect(() => {
+    if (!supabase || !canManage) return;
+    const cached = queryCache.get('onboarding:records');
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      setOnboardingRecords(cached);
+      return;
+    }
+    supabase
+      .from('onboarding_records')
+      .select('email, department, name')
+      .order('onboarding_datetime', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('DailyReportManage: onboarding_records fetch error', error);
+          return;
+        }
+        setOnboardingRecords(Array.isArray(data) ? data : []);
+      });
+  }, [supabase, canManage]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -107,6 +130,15 @@ export default function DailyReportManage() {
   const submittedMap = Object.fromEntries((submissions || []).map((s) => [s.user_id, s]));
   const selectedIntern = useMemo(() => interns.find((i) => i.id === responseUserId) || null, [interns, responseUserId]);
   const selectedSubmission = useMemo(() => (responseUserId ? submittedMap[responseUserId] : null), [submittedMap, responseUserId]);
+
+  const onboardingByEmail = useMemo(() => {
+    const map = new Map();
+    (onboardingRecords || []).forEach((r) => {
+      const email = (r.email || '').trim().toLowerCase();
+      if (email && !map.has(email)) map.set(email, r);
+    });
+    return map;
+  }, [onboardingRecords]);
 
   const openResponse = (userId) => {
     setResponseUserId(userId);
@@ -434,11 +466,15 @@ export default function DailyReportManage() {
                   interns.map((u) => {
                     const sub = submittedMap[u.id];
                     const submitted = !!sub;
+                    const emailKey = (u.email || '').trim().toLowerCase();
+                    const ob = onboardingByEmail.get(emailKey);
+                    const department = (ob?.department || '').trim() || '—';
+                    const displayName = (u.full_name || ob?.name || u.email || '—').trim() || '—';
                     return (
                       <tr key={u.id} className="border-t border-gray-100 hover:bg-gray-50">
                         <td className="px-4 py-3 text-gray-700">{selectedDate}</td>
-                        <td className="px-4 py-3 font-medium text-gray-900">{u.full_name || u.email || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600">{u.team || '—'}</td>
+                        <td className="px-4 py-3 font-medium text-gray-900">{displayName}</td>
+                        <td className="px-4 py-3 text-gray-600">{department}</td>
                         <td className="px-4 py-3 text-gray-600">{getRoleDisplayName(u.role)}</td>
                         <td className="px-4 py-3 text-gray-700">{submitted ? formatTime(sub.time_in) : '—'}</td>
                         <td className="px-4 py-3 text-gray-700">{submitted ? formatTime(sub.time_out) : '—'}</td>

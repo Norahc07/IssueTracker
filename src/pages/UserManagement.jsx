@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import {
@@ -9,20 +9,30 @@ import {
 } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
 
+// Map onboarding_records.team (e.g. 'TLA', 'Monitoring', 'PAT1') to users.team ('tla', 'monitoring', 'pat1')
+function onboardingTeamToUserTeam(obTeam) {
+  if (!obTeam) return '';
+  const v = String(obTeam).trim().toLowerCase();
+  if (v === 'tla' || v === 'team lead assistant' || v.includes('tla')) return TEAMS.TLA;
+  if (v === 'monitoring' || v === 'monitoring team' || v === 'monitoring_team') return TEAMS.MONITORING;
+  if (v === 'pat1' || v === 'pat 1') return TEAMS.PAT1;
+  return '';
+}
+
 const PRIMARY = '#6795BE';
-const ROLE_OPTIONS = [...new Set([...Object.values(ROLES), 'lead'])];
+const ROLE_OPTIONS = [ROLES.ADMIN, ROLES.INTERN, ROLES.TL, ROLES.VTL];
 const TEAM_OPTIONS = [
   { value: '', label: '—' },
-  { value: TEAMS.TLA, label: 'TLA' },
+  { value: TEAMS.TLA, label: 'Team Lead Assistant' },
   { value: TEAMS.MONITORING, label: 'Monitoring' },
   { value: TEAMS.PAT1, label: 'PAT1' },
 ];
 
 // Filter options based on team column
 const FILTER_OPTIONS = [
-  { value: '', label: 'All roles' },
+  { value: '', label: 'All teams' },
   { value: TEAMS.TLA, label: 'Team Lead Assistant' },
-  { value: TEAMS.MONITORING, label: 'Monitoring Team' },
+  { value: TEAMS.MONITORING, label: 'Monitoring' },
   { value: TEAMS.PAT1, label: 'PAT1' },
 ];
 
@@ -33,6 +43,7 @@ function canAccessUserManagement(role) {
 export default function UserManagement() {
   const { supabase, userRole } = useSupabase();
   const [users, setUsers] = useState([]);
+  const [onboardingRecords, setOnboardingRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [editRole, setEditRole] = useState('');
@@ -45,18 +56,60 @@ export default function UserManagement() {
     else setLoading(false);
   }, [supabase, userRole]);
 
+  // Fetch onboarding records for name/team fallback (source of truth for onboarded interns)
+  useEffect(() => {
+    if (!supabase || !canAccessUserManagement(userRole)) return;
+    const cached = queryCache.get('onboarding:records');
+    if (cached && Array.isArray(cached)) {
+      setOnboardingRecords(cached);
+      return;
+    }
+    supabase
+      .from('onboarding_records')
+      .select('id, name, email, team')
+      .order('onboarding_datetime', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('UserManagement: onboarding_records fetch error', error);
+          return;
+        }
+        setOnboardingRecords(Array.isArray(data) ? data : []);
+      });
+  }, [supabase, userRole]);
+
   // Normalize row from DB (handles id/email/role/full_name/team/created_at)
   const normalizeUser = (row) => {
     if (!row || typeof row !== 'object') return null;
+    const rawRole = row.role ?? ROLES.INTERN;
     return {
       id: row.id,
       email: row.email ?? row.email_address ?? null,
-      role: row.role ?? 'intern',
+      role: ROLE_OPTIONS.includes(rawRole) ? rawRole : ROLES.INTERN,
       full_name: row.full_name ?? row.fullname ?? row.name ?? null,
       team: row.team ?? null,
       created_at: row.created_at ?? null,
     };
   };
+
+  const onboardingByEmail = useMemo(() => {
+    const map = new Map();
+    (onboardingRecords || []).forEach((r) => {
+      const email = (r.email || '').trim().toLowerCase();
+      if (email && !map.has(email)) map.set(email, r);
+    });
+    return map;
+  }, [onboardingRecords]);
+
+  // Merge onboarding name/team into users for display (onboarding is source of truth when user fields are empty)
+  const usersWithOnboarding = useMemo(() => {
+    return users.map((u) => {
+      const emailKey = (u.email || '').trim().toLowerCase();
+      const ob = onboardingByEmail.get(emailKey);
+      const displayName = (u.full_name || ob?.name || '').trim() || u.email || '—';
+      const effectiveTeam = u.team || onboardingTeamToUserTeam(ob?.team) || '';
+      return { ...u, displayName, effectiveTeam };
+    });
+  }, [users, onboardingByEmail]);
 
   const fetchUsers = async (bypassCache = false) => {
     const cached = queryCache.get('user_management:users');
@@ -131,8 +184,8 @@ export default function UserManagement() {
 
   const startEdit = (user) => {
     setEditingId(user.id);
-    setEditRole(user.role || 'intern');
-    setEditTeam(user.team || '');
+    setEditRole(user.role || ROLES.INTERN);
+    setEditTeam(user.effectiveTeam || user.team || '');
   };
 
   const cancelEdit = () => {
@@ -141,21 +194,28 @@ export default function UserManagement() {
     setEditTeam('');
   };
 
-  // Calculate statistics
-  const stats = {
-    tlaCount: users.filter((u) => u.team === TEAMS.TLA).length,
-    pat1Count: users.filter((u) => u.team === TEAMS.PAT1).length,
-    monitoringCount: users.filter((u) => u.team === TEAMS.MONITORING).length,
-    totalUsers: users.length,
+  // Team display label (for showing in table)
+  const teamDisplayLabel = (teamValue) => {
+    if (!teamValue) return '—';
+    if (teamValue === TEAMS.TLA) return 'Team Lead Assistant';
+    if (teamValue === TEAMS.MONITORING) return 'Monitoring';
+    if (teamValue === TEAMS.PAT1) return 'PAT1';
+    return teamValue;
   };
 
-  const filteredUsers = users.filter((u) => {
-    // When a team filter is selected, show only users in that team.
-    const matchTeam = !filterTeam || u.team === filterTeam;
+  // Calculate statistics using effective team (includes onboarding fallback)
+  const stats = {
+    tlaCount: usersWithOnboarding.filter((u) => u.effectiveTeam === TEAMS.TLA).length,
+    pat1Count: usersWithOnboarding.filter((u) => u.effectiveTeam === TEAMS.PAT1).length,
+    monitoringCount: usersWithOnboarding.filter((u) => u.effectiveTeam === TEAMS.MONITORING).length,
+    totalUsers: usersWithOnboarding.length,
+  };
 
+  const filteredUsers = usersWithOnboarding.filter((u) => {
+    const matchTeam = !filterTeam || u.effectiveTeam === filterTeam;
     const matchSearch =
       !searchQuery.trim() ||
-      [u.email, u.full_name, u.role].some(
+      [u.email, u.displayName, u.full_name, u.role].some(
         (v) => v && String(v).toLowerCase().includes(searchQuery.toLowerCase())
       );
     return matchTeam && matchSearch;
@@ -262,7 +322,7 @@ export default function UserManagement() {
                 filteredUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-gray-50">
                     <td className="px-4 sm:px-6 py-3 text-sm text-gray-900">{user.email || '—'}</td>
-                    <td className="px-4 sm:px-6 py-3 text-sm text-gray-600">{user.full_name || '—'}</td>
+                    <td className="px-4 sm:px-6 py-3 text-sm text-gray-600">{user.displayName || '—'}</td>
                     <td className="px-4 sm:px-6 py-3">
                       {editingId === user.id ? (
                         <select
@@ -296,7 +356,7 @@ export default function UserManagement() {
                           <span className="text-gray-400">—</span>
                         )
                       ) : (
-                        <span className="text-sm text-gray-600">{user.team || '—'}</span>
+                        <span className="text-sm text-gray-600">{teamDisplayLabel(user.effectiveTeam) || '—'}</span>
                       )}
                     </td>
                     <td className="px-4 sm:px-6 py-3">

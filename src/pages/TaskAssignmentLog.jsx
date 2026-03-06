@@ -221,6 +221,7 @@ export default function TaskAssignmentLog() {
   const [tasks, setTasks] = useState([]);
   const [domains, setDomains] = useState([]);
   const [users, setUsers] = useState([]);
+  const [onboardingRecords, setOnboardingRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [claimingTaskId, setClaimingTaskId] = useState(null);
   const [activeMainTab, setActiveMainTab] = useState(
@@ -329,6 +330,27 @@ export default function TaskAssignmentLog() {
     fetchDomains();
     if (permissions.canCreateTasks(userRole)) fetchUsers();
   }, [supabase, userRole]);
+
+  // Onboarding records: source of truth for intern names (for Assigned To dropdown)
+  useEffect(() => {
+    if (!supabase) return;
+    const cached = queryCache.get('onboarding:records');
+    if (cached && Array.isArray(cached)) {
+      setOnboardingRecords(cached);
+      return;
+    }
+    supabase
+      .from('onboarding_records')
+      .select('name, email')
+      .order('onboarding_datetime', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('TaskAssignmentLog: onboarding_records fetch error', error);
+          return;
+        }
+        setOnboardingRecords(Array.isArray(data) ? data : []);
+      });
+  }, [supabase]);
 
   useEffect(() => {
     if (activeMainTab === 'domains' && domainTypeFilter === 'old') fetchDefaultAccounts();
@@ -1072,13 +1094,35 @@ export default function TaskAssignmentLog() {
     }
   };
 
+  // Onboarding name by email (source of truth for intern names when users.full_name is empty)
+  const onboardingByNameByEmail = useMemo(() => {
+    const map = new Map();
+    (onboardingRecords || []).forEach((r) => {
+      const email = (r.email || '').trim().toLowerCase();
+      const name = (r.name || '').trim();
+      if (email && name && !map.has(email)) map.set(email, name);
+    });
+    return map;
+  }, [onboardingRecords]);
+
+  // Assigned To: prefer users.full_name, then onboarding name by email, then 'Unnamed'
+  const getUserDisplayName = (u) => {
+    const fromUser = (u?.full_name || '').trim();
+    if (fromUser) return fromUser;
+    const email = (u?.email || '').trim().toLowerCase();
+    const fromOnboarding = email ? onboardingByNameByEmail.get(email) : null;
+    return (fromOnboarding || '').trim() || 'Unnamed';
+  };
+
   const getAssignedToDisplay = (task) => {
     if (!task) return 'Unassigned';
     const stored = (task.assigned_to_name || '').trim();
     if (stored && !stored.includes('@')) return stored;
     const u = task.assigned_to ? users.find((us) => String(us.id) === String(task.assigned_to)) : null;
-    const fromUser = (u?.full_name || '').trim() || u?.email || null;
-    return fromUser || (stored || '').trim() || 'Unassigned';
+    const nameOnly = (u?.full_name || '').trim()
+      || (u?.email ? onboardingByNameByEmail.get((u.email || '').trim().toLowerCase()) : null)
+      || null;
+    return nameOnly || (stored && !stored.includes('@') ? stored : null) || 'Unassigned';
   };
 
   const getStatusColor = (status) => {
@@ -1373,7 +1417,7 @@ export default function TaskAssignmentLog() {
                               >
                                 <option value="">Unassigned</option>
                                 {users.map((u) => (
-                                  <option key={u.id} value={u.id}>{(u.full_name || '').trim() || u.email || 'Unnamed'}</option>
+                                  <option key={u.id} value={u.id}>{getUserDisplayName(u)}</option>
                                 ))}
                               </select>
                             ) : (
@@ -3697,7 +3741,7 @@ export default function TaskAssignmentLog() {
                     <option value="">Unassigned</option>
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {(u.full_name || '').trim() || u.email || 'Unnamed'}
+                        {getUserDisplayName(u)}
                       </option>
                     ))}
                   </select>
