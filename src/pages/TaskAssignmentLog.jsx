@@ -123,14 +123,52 @@ const COURSE_LIST_DOMAIN_COUNTRIES = [
 const VALID_COURSE_TYPES = ['G', 'S', 'G/S'];
 const VALID_COURSE_STATUSES = ['done', 'has_issue', 'in_progress', 'different_title'];
 
+// DB check constraint allows only 'G', 'S', or 'G/S'. Returns one of these exactly.
 const courseTypeToDb = (value) => {
-  if (!value) return 'G';
-  const v = String(value).trim();
+  if (value == null || value === '') return 'G';
+  const v = String(value).trim().replace(/\s+/g, '');
   if (!v) return 'G';
-  // DB check constraint allows only 'G', 'S', or 'G/S'.
-  if (v === 'GS') return 'G/S';
-  if (VALID_COURSE_TYPES.includes(v)) return v;
+  if (v === 'GS' || v === 'G/S' || v.toLowerCase() === 'g/s') return 'G/S';
+  if (v === 'G') return 'G';
+  if (v === 'S') return 'S';
   return 'G';
+};
+
+// Strict whitelist: only send values that pass DB check constraint. Prevents any edge-case violations.
+// Uses strict equality against known literals to avoid unicode/encoding issues.
+const sanitizeCourseType = (value) => {
+  const normalized = courseTypeToDb(value);
+  if (normalized === 'S') return 'S';
+  if (normalized === 'G/S') return 'G/S';
+  return 'G';
+};
+
+// Guarantee payload values match DB check constraints (avoids constraint violation)
+const buildCorporateCoursePayload = (draft, row, userId) => {
+  const raw = draft?.course_type ?? courseTypeToUi(row?.course_type);
+  const courseType = sanitizeCourseType(raw);
+  const status = statusToDb(draft?.status ?? row?.status);
+  return {
+    course_title: ((draft?.course_title ?? row?.course_title ?? '').trim() || 'New course'),
+    course_type: courseType,
+    status,
+    updated_by: userId ?? null,
+    updated_at: new Date().toISOString(),
+  };
+};
+
+// Same validation for course_list_domain_items (same course_type/status constraints)
+const buildDomainCoursePayload = (draft, row, userId) => {
+  const raw = draft?.course_type ?? courseTypeToUi(row?.course_type);
+  const courseType = sanitizeCourseType(raw);
+  const status = statusToDb(draft?.status ?? row?.status);
+  return {
+    course_title: ((draft?.course_title ?? row?.course_title ?? '').trim() || 'New course'),
+    course_type: courseType,
+    status,
+    updated_by: userId ?? null,
+    updated_at: new Date().toISOString(),
+  };
 };
 
 const courseTypeToUi = (value) => {
@@ -1677,31 +1715,19 @@ export default function TaskAssignmentLog() {
                                 <td className="px-4 py-2 text-right">
                                   {isEditingRow ? (
                                     <div className="flex items-center justify-end gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={async () => {
-                                          const safeTitle = (
-                                            editingDomainCourseDraft.course_title ??
-                                            row.course_title ??
-                                            ''
-                                          ).trim();
-                                          const payload = {
-                                            course_title: safeTitle || 'New course',
-                                            course_type: courseTypeToDb(
-                                              editingDomainCourseDraft.course_type ??
-                                                courseTypeToUi(row.course_type)
-                                            ),
-                                            status: statusToDb(
-                                              editingDomainCourseDraft.status ?? row.status
-                                            ),
-                                            updated_by: user?.id || null,
-                                            updated_at: new Date().toISOString(),
-                                          };
-                                          setCourseListSaving(true);
-                                          try {
-                                            const { error } = await supabase
-                                              .from('course_list_domain_items')
-                                              .update(payload)
+                                        <button
+                                          type="button"
+                                          onClick={async () => {
+                                            const payload = buildDomainCoursePayload(
+                                              editingDomainCourseDraft,
+                                              row,
+                                              user?.id
+                                            );
+                                            setCourseListSaving(true);
+                                            try {
+                                              const { error } = await supabase
+                                                .from('course_list_domain_items')
+                                                .update(payload)
                                               .eq('id', row.id);
                                             if (error) throw error;
                                             setCourseListItems((prev) =>
@@ -2020,24 +2046,11 @@ export default function TaskAssignmentLog() {
                                             <button
                                               type="button"
                                               onClick={async () => {
-                                                const safeTitle = (
-                                                  editingCorporateCourseDraft.course_title ??
-                                                  row.course_title ??
-                                                  ''
-                                                ).trim();
-                                                const payload = {
-                                                  course_title: safeTitle || 'New course',
-                                                  course_type: courseTypeToDb(
-                                                    editingCorporateCourseDraft.course_type ??
-                                                      courseTypeToUi(row.course_type)
-                                                  ),
-                                                  status: statusToDb(
-                                                    editingCorporateCourseDraft.status ??
-                                                      row.status
-                                                  ),
-                                                  updated_by: user?.id || null,
-                                                  updated_at: new Date().toISOString(),
-                                                };
+                                                const payload = buildCorporateCoursePayload(
+                                                  editingCorporateCourseDraft,
+                                                  row,
+                                                  user?.id
+                                                );
                                                 setCorporateCourseLoading(true);
                                                 try {
                                                   const { error } = await supabase
@@ -2382,24 +2395,11 @@ export default function TaskAssignmentLog() {
                                                   <button
                                                     type="button"
                                                     onClick={async () => {
-                                                      const safeTitle = (
-                                                        editingCorporateCourseDraft.course_title ??
-                                                        row.course_title ??
-                                                        ''
-                                                      ).trim();
-                                                      const payload = {
-                                                        course_title: safeTitle || 'New course',
-                                                        course_type: courseTypeToDb(
-                                                          editingCorporateCourseDraft.course_type ??
-                                                            courseTypeToUi(row.course_type)
-                                                        ),
-                                                        status: statusToDb(
-                                                          editingCorporateCourseDraft.status ??
-                                                            row.status
-                                                        ),
-                                                        updated_by: user?.id || null,
-                                                        updated_at: new Date().toISOString(),
-                                                      };
+                                                      const payload = buildCorporateCoursePayload(
+                                                        editingCorporateCourseDraft,
+                                                        row,
+                                                        user?.id
+                                                      );
                                                       setCorporateCourseLoading(true);
                                                       try {
                                                         const { error } = await supabase
