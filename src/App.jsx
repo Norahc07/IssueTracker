@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { SupabaseProvider } from './context/supabase.jsx';
 import { useSupabase } from './context/supabase.jsx';
+import { PresenceProvider } from './context/PresenceContext.jsx';
 import SidebarLayout from './components/SidebarLayout.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 
@@ -79,11 +80,12 @@ function AppContent() {
           </Suspense>
         </ErrorBoundary>
       ) : user ? (
-        <ErrorBoundary>
-          <Suspense fallback={<PageFallback />}>
-            <Routes>
-              <Route path="/" element={<Navigate to={getDashboardRoute()} replace />} />
-              <Route element={<SidebarLayout />}>
+        <PresenceProvider>
+          <ErrorBoundary>
+            <Suspense fallback={<PageFallback />}>
+              <Routes>
+                <Route path="/" element={<Navigate to={getDashboardRoute()} replace />} />
+                <Route element={<SidebarLayout />}>
                 <Route path="/report" element={<ReportIssue />} />
                 <Route path="/admin/dashboard" element={(role === 'admin' || role === 'tla') ? <AdminDashboard /> : <Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/lead/dashboard" element={(role === 'lead' || role === 'tl' || role === 'vtl' || role === 'monitoring_team' || role === 'pat1') ? <LeadDashboard /> : <Navigate to={getDashboardRoute()} replace />} />
@@ -107,6 +109,7 @@ function AppContent() {
             </Routes>
           </Suspense>
         </ErrorBoundary>
+        </PresenceProvider>
       ) : (
         <Navigate to="/login" replace />
       )}

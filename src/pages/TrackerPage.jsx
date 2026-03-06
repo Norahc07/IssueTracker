@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { permissions } from '../utils/rolePermissions.js';
+import ScheduleTab from '../components/ScheduleTab.jsx';
 
 const PRIMARY = '#6795BE';
 const TL_VTL_DEPARTMENTS = ['IT', 'HR', 'Marketing'];
@@ -22,6 +23,10 @@ const canAccessTracker = (userRole, userTeam) => {
 
 export default function TrackerPage() {
   const { supabase, userRole, userTeam } = useSupabase();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab'); // 'tl-vtl' | 'schedule'
+  const trackerTab = tabParam === 'schedule' ? 'schedule' : 'tl-vtl';
+
   const [users, setUsers] = useState([]);
   const [tlVtlTrackerRows, setTlVtlTrackerRows] = useState([]);
   const [savingTlVtlTracker, setSavingTlVtlTracker] = useState(false);
@@ -185,14 +190,41 @@ export default function TrackerPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
-            TL/VTL Tracker
+            Tracker
           </h1>
           <p className="mt-1 text-sm text-gray-600">
-            Track Team Leaders, Vice Team Leaders, and Representatives by department and team. Click Edit to change data, then Save.
+            TL/VTL tracker and schedule form. Use the tabs below to switch between views.
           </p>
         </div>
       </div>
 
+      <div className="flex gap-2 border-b border-gray-200">
+        <button
+          type="button"
+          onClick={() => setSearchParams({ tab: 'tl-vtl' })}
+          className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+            trackerTab === 'tl-vtl' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+          style={trackerTab === 'tl-vtl' ? { borderTopColor: PRIMARY } : {}}
+        >
+          TL/VTL
+        </button>
+        <button
+          type="button"
+          onClick={() => setSearchParams({ tab: 'schedule' })}
+          className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+            trackerTab === 'schedule' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+          style={trackerTab === 'schedule' ? { borderTopColor: PRIMARY } : {}}
+        >
+          Schedule
+        </button>
+      </div>
+
+      {trackerTab === 'schedule' ? (
+        <ScheduleTab />
+      ) : (
+        <>
       <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
         {!isTlVtlTrackerEditMode ? (
           <button
@@ -338,6 +370,8 @@ export default function TrackerPage() {
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

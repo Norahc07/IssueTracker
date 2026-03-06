@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSupabase } from '../context/supabase.jsx';
+import { usePresence } from '../context/PresenceContext.jsx';
 import { toast } from 'react-hot-toast';
 import { queryCache } from '../utils/queryCache.js';
 
@@ -158,9 +159,10 @@ function mapUserTeamToOnboardingTeam(raw) {
 
 export default function OnboardingOffboarding() {
   const { supabase, user, userRole } = useSupabase();
+  const { getStatus } = usePresence();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const onboardingInnerParam = searchParams.get('onboarding_tab'); // 'records' | 'requirements' | 'requirementsTracker'
+  const onboardingInnerParam = searchParams.get('onboarding_tab'); // 'records' | 'requirements' | 'requirementsTracker' | 'internStatus'
   const offboardingInnerParam = searchParams.get('offboarding_tab'); // 'records' | 'requirements' | 'requirementsTracker'
   const hasOffboardingFlag = !!offboardingInnerParam;
   const [loading, setLoading] = useState(true);
@@ -176,8 +178,10 @@ export default function OnboardingOffboarding() {
       ? 'requirements'
       : onboardingInnerParam === 'requirementsTracker'
       ? 'requirementsTracker'
+      : onboardingInnerParam === 'internStatus'
+      ? 'internStatus'
       : 'records'
-  ); // 'records' | 'requirements' | 'requirementsTracker'
+  ); // 'records' | 'requirements' | 'requirementsTracker' | 'internStatus'
   const [offboardingInnerTab, setOffboardingInnerTab] = useState(
     offboardingInnerParam === 'requirements'
       ? 'requirements'
@@ -239,6 +243,7 @@ export default function OnboardingOffboarding() {
   const [viewOffboardingRequirementsRow, setViewOffboardingRequirementsRow] = useState(null); // { user, req, off }
   const [onboardingVerifiedByName, setOnboardingVerifiedByName] = useState(null);
   const [offboardingVerifiedByName, setOffboardingVerifiedByName] = useState(null);
+  const [, setStatusTick] = useState(0); // force re-render for Intern Status every minute
 
   const isTlaTeam = userTeam && String(userTeam).toLowerCase() === 'tla';
 
@@ -255,7 +260,10 @@ export default function OnboardingOffboarding() {
   const onboardingTabs = useMemo(() => {
     const tabs = [{ id: 'records', label: 'Records' }];
     if (canSubmitRequirements) tabs.push({ id: 'requirements', label: 'Requirements' });
-    if (canManageRequirements) tabs.push({ id: 'requirementsTracker', label: 'Requirements tracker' });
+    if (canManageRequirements) {
+      tabs.push({ id: 'requirementsTracker', label: 'Requirements tracker' });
+      tabs.push({ id: 'internStatus', label: 'Intern Status' });
+    }
     return tabs;
   }, [canSubmitRequirements, canManageRequirements]);
 
@@ -270,7 +278,8 @@ export default function OnboardingOffboarding() {
     fetchData();
   }, [supabase, user?.id, canManageRequirements]);
 
-  const fetchData = async (bypassCache = false) => {
+  const fetchData = async (bypassCache = false, options = {}) => {
+    const { skipInternUsers = false } = options;
     setLoading(true);
     try {
       if (user?.id) {
@@ -283,16 +292,25 @@ export default function OnboardingOffboarding() {
       }
 
       // Load users list for requirements tracker (staff view) - interns + TL/VTL of any team
-      if (canManageRequirements) {
+      // Skip after terminate so we don't overwrite local state with DB (user may still be in DB if RLS blocks delete)
+      if (canManageRequirements && !skipInternUsers) {
         const { data: internsData, error: internsErr } = await supabase
           .from('users')
-          .select('id, full_name, email, role, team')
+          .select('*')
           .in('role', ['intern', 'tl', 'vtl'])
           .order('full_name', { ascending: true });
         if (internsErr) {
           console.warn('Interns fetch error:', internsErr);
         }
-        setInternUsers(Array.isArray(internsData) ? internsData : []);
+        const raw = Array.isArray(internsData) ? internsData : [];
+        const normalized = raw.map((row) => ({
+          id: row.id,
+          email: row.email ?? null,
+          role: row.role ?? 'intern',
+          team: row.team ?? null,
+          full_name: (row.full_name ?? row.fullname ?? row.name ?? '').trim() || null,
+        }));
+        setInternUsers(normalized);
       }
 
       if (!bypassCache) {
@@ -380,6 +398,13 @@ export default function OnboardingOffboarding() {
     }
   }, [allYears, activeYear]);
 
+  // Re-render every minute when on Intern Status so online/inactive/offline counts stay current
+  useEffect(() => {
+    if (onboardingInnerTab !== 'internStatus') return;
+    const t = setInterval(() => setStatusTick((n) => n + 1), 60 * 1000);
+    return () => clearInterval(t);
+  }, [onboardingInnerTab]);
+
   const offboardedEmailSet = useMemo(() => {
     const set = new Set();
     offboarding.forEach((r) => {
@@ -435,25 +460,40 @@ export default function OnboardingOffboarding() {
       const target = onboarding.find((r) => r.id === id) || null;
       const targetEmail = (target?.email || onboardingForm.email || '').trim().toLowerCase() || null;
 
-      // Delete onboarding record
+      // Delete onboarding record (permanent)
       const { error } = await supabase.from('onboarding_records').delete().eq('id', id);
       if (error) throw error;
 
-      // Optionally delete matching user account so the intern fully disappears from the system
+      // Permanently delete matching user so they do not reappear after refresh (table merges onboarding + users)
       if (targetEmail) {
-        try {
-          await supabase.from('users').delete().eq('email', targetEmail);
-          setInternUsers((prev) =>
-            prev.filter((u) => (u.email || '').trim().toLowerCase() !== targetEmail)
-          );
-        } catch (userErr) {
-          console.warn('Terminate onboarding: users delete error (continuing):', userErr);
+        const { data: userRow } = await supabase
+          .from('users')
+          .select('id')
+          .ilike('email', targetEmail)
+          .maybeSingle();
+        if (userRow?.id) {
+          const { error: userErr } = await supabase.from('users').delete().eq('id', userRow.id);
+          if (userErr) {
+            console.warn('Terminate onboarding: users delete error:', userErr);
+            toast.error('Onboarding removed but user account could not be deleted. They may reappear after refresh.');
+          }
         }
+        setInternUsers((prev) =>
+          prev.filter((u) => (u.email || '').trim().toLowerCase() !== targetEmail)
+        );
       }
 
       setOnboarding((prev) => prev.filter((r) => r.id !== id));
       queryCache.invalidate('onboarding:records');
-      toast.success('Intern has been terminated and removed from onboarding records.');
+      queryCache.invalidate('offboarding:records');
+      await fetchData(true, { skipInternUsers: true });
+      setOnboarding((prev) => prev.filter((r) => r.id !== id));
+      if (targetEmail) {
+        setInternUsers((prev) =>
+          prev.filter((u) => (u.email || '').trim().toLowerCase() !== targetEmail)
+        );
+      }
+      toast.success('Intern has been terminated and permanently removed from the system.');
       setEditingOnboardingId(null);
       setShowOnboardingModal(false);
       setShowTerminateOnboardingModal(false);
@@ -551,6 +591,7 @@ export default function OnboardingOffboarding() {
     }
     setTerminatingIntern(true);
     const target = terminateTarget.onboarding;
+    const targetEmail = (target?.email || '').trim().toLowerCase() || null;
     try {
       const { error } = await supabase
         .from('onboarding_records')
@@ -558,9 +599,43 @@ export default function OnboardingOffboarding() {
         .eq('id', target.id);
       if (error) throw error;
 
+      // Permanently delete user so they do not reappear after refresh (delete by id when we have it)
+      const userToRemove = terminateTarget.user;
+      if (userToRemove?.id) {
+        const { error: userErr } = await supabase.from('users').delete().eq('id', userToRemove.id);
+        if (userErr) {
+          console.warn('Terminate intern: users delete error:', userErr);
+          toast.error('Onboarding removed but user account could not be deleted. They may reappear after refresh.');
+        }
+        setInternUsers((prev) => prev.filter((u) => u.id !== userToRemove.id));
+      } else if (targetEmail) {
+        const { data: userRow } = await supabase
+          .from('users')
+          .select('id')
+          .ilike('email', targetEmail)
+          .maybeSingle();
+        if (userRow?.id) {
+          const { error: userErr } = await supabase.from('users').delete().eq('id', userRow.id);
+          if (userErr) console.warn('Terminate intern: users delete error:', userErr);
+        }
+        setInternUsers((prev) =>
+          prev.filter((u) => (u.email || '').trim().toLowerCase() !== targetEmail)
+        );
+      }
+
       setOnboarding((prev) => prev.filter((r) => r.id !== target.id));
       queryCache.invalidate('onboarding:records');
-      toast.success('Intern terminated and onboarding record deleted.');
+      queryCache.invalidate('offboarding:records');
+      await fetchData(true, { skipInternUsers: true });
+      setOnboarding((prev) => prev.filter((r) => r.id !== target.id));
+      if (terminateTarget.user?.id) {
+        setInternUsers((prev) => prev.filter((u) => u.id !== terminateTarget.user.id));
+      } else if (targetEmail) {
+        setInternUsers((prev) =>
+          prev.filter((u) => (u.email || '').trim().toLowerCase() !== targetEmail)
+        );
+      }
+      toast.success('Intern terminated and permanently removed from the system.');
     } catch (err) {
       console.error('Terminate intern error:', err);
       toast.error(err?.message || 'Failed to terminate intern.');
@@ -1101,6 +1176,97 @@ export default function OnboardingOffboarding() {
               </div>
             </div>
           )}
+
+          {onboardingInnerTab === 'internStatus' && (
+            <div className="space-y-3">
+              {(() => {
+                const statusCounts = { online: 0, inactive: 0, offline: 0 };
+                internUsers.forEach((u) => {
+                  const s = getStatus(u.id);
+                  if (s === 'online') statusCounts.online += 1;
+                  else if (s === 'inactive') statusCounts.inactive += 1;
+                  else statusCounts.offline += 1;
+                });
+                return (
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium text-green-600">{statusCounts.online} online</span>
+                    {' · '}
+                    <span className="font-medium text-amber-600">{statusCounts.inactive} inactive</span>
+                    {' · '}
+                    <span className="font-medium text-gray-500">{statusCounts.offline} offline</span>
+                  </p>
+                );
+              })()}
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Department</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Team</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {internUsers.map((u) => {
+                      const status = getStatus(u.id);
+                      const emailKey = (u.email || '').trim().toLowerCase();
+                      const ob = onboardingByEmail.get(emailKey);
+                      const displayName = (u.full_name || ob?.name || u.email || '—').trim() || '—';
+                      const department = ob?.department || '—';
+                      const team = formatTeamLabel(u.team || ob?.team) || '—';
+                      return (
+                        <tr key={u.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-900">{displayName}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{u.email || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{department}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{team}</td>
+                          <td className="px-4 py-3 text-sm">
+                            <span
+                              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium"
+                              style={{
+                                backgroundColor:
+                                  status === 'online'
+                                    ? 'rgba(34, 197, 94, 0.15)'
+                                    : status === 'inactive'
+                                      ? 'rgba(234, 179, 8, 0.2)'
+                                      : 'rgba(156, 163, 175, 0.2)',
+                                color:
+                                  status === 'online'
+                                    ? '#15803d'
+                                    : status === 'inactive'
+                                      ? '#a16207'
+                                      : '#6b7280',
+                              }}
+                            >
+                              <span
+                                className="h-1.5 w-1.5 rounded-full flex-shrink-0"
+                                style={{
+                                  backgroundColor:
+                                    status === 'online' ? '#22c55e' : status === 'inactive' ? '#eab308' : '#9ca3af',
+                                }}
+                              />
+                              {status === 'online' && 'Online'}
+                              {status === 'inactive' && 'Inactive'}
+                              {status === 'offline' && 'Offline'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {internUsers.length === 0 && (
+                      <tr>
+                        <td className="px-4 py-4 text-sm text-gray-500 text-center" colSpan={5}>
+                          No intern users found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1317,8 +1483,8 @@ export default function OnboardingOffboarding() {
               <tbody className="divide-y divide-gray-200">
                 {requirementsTrackerRows.map(({ user: u, req, on }) => (
                   <tr key={u.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900">{u.full_name || req?.name || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{u.email || req?.email || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{(on?.name || u.full_name || req?.name || '').trim() || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{u.email || req?.email || on?.email || '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {req?.department || on?.department || '—'}
                     </td>
@@ -1603,26 +1769,27 @@ export default function OnboardingOffboarding() {
             </div>
             <div className="px-6 py-4 space-y-4 overflow-y-auto">
               {(() => {
-                const { user: u, req } = viewOnboardingRequirementsRow;
+                const { user: u, req, on } = viewOnboardingRequirementsRow;
+                const displayName = (on?.name || u?.full_name || req?.name || '').trim() || '—';
                 const overallStatus = req ? (req.status === 'verified' ? 'Verified' : 'Pending') : 'Pending';
                 return (
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                       <div>
                         <div className="text-xs font-medium text-gray-500">Name</div>
-                        <div className="text-gray-900">{u?.full_name || req?.name || '—'}</div>
+                        <div className="text-gray-900">{displayName}</div>
                       </div>
                       <div>
                         <div className="text-xs font-medium text-gray-500">Email</div>
-                        <div className="text-gray-900">{u?.email || req?.email || '—'}</div>
+                        <div className="text-gray-900">{u?.email || req?.email || on?.email || '—'}</div>
                       </div>
                       <div>
                         <div className="text-xs font-medium text-gray-500">Department</div>
-                        <div className="text-gray-900">{req?.department || '—'}</div>
+                        <div className="text-gray-900">{req?.department || on?.department || '—'}</div>
                       </div>
                       <div>
                         <div className="text-xs font-medium text-gray-500">Team</div>
-                        <div className="text-gray-900">{req?.team || u?.team || '—'}</div>
+                        <div className="text-gray-900">{formatTeamLabel(req?.team || on?.team || u?.team) || '—'}</div>
                       </div>
                       <div>
                         <div className="text-xs font-medium text-gray-500">Overall status</div>
