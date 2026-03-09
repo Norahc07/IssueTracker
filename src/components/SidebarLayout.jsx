@@ -77,12 +77,24 @@ export default function SidebarLayout() {
               return userRole === 'admin' || userRole === 'tla' || userRole === 'intern' || isTla || ((userRole === 'tl' || userRole === 'vtl') && isTla);
             };
             if (item.to === '/tracker' && !canAccessTracker()) return null;
+            
+            let to = item.to === 'dashboard' ? getDashboardPath() : item.to;
+
+            // Tasks routing for different teams
+            if (item.to === '/tasks' && userRole !== 'admin') {
+              const tStr = String(userTeam || '').toLowerCase();
+              if (tStr === 'pat1' || tStr === 'pat 1') return null;
+              if (tStr === 'monitoring' || tStr === 'monitoring_team') {
+                to = '/monitoring-tasks';
+              }
+            }
+
             // Hide Daily Report (submit form) from admin, TLA, TL, VTL — they use Manage Daily Report only
             if (item.to === '/daily-report' && (userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl')) {
               return null;
             }
-            const to = item.to === 'dashboard' ? getDashboardPath() : item.to;
-            const active = isActive(item.to);
+            
+            const active = isActive(to === '/monitoring-tasks' ? '/monitoring-tasks' : item.to);
             return (
               <Link
                 key={item.to}

@@ -50,13 +50,16 @@
   border: 1px solid #e5e7eb;
   text-align: center;
   font-weight: 600;
-  white-space: nowrap;
+  /* Allow text to wrap to prevent horizontal scrolling */
+  white-space: normal;
 }
 
 .repository-content tbody td {
   padding: 0.45rem 0.4rem;
   border: 1px solid #e5e7eb;
   text-align: center;
+  /* Allow breaking long words to prevent horizontal scrolling */
+  word-break: break-word;
 }
 
 .repository-content tbody tr:nth-child(even) {

@@ -26,6 +26,7 @@ const DailyReportForm = lazy(() => import('./pages/DailyReportForm'));
 const DailyReportManage = lazy(() => import('./pages/DailyReportManage'));
 const ScheduleFormPage = lazy(() => import('./pages/ScheduleFormPage'));
 const TrackerPage = lazy(() => import('./pages/TrackerPage'));
+const MonitoringTasks = lazy(() => import('./pages/MonitoringTasks'));
 
 function PageFallback() {
   return (
@@ -56,6 +57,19 @@ function AppContent() {
     if (role === 'admin' || role === 'tla') return '/admin/dashboard';
     if (role === 'lead' || role === 'tl' || role === 'vtl' || role === 'monitoring_team' || role === 'pat1') return '/lead/dashboard';
     return '/intern/dashboard';
+  };
+
+  const canAccessTasks = () => {
+    if (role === 'admin') return true;
+    const tStr = String(userTeam || '').toLowerCase();
+    if (tStr === 'pat1' || tStr === 'pat 1' || tStr === 'monitoring' || tStr === 'monitoring_team') return false;
+    return true; 
+  };
+
+  const canAccessMonitoringTasks = () => {
+    if (role === 'admin') return true;
+    const tStr = String(userTeam || '').toLowerCase();
+    return tStr === 'monitoring' || tStr === 'monitoring_team';
   };
 
   if (isScheduleFormPage) {
@@ -93,9 +107,10 @@ function AppContent() {
                 <Route path="/dashboard" element={<Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/kanban" element={<Kanban />} />
                 <Route path="/organized-tickets" element={<OrganizedTickets />} />
-                <Route path="/tasks" element={<TaskAssignmentLog />} />
+                <Route path="/tasks" element={canAccessTasks() ? <TaskAssignmentLog /> : <Navigate to={getDashboardRoute()} replace />} />
+                <Route path="/monitoring-tasks" element={<MonitoringTasks />} />
                 <Route path="/tracker" element={<TrackerPage />} />
-                <Route path="/domain-updates" element={<Navigate to="/tasks?tab=domain-updates" replace />} />
+                <Route path="/domain-updates" element={canAccessTasks() ? <Navigate to="/tasks?tab=domain-updates" replace /> : <Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/repository" element={<CentralizedRepository />} />
                 <Route path="/repository/view/:slug" element={<RepositoryView />} />
                 <Route path="/role-permissions" element={(role === 'admin' || role === 'tla') ? <RolePermissions /> : <Navigate to={getDashboardRoute()} replace />} />
