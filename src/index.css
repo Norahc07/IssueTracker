@@ -25,13 +25,50 @@
 }
 
 /* Repository detail: rich text content from Quill */
+.repository-content {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  overflow-x: hidden;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.repository-content * {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Ensure Quill editor doesn't have horizontal scroll */
+.ql-editor {
+  overflow-wrap: break-word !important;
+  word-wrap: break-word !important;
+  word-break: break-word !important;
+  overflow-x: hidden !important;
+}
+.ql-editor pre, .ql-editor .ql-syntax {
+  white-space: pre-wrap !important;
+  word-break: break-all !important;
+  overflow-x: hidden !important;
+}
+.ql-editor table {
+  table-layout: fixed !important;
+  width: 100% !important;
+}
+
+.repository-content pre, .repository-content .ql-syntax {
+  white-space: pre-wrap !important;
+  word-break: break-all;
+}
 .repository-content h1 { font-size: 1.5rem; font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; }
 .repository-content h2 { font-size: 1.25rem; font-weight: 600; margin-top: 0.875rem; margin-bottom: 0.5rem; }
 .repository-content h3, .repository-content h4, .repository-content h5, .repository-content h6 { font-size: 1.125rem; font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.25rem; }
-.repository-content p { margin-bottom: 0.75rem; }
+.repository-content p, .repository-content li, .repository-content div { 
+  margin-bottom: 0.75rem; 
+  word-break: break-word; 
+  overflow-wrap: anywhere; 
+}
 .repository-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }
 .repository-content ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }
-.repository-content a { color: #6795BE; text-decoration: underline; }
+.repository-content a { color: #6795BE; text-decoration: underline; word-break: break-all; overflow-wrap: anywhere; }
 .repository-content a:hover { opacity: 0.9; }
 .repository-content img { max-width: 100%; height: auto; }
 
@@ -41,6 +78,8 @@
   border-collapse: collapse;
   margin: 1rem 0;
   font-size: 0.875rem;
+  table-layout: fixed;
+  word-wrap: break-word;
 }
 
 .repository-content thead th {
@@ -50,16 +89,16 @@
   border: 1px solid #e5e7eb;
   text-align: center;
   font-weight: 600;
-  /* Allow text to wrap to prevent horizontal scrolling */
   white-space: normal;
+  word-wrap: break-word;
 }
 
 .repository-content tbody td {
   padding: 0.45rem 0.4rem;
   border: 1px solid #e5e7eb;
   text-align: center;
-  /* Allow breaking long words to prevent horizontal scrolling */
-  word-break: break-word;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .repository-content tbody tr:nth-child(even) {

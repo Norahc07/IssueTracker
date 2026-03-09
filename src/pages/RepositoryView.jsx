@@ -279,8 +279,8 @@ export default function RepositoryView() {
         </span>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-        <div className="p-6 sm:p-8">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden max-w-full">
+        <div className="p-6 sm:p-8 overflow-hidden max-w-full">
           {isEditing ? (
             <form onSubmit={handleSave} className="space-y-6">
               {error && (
@@ -375,8 +375,8 @@ export default function RepositoryView() {
                 ) : null}
                 {isCoursePriceTable && tableRows.length > 0 && (
                   <div className="mt-4">
-                    <div className="rounded-lg border border-gray-300 overflow-x-auto max-h-80 overflow-y-auto">
-                      <table className="w-full text-sm border-collapse">
+                    <div className="rounded-lg border border-gray-300 max-h-80 overflow-y-auto">
+                      <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed' }}>
                         <thead>
                           <tr className="bg-gray-100 sticky top-0">
                             <th className="border border-gray-200 px-2 py-1.5 text-left font-semibold">Domain</th>
@@ -469,8 +469,9 @@ export default function RepositoryView() {
                 </div>
               ) : (
                 <div
-                  className="prose prose-sm max-w-none text-gray-700 repository-content repository-content-view-only"
+                  className="prose prose-sm max-w-full w-full text-gray-700 repository-content repository-content-view-only break-words"
                   dangerouslySetInnerHTML={{ __html: item.content || '' }}
+                  style={{ overflowX: 'hidden', overflowWrap: 'anywhere', wordBreak: 'break-word' }}
                 />
               )}
             </>
