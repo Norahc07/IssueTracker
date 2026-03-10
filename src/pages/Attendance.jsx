@@ -1,9 +1,10 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { permissions, getRoleDisplayName, ROLES } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
+import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 
 const PRIMARY = '#6795BE';
 const GRACE_MINUTES = 15;
@@ -191,6 +192,7 @@ function Pagination({ total, page, setPage, pageSize }) {
 export default function Attendance() {
   const { supabase, session, user, userRole } = useSupabase();
   const [myTeam, setMyTeam] = useState(null);
+  const [onboardingRecords, setOnboardingRecords] = useState([]);
   const canEditMySchedule = permissions.canEditOwnAttendanceSchedule(userRole, myTeam);
   const canManageSchedules = permissions.canManageAttendanceSchedules(userRole, myTeam);
   const canClockInOut = permissions.canClockInOut(userRole);
@@ -228,7 +230,6 @@ export default function Attendance() {
   const [allInternsRoleFilter, setAllInternsRoleFilter] = useState('');
   const [allInternsLateFilter, setAllInternsLateFilter] = useState('all'); // 'all' | 'late' | 'on-time'
   const [scheduleRoleFilter, setScheduleRoleFilter] = useState('');
-  const [scheduleDateFilter, setScheduleDateFilter] = useState(''); // filter by schedule set on/after this date (YYYY-MM-DD)
   const [logSpecificDate, setLogSpecificDate] = useState(''); // for logDateFilter === 'specific' (all-interns tab)
 
   const today = new Date().toISOString().slice(0, 10);
@@ -328,21 +329,48 @@ export default function Attendance() {
       }
 
       if (canManageSchedules) {
-        const { data: managed, error: managedErr } = await supabase
-          .from('users')
-          .select('id, email, full_name, role, team, scheduled_time_in, scheduled_time_out, total_ojt_hours_required, schedule_configured_at, imported_rendered_minutes')
-          .neq('role', 'admin')
-          .order('full_name', { ascending: true });
-        if (managedErr) console.warn('Attendance managed users fetch error:', managedErr);
-        setManagedUsers(Array.isArray(managed) ? managed : []);
+        const [managedRes, onboardingRes] = await Promise.all([
+          supabase
+            .from('users')
+            .select('id, email, full_name, role, team, scheduled_time_in, scheduled_time_out, total_ojt_hours_required, schedule_configured_at, imported_rendered_minutes')
+            .neq('role', 'admin')
+            .order('full_name', { ascending: true }),
+          supabase
+            .from('onboarding_records')
+            .select('email, name')
+            .order('onboarding_datetime', { ascending: false }),
+        ]);
+        if (managedRes.error) console.warn('Attendance managed users fetch error:', managedRes.error);
+        setManagedUsers(Array.isArray(managedRes.data) ? managedRes.data : []);
+        setOnboardingRecords(Array.isArray(onboardingRes.data) ? onboardingRes.data : []);
       } else {
         setManagedUsers([]);
+        setOnboardingRecords([]);
       }
     } catch (e) {
       console.error('Attendance fetch error:', e);
     } finally {
       setLoading(false);
     }
+  };
+
+  const onboardingNameByEmail = useMemo(() => {
+    const map = new Map();
+    (onboardingRecords || []).forEach((r) => {
+      const email = (r.email || '').trim().toLowerCase();
+      const name = (r.name || '').trim();
+      if (email && name && !map.has(email)) map.set(email, name);
+    });
+    return map;
+  }, [onboardingRecords]);
+
+  const getUserDisplayName = (u) => {
+    if (!u) return '—';
+    const fromUser = (u.full_name || '').trim();
+    if (fromUser) return fromUser;
+    const emailKey = (u.email || '').trim().toLowerCase();
+    const fromOnboarding = emailKey ? onboardingNameByEmail.get(emailKey) : '';
+    return (fromOnboarding || '').trim() || (u.email || '—');
   };
 
   const getRenderedSecondsForUser = (userId) => {
@@ -776,12 +804,13 @@ export default function Attendance() {
                         <option value="specific">Specific date</option>
                       </select>
                       {myLogDateFilter === 'specific' && (
-                        <input
-                          type="date"
-                          value={myLogSpecificDate}
-                          onChange={(e) => setMyLogSpecificDate(e.target.value)}
-                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE]"
-                        />
+                        <div className="w-[220px]">
+                          <PrettyDatePicker
+                            value={myLogSpecificDate}
+                            onChange={(e) => setMyLogSpecificDate(e.target.value)}
+                            ariaLabel="Select specific date"
+                          />
+                        </div>
                       )}
                     </div>
                     <p className="text-xs text-gray-500 mb-3">Rendered time = total for that day only. Time out pauses; time in again to continue.</p>
@@ -847,12 +876,13 @@ export default function Attendance() {
                         <option value="specific">Specific date</option>
                       </select>
                       {logDateFilter === 'specific' && (
-                        <input
-                          type="date"
-                          value={logSpecificDate}
-                          onChange={(e) => setLogSpecificDate(e.target.value)}
-                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE]"
-                        />
+                        <div className="w-[220px]">
+                          <PrettyDatePicker
+                            value={logSpecificDate}
+                            onChange={(e) => setLogSpecificDate(e.target.value)}
+                            ariaLabel="Select specific date"
+                          />
+                        </div>
                       )}
                       <span className="text-sm text-gray-600 ml-2">Role:</span>
                       <select
@@ -934,13 +964,6 @@ export default function Attendance() {
                 if (scheduleRoleFilter) {
                   managedList = managedList.filter(({ user }) => userMatchesRoleFilter(user, scheduleRoleFilter));
                 }
-                if (scheduleDateFilter) {
-                  managedList = managedList.filter(({ type, user }) => {
-                    if (type === 'not-set') return true;
-                    const setAt = user.schedule_configured_at ? String(user.schedule_configured_at).slice(0, 10) : '';
-                    return setAt >= scheduleDateFilter;
-                  });
-                }
                 const totalSched = managedList.length;
                 const totalPagesSched = Math.ceil(totalSched / PAGE_SIZE) || 1;
                 const pageSched = Math.min(Math.max(1, pageSchedules), totalPagesSched);
@@ -969,22 +992,6 @@ export default function Attendance() {
                         <option value="tl">Team Lead</option>
                         <option value="vtl">Vice Team Lead</option>
                       </select>
-                      <span className="text-sm text-gray-600">Schedule set on/after:</span>
-                      <input
-                        type="date"
-                        value={scheduleDateFilter}
-                        onChange={(e) => setScheduleDateFilter(e.target.value)}
-                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE]"
-                      />
-                      {scheduleDateFilter && (
-                        <button
-                          type="button"
-                          onClick={() => setScheduleDateFilter('')}
-                          className="text-sm text-gray-600 hover:underline"
-                        >
-                          Clear date
-                        </button>
-                      )}
                     </div>
                     {managedUsers.length === 0 && !loading ? (
                       <p className="px-4 py-6 text-center text-gray-500">No users to manage.</p>
@@ -1010,7 +1017,7 @@ export default function Attendance() {
                               {paginatedSched.map(({ type, user: i }) =>
                                 type === 'setup' ? (
                                   <tr key={i.id} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 text-sm text-gray-900">{i.full_name || '—'}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-900">{getUserDisplayName(i)}</td>
                                     <td className="px-4 py-3 text-sm text-gray-600">{i.email || '—'}</td>
                                     <td className="px-4 py-3 text-sm text-gray-600">{i.role || '—'}</td>
                                     <td className="px-4 py-3 text-sm text-green-600 font-medium">Setup</td>
@@ -1032,7 +1039,7 @@ export default function Attendance() {
                                   </tr>
                                 ) : (
                                   <tr key={i.id} className="hover:bg-gray-50 bg-amber-50/50">
-                                    <td className="px-4 py-3 text-sm text-gray-900">{i.full_name || '—'}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-900">{getUserDisplayName(i)}</td>
                                     <td className="px-4 py-3 text-sm text-gray-600">{i.email || '—'}</td>
                                     <td className="px-4 py-3 text-sm text-gray-600">{i.role || '—'}</td>
                                     <td className="px-4 py-3 text-sm text-amber-600 font-medium">Not set</td>

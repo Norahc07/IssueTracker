@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { TEAMS } from '../utils/rolePermissions.js';
+import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -218,18 +219,6 @@ export default function MonitoringTasks() {
     updateTask(taskName, 'assigned_to', user?.id);
   };
 
-  const formatDisplayDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    // Add timezone offset so it correctly uses the local date representation of the ISO string
-    const localDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
-    return localDate.toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
-
   if (!canAccess) {
     return (
       <div className="p-6 text-center text-gray-500">
@@ -248,24 +237,13 @@ export default function MonitoringTasks() {
           <p className="mt-1 text-sm text-gray-600">Track daily progress and assignments for monitoring duties.</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="relative cursor-pointer hover:bg-gray-50 rounded-lg">
-            <input
-              id="record-date"
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              onClick={(e) => e.target.showPicker && e.target.showPicker()}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-            />
-            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm pointer-events-none">
-              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-              </svg>
-              <span className="text-sm font-medium text-gray-700">
-                {formatDisplayDate(selectedDate)}
-              </span>
-            </div>
-          </div>
+          <PrettyDatePicker
+            id="record-date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            ariaLabel="Select record date"
+            className="shadow-sm"
+          />
         </div>
       </div>
 

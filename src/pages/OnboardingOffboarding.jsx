@@ -5,6 +5,7 @@ import { useSupabase } from '../context/supabase.jsx';
 import { usePresence } from '../context/PresenceContext.jsx';
 import { toast } from 'react-hot-toast';
 import { queryCache } from '../utils/queryCache.js';
+import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 
 const PRIMARY = '#6795BE';
 
@@ -2208,12 +2209,12 @@ export default function OnboardingOffboarding() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Onboarding date</label>
-                  <input
-                    type="date"
+                  <PrettyDatePicker
+                    id="onboarding-date"
                     value={onboardingForm.onboarding_date}
                     onChange={(e) => setOnboardingForm((f) => ({ ...f, onboarding_date: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    required
+                    ariaLabel="Select onboarding date"
+                    className="w-full"
                   />
                   <p className="mt-1 text-xs text-gray-500">dd/mm/yyyy</p>
                 </div>
@@ -2232,11 +2233,12 @@ export default function OnboardingOffboarding() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Start date</label>
-                  <input
-                    type="date"
+                  <PrettyDatePicker
+                    id="onboarding-start-date"
                     value={onboardingForm.start_date}
                     onChange={(e) => setOnboardingForm((f) => ({ ...f, start_date: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    ariaLabel="Select start date"
+                    className="w-full"
                   />
                   <p className="mt-1 text-xs text-gray-500">dd/mm/yyyy</p>
                 </div>
@@ -2404,12 +2406,12 @@ export default function OnboardingOffboarding() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Actual end date</label>
-                  <input
-                    type="date"
+                  <PrettyDatePicker
+                    id="offboarding-actual-end-date"
                     value={offboardingForm.actual_end_date}
                     onChange={(e) => setOffboardingForm((f) => ({ ...f, actual_end_date: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    required
+                    ariaLabel="Select actual end date"
+                    className="w-full"
                   />
                   <p className="mt-1 text-xs text-gray-500">dd/mm/yyyy</p>
                 </div>

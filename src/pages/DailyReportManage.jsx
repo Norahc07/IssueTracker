@@ -5,6 +5,7 @@ import { permissions } from '../utils/rolePermissions.js';
 import { getRoleDisplayName } from '../utils/rolePermissions.js';
 import DailyReportForm from './DailyReportForm.jsx';
 import { queryCache } from '../utils/queryCache.js';
+import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -30,6 +31,10 @@ function formatDateLong(dateStr) {
   if (!dateStr) return '';
   const date = new Date(dateStr + 'T00:00:00');
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function prettyDateOrFallback(dateStr) {
+  return formatDateLong(dateStr) || dateStr || '';
 }
 
 // Helper function to group plugins by country
@@ -405,12 +410,11 @@ export default function DailyReportManage() {
             <label htmlFor="report-date" className="text-sm font-medium text-gray-700">
               Date:
             </label>
-            <input
+            <PrettyDatePicker
               id="report-date"
-              type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+              ariaLabel="Select report date"
             />
           </div>
         )}
@@ -419,12 +423,11 @@ export default function DailyReportManage() {
             <label htmlFor="team-report-date" className="text-sm font-medium text-gray-700">
               Date:
             </label>
-            <input
+            <PrettyDatePicker
               id="team-report-date"
-              type="date"
               value={teamReportDate}
               onChange={(e) => setTeamReportDate(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+              ariaLabel="Select team report date"
             />
           </div>
         )}
@@ -433,7 +436,7 @@ export default function DailyReportManage() {
       {activeTab === 'status' && (
         <div>
           <h2 className="text-lg font-semibold text-gray-900 mb-3" style={{ color: PRIMARY }}>
-            Submission status for {selectedDate}
+            Submission status for {prettyDateOrFallback(selectedDate)}
           </h2>
           <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
@@ -472,7 +475,7 @@ export default function DailyReportManage() {
                     const displayName = (u.full_name || ob?.name || u.email || '—').trim() || '—';
                     return (
                       <tr key={u.id} className="border-t border-gray-100 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-700">{selectedDate}</td>
+                        <td className="px-4 py-3 text-gray-700">{prettyDateOrFallback(selectedDate)}</td>
                         <td className="px-4 py-3 font-medium text-gray-900">{displayName}</td>
                         <td className="px-4 py-3 text-gray-600">{department}</td>
                         <td className="px-4 py-3 text-gray-600">{getRoleDisplayName(u.role)}</td>
@@ -589,7 +592,7 @@ export default function DailyReportManage() {
                   {selectedIntern.full_name || selectedIntern.email || selectedIntern.id}
                 </h3>
                 <p className="text-sm text-gray-600">
-                  Report date: <span className="font-medium">{selectedDate}</span>
+                  Report date: <span className="font-medium">{prettyDateOrFallback(selectedDate)}</span>
                   {selectedSubmission.submitted_at ? (
                     <>
                       {' '}• Submitted at{' '}

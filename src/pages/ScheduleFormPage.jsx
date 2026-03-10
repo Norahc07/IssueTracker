@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -369,11 +370,12 @@ export default function ScheduleFormPage() {
 
                   <div>
                     <label className={labelClass}>Preferred start date</label>
-                    <input
-                      type="date"
+                    <PrettyDatePicker
+                      id="schedule-form-start-date"
                       value={form.start_date_preference}
                       onChange={(e) => setForm((f) => ({ ...f, start_date_preference: e.target.value }))}
-                      className={inputClass}
+                      ariaLabel="Select preferred start date"
+                      className="w-full"
                     />
                   </div>
                   <div>

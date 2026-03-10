@@ -7,6 +7,7 @@ import { logAction } from '../utils/auditTrail.js';
 import { permissions } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
 import UdemyCourseTab from '../components/UdemyCourseTab.jsx';
+import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 import DomainUpdates from './DomainUpdates.jsx';
 
 const PRIMARY = '#6795BE';
@@ -2958,11 +2959,11 @@ export default function TaskAssignmentLog() {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {isEditingDomainsTable ? (
-                            <input
-                              type="date"
+                            <PrettyDatePicker
                               value={domain.scanning_done_date ? domain.scanning_done_date.slice(0, 10) : ''}
                               onChange={(e) => updateDomainInState(domain.id, { scanning_done_date: e.target.value || null })}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                              ariaLabel="Select scanning done date"
+                              className="w-full"
                             />
                           ) : (
                             domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'
@@ -3123,11 +3124,11 @@ export default function TaskAssignmentLog() {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           {isEditingDomainsTable ? (
-                            <input
-                              type="date"
+                            <PrettyDatePicker
                               value={domain.scanning_done_date ? domain.scanning_done_date.slice(0, 10) : ''}
                               onChange={(e) => updateDomainInState(domain.id, { scanning_done_date: e.target.value || null })}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                              ariaLabel="Select scanning done date"
+                              className="w-full"
                             />
                           ) : (
                             domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'
@@ -3827,11 +3828,12 @@ export default function TaskAssignmentLog() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Date (date of scanning)</label>
-                      <input
-                        type="date"
+                      <PrettyDatePicker
+                        id="create-domain-scanning-date"
                         value={createDomainForm.scanning_done_date}
                         onChange={(e) => setCreateDomainForm((f) => ({ ...f, scanning_done_date: e.target.value }))}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                        ariaLabel="Select scanning date"
+                        className="w-full"
                       />
                     </div>
                     <div>
