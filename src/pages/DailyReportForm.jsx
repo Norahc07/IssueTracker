@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
+import { createNotifications, getUserIdsByScope, scopeFromUserProfile } from '../utils/notifications.js';
 
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -31,6 +32,7 @@ export default function DailyReportForm() {
   const [timeIn, setTimeIn] = useState('');
   const [timeOut, setTimeOut] = useState('');
   const [answers, setAnswers] = useState({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -70,6 +72,8 @@ export default function DailyReportForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return;
+    setSubmitAttempted(true);
+    if (!isFormValid) return;
     setSaving(true);
     try {
       const payload = {
@@ -87,6 +91,30 @@ export default function DailyReportForm() {
         toast.success('Report submitted.');
       }
       setExisting({ ...existing, ...payload });
+      setSubmitAttempted(false);
+
+      // System notification: route by submitter scope (TLA vs Monitoring vs PAT1) + Admin
+      try {
+        const { data: me } = await supabase.from('users').select('role, team').eq('id', user.id).maybeSingle();
+        const scope = scopeFromUserProfile(me) || 'tla';
+        const recipientIds = await getUserIdsByScope(supabase, scope);
+        const displayName = user?.user_metadata?.full_name || user?.email || 'User';
+        const isUpdate = !!existing?.id;
+        await createNotifications(
+          supabase,
+          recipientIds.map((id) => ({
+            recipient_user_id: id,
+            sender_user_id: user.id,
+            type: isUpdate ? 'daily_report_updated' : 'daily_report_submitted',
+            title: isUpdate ? 'Daily report updated' : 'Daily report submitted',
+            body: `${displayName} • ${reportDate}`,
+            context_date: reportDate,
+            metadata: { user_id: user.id, report_date: reportDate },
+          }))
+        );
+      } catch (notifyErr) {
+        console.warn('Daily report notification error:', notifyErr);
+      }
     } catch (err) {
       toast.error(err?.message || 'Failed to save report');
     } finally {
@@ -126,6 +154,26 @@ export default function DailyReportForm() {
   const today = todayStr();
   const hasSubmittedToday = !!existing && String(existing.report_date) === today;
   const selectedLog = detailIndex != null ? logs[detailIndex] : null;
+
+  const requiredQuestions = useMemo(
+    () => (Array.isArray(questions) ? questions.filter((q) => q?.required) : []),
+    [questions]
+  );
+
+  const requiredMissingById = useMemo(() => {
+    const map = {};
+    requiredQuestions.forEach((q) => {
+      const v = String(answers?.[q.id] ?? '').trim();
+      if (!v) map[q.id] = 'Required.';
+    });
+    return map;
+  }, [answers, requiredQuestions]);
+
+  const isFormValid = useMemo(() => {
+    if (!String(reportDate || '').trim()) return false;
+    if (requiredQuestions.length === 0) return true;
+    return Object.keys(requiredMissingById).length === 0;
+  }, [reportDate, requiredMissingById, requiredQuestions.length]);
 
   return (
     <div className="max-w-2xl mx-auto p-6">
@@ -173,6 +221,11 @@ export default function DailyReportForm() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-8 mb-8">
+        {submitAttempted && !isFormValid && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            Please complete all required fields before submitting.
+          </div>
+        )}
         {/* Name & Date */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -244,6 +297,9 @@ export default function DailyReportForm() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none"
                 placeholder={q1.question_text}
               />
+              {q1.required && submitAttempted && requiredMissingById[q1.id] && (
+                <p className="mt-1 text-xs font-medium text-red-600">{requiredMissingById[q1.id]}</p>
+              )}
             </div>
           )}
         </section>
@@ -263,6 +319,9 @@ export default function DailyReportForm() {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none"
               placeholder="Your answer..."
             />
+            {q.required && submitAttempted && requiredMissingById[q.id] && (
+              <p className="text-xs font-medium text-red-600">{requiredMissingById[q.id]}</p>
+            )}
           </section>
         ))}
 
@@ -285,7 +344,7 @@ export default function DailyReportForm() {
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || !isFormValid}
                 className="px-6 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
                 style={{ backgroundColor: PRIMARY }}
               >

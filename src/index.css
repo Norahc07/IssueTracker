@@ -10,7 +10,14 @@
       sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #f9fafb;
+  }
+
+  html {
+    @apply bg-gray-50 text-gray-900;
+  }
+
+  html.dark {
+    @apply bg-gray-950 text-gray-100;
   }
 
   code {
@@ -107,6 +114,26 @@
 
 .repository-content tbody tr:hover {
   background-color: #eef2ff;
+}
+
+/* Dark mode overrides for repository tables */
+.dark .repository-content thead th {
+  background-color: #111827;
+  color: #f9fafb;
+  border-color: #374151;
+}
+
+.dark .repository-content tbody td {
+  border-color: #374151;
+  color: #e5e7eb;
+}
+
+.dark .repository-content tbody tr:nth-child(even) {
+  background-color: #0b1220;
+}
+
+.dark .repository-content tbody tr:hover {
+  background-color: rgba(99, 102, 241, 0.12);
 }
 
 /* View-only mode: form controls in repository detail are not interactive */

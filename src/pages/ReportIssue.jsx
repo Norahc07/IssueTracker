@@ -1,17 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'react-hot-toast';
 import { useSupabase } from '../context/supabase.jsx';
 import { compressImage } from '../utils/imageCompression.js';
-
-const DEPARTMENTS = [
-  'IT Team Lead Assistant',
-  'IT Monitoring Team',
-  'IT PAT1',
-  'HR Intern',
-  'HR Admin',
-  'Marketing Admin',
-  'Marketing Intern',
-];
+import { createNotifications, getUserIdsByScope, scopeFromDepartment } from '../utils/notifications.js';
 
 const URGENCY_LEVELS = [
   { value: 'critical', label: 'Critical - Immediate attention needed' },
@@ -21,7 +13,7 @@ const URGENCY_LEVELS = [
 ];
 
 export default function ReportIssue() {
-  const { supabase } = useSupabase();
+  const { supabase, user } = useSupabase();
   const [formData, setFormData] = useState({
     reportedBy: '',
     department: '',
@@ -34,6 +26,112 @@ export default function ReportIssue() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [touched, setTouched] = useState({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  const departmentFromProfile = (profile) => {
+    const role = String(profile?.role || '').toLowerCase();
+    const teamRaw = String(profile?.team || '').toLowerCase();
+    const team = teamRaw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const dept = String(profile?.department || '').trim();
+    if (dept) return dept;
+    if (team === 'tla' || team.includes('tla') || team.includes('team lead assistant') || role === 'tla') {
+      return 'IT Team Lead Assistant';
+    }
+    if (team === 'monitoring' || team.includes('monitoring') || role === 'monitoring_team') {
+      return 'IT Monitoring Team';
+    }
+    if (team === 'pat1' || team.includes('pat1') || team.includes('pat 1') || role === 'pat1') {
+      return 'IT PAT1';
+    }
+    return '';
+  };
+
+  const departmentFromOnboarding = (onboardingRow, userProfile) => {
+    const deptRaw = String(onboardingRow?.department || '').toLowerCase().trim();
+    const teamRaw = String(onboardingRow?.team || '').toLowerCase();
+    const team = teamRaw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const role = String(userProfile?.role || '').toLowerCase();
+
+    if (deptRaw.includes('it')) {
+      if (team.includes('monitoring')) return 'IT Monitoring Team';
+      if (team.includes('pat1') || team.includes('pat 1')) return 'IT PAT1';
+      if (team.includes('tla') || team.includes('team lead assistant') || team.includes('onboarding')) return 'IT Team Lead Assistant';
+      return 'IT Team Lead Assistant';
+    }
+    if (deptRaw.includes('hr')) return role === 'admin' ? 'HR Admin' : 'HR Intern';
+    if (deptRaw.includes('marketing')) return role === 'admin' ? 'Marketing Admin' : 'Marketing Intern';
+    return '';
+  };
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const userEmail = (user?.email || '').trim();
+        const [userRes, onboardingRes] = await Promise.all([
+          supabase
+            .from('users')
+            .select('full_name, email, role, team, department')
+            .eq('id', user.id)
+            .maybeSingle(),
+          userEmail
+            ? supabase
+                .from('onboarding_records')
+                .select('name, email, department, team')
+                .ilike('email', userEmail)
+                .maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
+        ]);
+
+        if (cancelled) return;
+        const profile = userRes?.data || null;
+        const ob = onboardingRes?.data || null;
+
+        const displayName =
+          (ob?.name || '').trim()
+          || (profile?.full_name || '').trim()
+          || (user?.user_metadata?.full_name || '').trim()
+          || (profile?.email || '').trim()
+          || (user?.email || '').trim()
+          || '';
+
+        const department =
+          departmentFromOnboarding(ob, profile)
+          || departmentFromProfile(profile)
+          || '';
+
+        setFormData((prev) => ({
+          ...prev,
+          reportedBy: displayName,
+          department,
+        }));
+      } catch (e) {
+        const fallbackName =
+          (user?.user_metadata?.full_name || '').trim() || (user?.email || '').trim() || '';
+        setFormData((prev) => ({ ...prev, reportedBy: prev.reportedBy || fallbackName }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, user?.id]);
+
+  const validate = (v) => {
+    const e = {};
+    // These are auto-filled from the logged-in account
+    if (!String(v.reportedBy || '').trim()) e.reportedBy = 'Missing account name.';
+    if (!String(v.department || '').trim()) e.department = 'Missing account department.';
+    if (!String(v.affectedSystem || '').trim()) e.affectedSystem = 'Required.';
+    if (!String(v.title || '').trim()) e.title = 'Required.';
+    if (!String(v.description || '').trim()) e.description = 'Required.';
+    if (!String(v.urgency || '').trim()) e.urgency = 'Required.';
+    return e;
+  };
+
+  const errors = validate(formData);
+  const isValid = Object.keys(errors).length === 0;
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -100,6 +198,8 @@ export default function ReportIssue() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitAttempted(true);
+    if (!isValid) return;
     setLoading(true);
     setUploading(true);
 
@@ -128,11 +228,35 @@ export default function ReportIssue() {
 
       if (error) throw error;
 
+      // System notification: notify the relevant team scope (TLA vs Monitoring vs PAT1) + Admin
+      try {
+        const scope = scopeFromDepartment(formData.department);
+        const recipientIds = scope ? await getUserIdsByScope(supabase, scope) : await getUserIdsByScope(supabase, 'tla');
+        const title = `New ticket: ${(formData.title || '').trim() || 'Untitled'}`;
+        const body = `Department: ${formData.department || '—'}\nReported by: ${formData.reportedBy || '—'}\nPriority: ${formData.urgency || 'normal'}`;
+        await createNotifications(
+          supabase,
+          recipientIds.map((id) => ({
+            recipient_user_id: id,
+            sender_user_id: null,
+            type: 'ticket_created',
+            title,
+            body,
+            context_date: new Date().toISOString().slice(0, 10),
+            metadata: { ticket_title: formData.title || null, department: formData.department || null },
+          }))
+        );
+      } catch (notifyErr) {
+        console.warn('Ticket created notification error:', notifyErr);
+      }
+
       toast.success('Issue reported successfully! We will review it soon.');
       setSubmitted(true);
+      setTouched({});
+      setSubmitAttempted(false);
       setFormData({
-        reportedBy: '',
-        department: '',
+        reportedBy: formData.reportedBy,
+        department: formData.department,
         affectedSystem: '',
         title: '',
         description: '',
@@ -150,89 +274,57 @@ export default function ReportIssue() {
 
   const PRIMARY = '#6795BE';
 
-  if (submitted) {
-    return (
-      <div className="w-full space-y-4 sm:space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Report an Issue</h1>
-          <p className="mt-1 text-sm text-gray-600">Submit an issue or request assistance</p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6 sm:p-8 max-w-xl">
-          <div className="flex flex-col items-center text-center">
-            <div className="h-14 w-14 bg-green-100 rounded-full flex items-center justify-center mb-4">
-              <svg className="h-7 w-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Thank You!</h2>
-            <p className="text-gray-600 mb-6 text-sm">
-              Your issue has been reported successfully. Our team will review it and get back to you soon.
-            </p>
-            <button
-              onClick={() => setSubmitted(false)}
-              className="px-5 py-2.5 rounded-lg font-medium text-white transition-colors hover:opacity-90"
-              style={{ backgroundColor: PRIMARY }}
-            >
-              Report Another Issue
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="w-full space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Report an Issue</h1>
-        <p className="mt-1 text-sm text-gray-600">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>Report an Issue</h1>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           Submit an issue or request assistance
         </p>
       </div>
 
-      <div className="w-full rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div className="w-full rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
         <div className="px-5 sm:px-8 py-4 border-b border-gray-100" style={{ backgroundColor: `${PRIMARY}08` }}>
-          <h2 className="text-lg font-semibold text-gray-900">Submit your issue</h2>
-          <p className="text-sm text-gray-600 mt-0.5">Fill out the form below</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Submit your issue</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">Fill out the form below</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 sm:p-8 space-y-5 sm:space-y-6">
-          <p className="text-sm text-gray-600">Fill out the form below to submit your issue.</p>
+          <p className="text-sm text-gray-600 dark:text-gray-300">Fill out the form below to submit your issue.</p>
 
           {/* Row 1: Reported By | Department */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             <div>
-              <label htmlFor="reportedBy" className="block text-sm font-semibold text-gray-700 mb-2">
-                Reported By (Your Name) <span className="text-red-500">*</span>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 pointer-events-none select-none">
+                Reported By
               </label>
               <input
                 type="text"
                 id="reportedBy"
-                required
                 value={formData.reportedBy}
-                onChange={(e) => setFormData({ ...formData, reportedBy: e.target.value })}
-                className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all placeholder:text-gray-400"
-                placeholder="Enter your full name"
+                readOnly
+                tabIndex={-1}
+                className="w-full px-4 py-3 border border-gray-200 dark:border-gray-800 rounded-lg bg-gray-50 dark:bg-gray-950 text-gray-700 dark:text-gray-200 pointer-events-none select-none"
               />
+              {submitAttempted && errors.reportedBy && (
+                <p className="mt-1 text-xs font-medium text-red-600">{errors.reportedBy}</p>
+              )}
             </div>
             <div>
-              <label htmlFor="department" className="block text-sm font-semibold text-gray-700 mb-2">
-                Department <span className="text-red-500">*</span>
+              <label className="block text-sm font-semibold text-gray-700 mb-2 pointer-events-none select-none">
+                Department
               </label>
-              <select
+              <input
                 id="department"
-                required
+                type="text"
                 value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all bg-white"
-              >
-                <option value="">Select your Department</option>
-                {DEPARTMENTS.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
-                  </option>
-                ))}
-              </select>
+                readOnly
+                tabIndex={-1}
+                className="w-full px-4 py-3 border border-gray-200 dark:border-gray-800 rounded-lg bg-gray-50 dark:bg-gray-950 text-gray-700 dark:text-gray-200 pointer-events-none select-none"
+              />
+              {submitAttempted && errors.department && (
+                <p className="mt-1 text-xs font-medium text-red-600">{errors.department}</p>
+              )}
             </div>
           </div>
 
@@ -248,9 +340,13 @@ export default function ReportIssue() {
                 required
                 value={formData.affectedSystem}
                 onChange={(e) => setFormData({ ...formData, affectedSystem: e.target.value })}
+                onBlur={() => setTouched((t) => ({ ...t, affectedSystem: true }))}
                 className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all placeholder:text-gray-400"
                 placeholder="e.g. WordPress System, Website, Payroll, etc."
               />
+              {(submitAttempted || touched.affectedSystem) && errors.affectedSystem && (
+                <p className="mt-1 text-xs font-medium text-red-600">{errors.affectedSystem}</p>
+              )}
             </div>
             <div>
               <label htmlFor="title" className="block text-sm font-semibold text-gray-700 mb-2">
@@ -262,9 +358,13 @@ export default function ReportIssue() {
                 required
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                onBlur={() => setTouched((t) => ({ ...t, title: true }))}
                 className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all placeholder:text-gray-400"
                 placeholder="Brief description of the issue"
               />
+              {(submitAttempted || touched.title) && errors.title && (
+                <p className="mt-1 text-xs font-medium text-red-600">{errors.title}</p>
+              )}
             </div>
           </div>
 
@@ -279,9 +379,13 @@ export default function ReportIssue() {
               rows={6}
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onBlur={() => setTouched((t) => ({ ...t, description: true }))}
               className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all resize-none placeholder:text-gray-400"
               placeholder="Provide detailed information about the issue, including steps to reproduce if applicable..."
             />
+            {(submitAttempted || touched.description) && errors.description && (
+              <p className="mt-1 text-xs font-medium text-red-600">{errors.description}</p>
+            )}
           </div>
 
           {/* Row 4: How Urgent (full width) */}
@@ -294,6 +398,7 @@ export default function ReportIssue() {
               required
               value={formData.urgency}
               onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
+              onBlur={() => setTouched((t) => ({ ...t, urgency: true }))}
               className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:border-transparent transition-all bg-white"
             >
               <option value="">Select Issue Priority</option>
@@ -303,6 +408,9 @@ export default function ReportIssue() {
                 </option>
               ))}
             </select>
+            {(submitAttempted || touched.urgency) && errors.urgency && (
+              <p className="mt-1 text-xs font-medium text-red-600">{errors.urgency}</p>
+            )}
           </div>
 
           {/* Upload Screenshot (optional) */}
@@ -352,7 +460,7 @@ export default function ReportIssue() {
           <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
               <button
                 type="submit"
-                disabled={loading || uploading}
+                disabled={loading || uploading || !isValid}
                 className="px-5 py-2.5 rounded-lg font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 style={{ backgroundColor: PRIMARY }}
               >
@@ -384,6 +492,65 @@ export default function ReportIssue() {
             </p>
           </div>
         </div>
+
+        {submitted &&
+          typeof document !== 'undefined' &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[2147483000] bg-black/60 backdrop-blur-sm"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Issue submitted"
+              onClick={() => setSubmitted(false)}
+            >
+              <div className="min-h-screen w-full p-4 flex items-center justify-center">
+                <div
+                  className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="text-base font-semibold text-gray-900">Thank You!</h2>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Your issue has been submitted successfully.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSubmitted(false)}
+                      className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                      aria-label="Close"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="p-5">
+                    <div className="flex flex-col items-center text-center">
+                      <div className="h-14 w-14 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                        <svg className="h-7 w-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        You can submit another issue immediately.
+                      </p>
+                      <div className="mt-5 flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSubmitted(false)}
+                          className="px-5 py-2.5 rounded-lg font-medium text-white transition-colors hover:opacity-90"
+                          style={{ backgroundColor: PRIMARY }}
+                        >
+                          Submit Another Issue
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
     </div>
   );
 }

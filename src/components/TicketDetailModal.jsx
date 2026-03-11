@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { permissions } from '../utils/rolePermissions.js';
+import { ticketPriorityPill, ticketStatusLabel, ticketStatusPill } from '../utils/uiPills.js';
 
 export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate }) {
   const { supabase, user, userRole } = useSupabase();
@@ -143,32 +145,10 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
     }
   };
 
-  const getUrgencyColor = (urgency) => {
-    switch (urgency) {
-      case 'critical':
-        return 'bg-red-100 text-red-800';
-      case 'high':
-        return 'bg-orange-100 text-orange-800';
-      case 'normal':
-        return 'bg-blue-100 text-blue-800';
-      case 'low':
-        return 'bg-gray-100 text-gray-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
+  const getUrgencyColor = (urgency) => ticketPriorityPill(urgency);
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case 'open':
-        return 'bg-green-100 text-green-800';
-      case 'in-progress':
-        return 'bg-blue-100 text-blue-800';
-      case 'closed':
-        return 'bg-gray-100 text-gray-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+    return ticketStatusPill(status);
   };
 
   if (!isOpen || !ticket) return null;
@@ -180,14 +160,22 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
   const canDelete = permissions.canDeleteTickets(userRole) && ticket.status === 'closed';
   const canResolve = permissions.canResolveIssues(userRole, ticket.department);
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" onClick={onClose}>
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose}></div>
+  if (typeof document === 'undefined') return null;
 
+  return createPortal(
+    <div className="fixed inset-0 z-[2147483000] overflow-y-auto">
+      <div
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        aria-hidden="true"
+        onClick={onClose}
+      />
+      <div className="min-h-screen p-4 flex items-center justify-center">
         <div
-          className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full"
+          className="relative w-full max-w-4xl bg-white dark:bg-gray-900 rounded-2xl text-left overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-800"
           onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Ticket Details"
         >
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 sm:px-6 py-4 sm:py-5">
@@ -210,10 +198,10 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
               {/* Title and Status */}
               <div>
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
-                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900">{ticket.title}</h2>
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{ticket.title}</h2>
                   <div className="flex flex-wrap gap-2">
                     <span className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${getStatusColor(ticket.status)}`}>
-                      {ticket.status === 'open' ? 'Open' : ticket.status === 'in-progress' ? 'In Progress' : 'Closed'}
+                      {ticketStatusLabel(ticket.status)}
                     </span>
                     {ticket.priority && (
                       <span className={`px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${getUrgencyColor(ticket.priority)}`}>
@@ -226,8 +214,8 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
 
               {/* Assignment Section */}
               {(canAssign || canResolve) && (
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <div className="bg-gray-50 dark:bg-gray-950/40 rounded-lg p-4 border border-gray-200 dark:border-gray-800">
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
                     Assign To
                   </label>
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -236,7 +224,7 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
                       value={assignedTo}
                       onChange={(e) => setAssignedTo(e.target.value)}
                       placeholder="Enter assignee name..."
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100"
                     />
                     <button
                       onClick={handleAssign}
@@ -247,7 +235,7 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
                     </button>
                   </div>
                   {currentAssignedTo && (
-                    <p className="mt-2 text-sm text-gray-600">
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
                       Currently assigned to: <span className="font-medium">{currentAssignedTo}</span>
                     </p>
                   )}
@@ -297,53 +285,53 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
               {/* Ticket Information Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
                     Reported By
                   </label>
-                  <p className="text-sm text-gray-900">{ticket.reporter_name || 'N/A'}</p>
+                  <p className="text-sm text-gray-900 dark:text-gray-100">{ticket.reporter_name || 'N/A'}</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
                     Department
                   </label>
-                  <p className="text-sm text-gray-900">{ticket.department || 'N/A'}</p>
+                  <p className="text-sm text-gray-900 dark:text-gray-100">{ticket.department || 'N/A'}</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
                     Affected System
                   </label>
-                  <p className="text-sm text-gray-900">{ticket.affected_system || 'N/A'}</p>
+                  <p className="text-sm text-gray-900 dark:text-gray-100">{ticket.affected_system || 'N/A'}</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
                     Created Date
                   </label>
-                  <p className="text-sm text-gray-900">
+                  <p className="text-sm text-gray-900 dark:text-gray-100">
                     {ticket.created_at ? new Date(ticket.created_at).toLocaleString() : 'N/A'}
                   </p>
                 </div>
                 {ticket.assigned_to && (
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
                       Assigned To
                     </label>
-                    <p className="text-sm text-gray-900">{ticket.assigned_to}</p>
+                    <p className="text-sm text-gray-900 dark:text-gray-100">{ticket.assigned_to}</p>
                   </div>
                 )}
               </div>
 
               {/* Description */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
                   Description
                 </label>
-                <p className="text-sm text-gray-900 whitespace-pre-wrap">{ticket.description || 'No description provided'}</p>
+                <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{ticket.description || 'No description provided'}</p>
               </div>
 
               {/* Screenshot */}
               {ticket.screenshot_url && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
                     Screenshot / Evidence
                   </label>
                   <div className="mt-2">
@@ -351,12 +339,12 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
                       <img
                         src={ticket.screenshot_url}
                         alt="Ticket screenshot"
-                        className="max-w-full h-auto rounded-lg border border-gray-200 shadow-sm"
+                        className="max-w-full h-auto rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm"
                         onError={() => setImageError(true)}
                         loading="lazy"
                       />
                     ) : (
-                      <div className="p-4 bg-gray-100 rounded-lg border border-gray-200 text-sm text-gray-600">
+                      <div className="p-4 bg-gray-100 dark:bg-gray-950/40 rounded-lg border border-gray-200 dark:border-gray-800 text-sm text-gray-600 dark:text-gray-300">
                         Failed to load image. The image may have been deleted or the URL is invalid.
                       </div>
                     )}
@@ -367,16 +355,17 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
           </div>
 
           {/* Footer */}
-          <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 flex justify-end">
+          <div className="bg-gray-50 dark:bg-gray-950/40 px-4 sm:px-6 py-3 sm:py-4 flex justify-end border-t border-gray-100 dark:border-gray-800">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors text-sm font-medium"
             >
               Close
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

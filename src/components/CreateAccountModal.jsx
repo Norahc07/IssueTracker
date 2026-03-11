@@ -13,11 +13,33 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
     team: '', // For TL/VTL
   });
   const [loading, setLoading] = useState(false);
+  const [touched, setTouched] = useState({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   if (!isOpen) return null;
 
+  const validate = (v) => {
+    const e = {};
+    if (!String(v.fullName || '').trim()) e.fullName = 'Required.';
+    const email = String(v.email || '').trim();
+    if (!email) e.email = 'Required.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Enter a valid email.';
+    const pwd = String(v.password || '');
+    if (!pwd) e.password = 'Required.';
+    else if (pwd.length < 6) e.password = 'Must be at least 6 characters.';
+    if (v.role === 'tl' || v.role === 'vtl') {
+      if (!String(v.team || '').trim()) e.team = 'Team is required for TL/VTL.';
+    }
+    return e;
+  };
+
+  const errors = validate(formData);
+  const isValid = Object.keys(errors).length === 0;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitAttempted(true);
+    if (!isValid) return;
     setLoading(true);
 
     try {
@@ -98,6 +120,8 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
 
       toast.success('Account created successfully!');
       setFormData({ email: '', password: '', role: 'intern', fullName: '', team: '' });
+      setTouched({});
+      setSubmitAttempted(false);
       onSuccess?.();
       onClose();
     } catch (error) {
@@ -131,9 +155,13 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
                         required
                         value={formData.fullName}
                         onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                        onBlur={() => setTouched((t) => ({ ...t, fullName: true }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Enter full name"
                       />
+                      {(submitAttempted || touched.fullName) && errors.fullName && (
+                        <p className="mt-1 text-xs font-medium text-red-600">{errors.fullName}</p>
+                      )}
                     </div>
 
                     <div>
@@ -146,9 +174,13 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
                         required
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        onBlur={() => setTouched((t) => ({ ...t, email: true }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Enter email address"
                       />
+                      {(submitAttempted || touched.email) && errors.email && (
+                        <p className="mt-1 text-xs font-medium text-red-600">{errors.email}</p>
+                      )}
                     </div>
 
                     <div>
@@ -162,9 +194,13 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
                         minLength={6}
                         value={formData.password}
                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        onBlur={() => setTouched((t) => ({ ...t, password: true }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Enter password (min 6 characters)"
                       />
+                      {(submitAttempted || touched.password) && errors.password && (
+                        <p className="mt-1 text-xs font-medium text-red-600">{errors.password}</p>
+                      )}
                     </div>
 
                     <div>
@@ -198,12 +234,16 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
                           onChange={(e) => setFormData({ ...formData, team: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           required
+                          onBlur={() => setTouched((t) => ({ ...t, team: true }))}
                         >
                           <option value="">Select team...</option>
                           <option value="tla">TLA</option>
                           <option value="monitoring">Monitoring</option>
                           <option value="pat1">PAT1</option>
                         </select>
+                        {(submitAttempted || touched.team) && errors.team && (
+                          <p className="mt-1 text-xs font-medium text-red-600">{errors.team}</p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -214,7 +254,7 @@ export default function CreateAccountModal({ isOpen, onClose, onSuccess }) {
             <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !isValid}
                 className="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
               >
                 {loading ? 'Creating...' : 'Create Account'}

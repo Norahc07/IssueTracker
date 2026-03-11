@@ -3,6 +3,7 @@ import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { TEAMS } from '../utils/rolePermissions.js';
 import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
+import { taskStatusPill } from '../utils/uiPills.js';
 
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -221,7 +222,7 @@ export default function MonitoringTasks() {
 
   if (!canAccess) {
     return (
-      <div className="p-6 text-center text-gray-500">
+      <div className="p-6 text-center text-gray-500 dark:text-gray-400">
         You do not have access to the Monitoring Tasks page.
       </div>
     );
@@ -231,10 +232,10 @@ export default function MonitoringTasks() {
     <div className="w-full space-y-4 sm:space-y-6 max-w-7xl mx-auto p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
             Monitoring Team Tasks
           </h1>
-          <p className="mt-1 text-sm text-gray-600">Track daily progress and assignments for monitoring duties.</p>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Track daily progress and assignments for monitoring duties.</p>
         </div>
         <div className="flex items-center gap-3">
           <PrettyDatePicker
@@ -247,12 +248,14 @@ export default function MonitoringTasks() {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-gray-200">
+      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
         <button
           type="button"
           onClick={() => setMyTasksOnly(false)}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-            !myTasksOnly ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            !myTasksOnly
+              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
           }`}
           style={!myTasksOnly ? { borderTopColor: PRIMARY } : {}}
         >
@@ -262,7 +265,9 @@ export default function MonitoringTasks() {
           type="button"
           onClick={() => setMyTasksOnly(true)}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-            myTasksOnly ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            myTasksOnly
+              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
           }`}
           style={myTasksOnly ? { borderTopColor: PRIMARY } : {}}
         >
@@ -271,7 +276,7 @@ export default function MonitoringTasks() {
       </div>
 
       {loading ? (
-        <div className="py-12 text-center text-gray-500">Loading records...</div>
+        <div className="py-12 text-center text-gray-500 dark:text-gray-400">Loading records...</div>
       ) : (
         <div className="space-y-6">
           {MONITORING_TASK_CATEGORIES.map((cat, catIdx) => {
@@ -285,21 +290,21 @@ export default function MonitoringTasks() {
             }
 
             return (
-              <div key={catIdx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                  <h2 className="text-base font-semibold text-gray-900">{cat.category}</h2>
+              <div key={catIdx} className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+                <div className="bg-gray-50 dark:bg-gray-950/40 px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{cat.category}</h2>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
+                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                     <thead>
-                      <tr className="bg-white text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <tr className="bg-white dark:bg-gray-900 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         <th className="px-4 py-3 text-left w-1/2">Task Description</th>
                         {!myTasksOnly && <th className="px-4 py-3 text-left w-48">Assigned To</th>}
                         <th className="px-4 py-3 text-left w-40">Status</th>
                         <th className="px-4 py-3 text-left">Notes</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900">
                       {cat.tasks.map((taskName, tIdx) => {
                         const taskRec = tasksData.find(t => t.task_name === taskName) || {};
                         const isMyTask = taskRec.assigned_to === user?.id;
@@ -307,8 +312,8 @@ export default function MonitoringTasks() {
                         if (myTasksOnly && !isMyTask) return null;
 
                         return (
-                          <tr key={tIdx} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3 text-sm text-gray-900">
+                          <tr key={tIdx} className="hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                               {taskName}
                             </td>
                             {!myTasksOnly && (
@@ -318,7 +323,7 @@ export default function MonitoringTasks() {
                                     <select
                                       value={taskRec.assigned_to || ''}
                                       onChange={(e) => updateTask(taskName, 'assigned_to', e.target.value || null)}
-                                      className="text-sm bg-transparent border-none p-0 pr-6 focus:ring-0 cursor-pointer text-gray-700"
+                                      className="text-sm bg-transparent border-none p-0 pr-6 focus:ring-0 cursor-pointer text-gray-700 dark:text-gray-200"
                                     >
                                       <option value="">Unassigned</option>
                                       {monitoringUsers.map(u => (
@@ -328,12 +333,12 @@ export default function MonitoringTasks() {
                                   </div>
                                 ) : (
                                   taskRec.assigned_to ? (
-                                    <span className="text-gray-700">{getUserDisplayName(taskRec.assigned_to)}</span>
+                                    <span className="text-gray-700 dark:text-gray-200">{getUserDisplayName(taskRec.assigned_to)}</span>
                                   ) : (
                                     <button
                                       type="button"
                                       onClick={() => handleClaimTask(taskName)}
-                                      className="text-xs font-medium px-2 py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                                      className="text-xs font-medium px-2 py-1 rounded bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
                                     >
                                       Claim
                                     </button>
@@ -347,9 +352,7 @@ export default function MonitoringTasks() {
                                   value={taskRec.status || 'to-do'}
                                   onChange={(e) => updateTask(taskName, 'status', e.target.value)}
                                   className={`text-xs font-medium rounded-full px-2.5 py-1 border-0 cursor-pointer focus:ring-2 focus:ring-[#6795BE] ${
-                                    taskRec.status === 'done' ? 'bg-green-100 text-green-800' :
-                                    taskRec.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
-                                    'bg-gray-100 text-gray-800'
+                                    taskStatusPill(taskRec.status)
                                   }`}
                                 >
                                   <option value="to-do">To Do</option>
@@ -357,11 +360,7 @@ export default function MonitoringTasks() {
                                   <option value="done">Done</option>
                                 </select>
                               ) : (
-                                <span className={`inline-block text-xs font-medium rounded-full px-2.5 py-1 ${
-                                  taskRec.status === 'done' ? 'bg-green-100 text-green-800' :
-                                  taskRec.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
+                                <span className={`inline-block text-xs font-medium rounded-full px-2.5 py-1 ${taskStatusPill(taskRec.status)}`}>
                                   {taskRec.status === 'done' ? 'Done' :
                                    taskRec.status === 'in-progress' ? 'In Progress' : 'To Do'}
                                 </span>
@@ -379,10 +378,10 @@ export default function MonitoringTasks() {
                                       updateTask(taskName, 'notes', e.target.value);
                                     }
                                   }}
-                                  className="w-full text-sm border-gray-300 rounded-md focus:ring-[#6795BE] focus:border-[#6795BE] shadow-sm"
+                                  className="w-full text-sm border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:ring-[#6795BE] focus:border-[#6795BE] shadow-sm"
                                 />
                               ) : (
-                                <span className="text-gray-700">{taskRec.notes || '—'}</span>
+                                <span className="text-gray-700 dark:text-gray-200">{taskRec.notes || '—'}</span>
                               )}
                             </td>
                           </tr>

@@ -6,6 +6,7 @@ import { toast } from 'react-hot-toast';
 import { logAction } from '../utils/auditTrail.js';
 import { permissions } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
+import { createNotifications, getUserIdsByScope, notifyUser, scopeFromUserProfile } from '../utils/notifications.js';
 import UdemyCourseTab from '../components/UdemyCourseTab.jsx';
 import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 import DomainUpdates from './DomainUpdates.jsx';
@@ -692,6 +693,49 @@ export default function TaskAssignmentLog() {
       const { data, error } = await supabase.from('tasks').insert(payload).select('id').single();
       if (error) throw error;
       await logAction(supabase, 'task_created', { task_id: data?.id, task_name: name }, user?.id);
+
+      // Notify assignee (if any)
+      if (payload.assigned_to) {
+        try {
+          await notifyUser(supabase, {
+            recipient_user_id: payload.assigned_to,
+            sender_user_id: user?.id || null,
+            type: 'task_assigned',
+            title: 'New task assigned',
+            body: `${name}${payload.priority ? ` • Priority: ${payload.priority}` : ''}`,
+            context_date: new Date().toISOString().slice(0, 10),
+            metadata: { task_name: name, task_id: data?.id || null },
+          });
+        } catch (notifyErr) {
+          console.warn('Task assignment notification error:', notifyErr);
+        }
+      }
+
+      // Team-scoped notification: notify the assignee's team scope (TLA vs Monitoring vs PAT1) + Admin
+      if (payload.assigned_to) {
+        try {
+          const assignee = users.find((u) => String(u.id) === String(payload.assigned_to));
+          const scope = scopeFromUserProfile(assignee) || '';
+          if (scope) {
+            const recipientIds = await getUserIdsByScope(supabase, scope);
+            await createNotifications(
+              supabase,
+              recipientIds.map((id) => ({
+                recipient_user_id: id,
+                sender_user_id: user?.id || null,
+                type: 'task_team_update',
+                title: 'Task update',
+                body: `Task assigned: ${name} → ${assignee?.full_name || assignee?.email || 'assignee'}`,
+                context_date: new Date().toISOString().slice(0, 10),
+                metadata: { task_name: name, task_id: data?.id || null, assigned_to: payload.assigned_to },
+              }))
+            );
+          }
+        } catch (notifyErr) {
+          console.warn('Task team notification error:', notifyErr);
+        }
+      }
+
       queryCache.invalidate('tasks');
       fetchTasks(true);
       setShowCreateTaskModal(false);

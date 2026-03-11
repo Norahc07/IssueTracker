@@ -5,6 +5,7 @@ import TicketDetailModal from '../components/TicketDetailModal.jsx';
 import { Link } from 'react-router-dom';
 import { queryCache } from '../utils/queryCache.js';
 import DashboardTicketCharts from '../components/DashboardTicketCharts.jsx';
+import { ticketStatusPill } from '../utils/uiPills.js';
 
 const PRIMARY = '#6795BE';
 const DEFAULT_OJT_REQUIRED_HOURS = 400;
@@ -189,13 +190,8 @@ export default function InternDashboard() {
   const ticketsToShow = filteredTickets.slice(0, 5);
 
   const getStatusBadge = (status) => {
-    const styles = {
-      open: 'bg-blue-100 text-blue-800',
-      'in-progress': 'bg-purple-100 text-purple-800',
-      closed: 'bg-gray-100 text-gray-800',
-    };
     const label = status === 'closed' ? 'Complete' : status === 'in-progress' ? 'In Progress' : 'Open';
-    return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100 text-gray-800'}`}>{label}</span>;
+    return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ticketStatusPill(status)}`}>{label}</span>;
   };
 
   if (loading) {
@@ -210,14 +206,16 @@ export default function InternDashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>My Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-600">Track your assigned tasks, tickets, and daily progress</p>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Track your assigned tasks, tickets, and daily progress</p>
       </div>
 
       {/* OJT Hours */}
       <div>
-        <h2 className="text-base font-semibold text-gray-900 mb-3">OJT Hours</h2>
+        <div className="flex items-baseline justify-between gap-3 mb-2">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">OJT Hours</h2>
+        </div>
         {!ojt.scheduleSet && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800 mb-4">
+          <div className="rounded-lg border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 p-4 text-amber-800 dark:text-amber-200 mb-4">
             Your official attendance schedule is not set yet. You can still time in/out in{' '}
             <Link to="/attendance" className="font-semibold underline">
               Attendance
@@ -225,37 +223,39 @@ export default function InternDashboard() {
             .
           </div>
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Rendered hours</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{minutesToHours(ojt.renderedMinutes)}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="rounded-xl border-2 bg-white dark:bg-gray-900 p-3.5 sm:p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Rendered hours</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">{minutesToHours(ojt.renderedMinutes)}</p>
           </div>
-          <div className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Remaining hours</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">
+          <div className="rounded-xl border-2 bg-white dark:bg-gray-900 p-3.5 sm:p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Remaining hours</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">
               {minutesToHours(Math.max(0, ojt.requiredHours * 60 - ojt.renderedMinutes))}
             </p>
           </div>
-          <div className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">My tasks</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{stats.myTasks}</p>
+          <div className="rounded-xl border-2 bg-white dark:bg-gray-900 p-3.5 sm:p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">My tasks</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.myTasks}</p>
           </div>
         </div>
       </div>
 
       {/* Daily Progress cards */}
       <div>
-        <h2 className="text-base font-semibold text-gray-900 mb-3">Daily Progress</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="flex items-baseline justify-between gap-3 mb-2">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Daily Progress</h2>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           {[
             { label: 'Updated Today', value: stats.updatedToday },
             { label: 'Pending', value: stats.tasksPending },
             { label: 'In Progress', value: stats.tasksInProgress },
             { label: 'Completed', value: stats.tasksDone },
           ].map(({ label, value }) => (
-            <div key={label} className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
+            <div key={label} className="rounded-xl border-2 bg-white dark:bg-gray-900 p-3.5 sm:p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</p>
+              <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
             </div>
           ))}
         </div>
@@ -265,9 +265,9 @@ export default function InternDashboard() {
       <DashboardTicketCharts tickets={tickets} title="Ticket Analytics" />
 
       {/* My Tickets */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <h2 className="text-base font-semibold text-gray-900">My Tickets</h2>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">My Tickets</h2>
           <div className="flex flex-wrap items-center gap-2">
             {['all', 'open', 'in-progress', 'closed'].map((f) => (
               <button
@@ -276,7 +276,7 @@ export default function InternDashboard() {
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   ticketFilter === f
                     ? 'text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
+                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
                 style={ticketFilter === f ? { backgroundColor: PRIMARY } : {}}
               >
@@ -294,44 +294,44 @@ export default function InternDashboard() {
                 placeholder="Search Tickets..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                className="w-full pl-9 pr-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
               />
             </div>
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
             <thead>
               <tr>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket Name</th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date Created</th>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Ticket Name</th>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date Created</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
               {ticketsToShow.length > 0 ? (
                 ticketsToShow.map((ticket) => (
                   <tr
                     key={ticket.id}
                     onClick={() => setSelectedTicket(ticket)}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer transition-colors"
                   >
-                    <td className="px-4 sm:px-6 py-3 text-sm font-medium text-gray-900">{ticket.title || '—'}</td>
-                    <td className="px-4 sm:px-6 py-3 text-sm text-gray-600 max-w-xs truncate">{ticket.description || '—'}</td>
+                    <td className="px-4 sm:px-6 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{ticket.title || '—'}</td>
+                    <td className="px-4 sm:px-6 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-xs truncate">{ticket.description || '—'}</td>
                     <td className="px-4 sm:px-6 py-3">{getStatusBadge(ticket.status)}</td>
-                    <td className="px-4 sm:px-6 py-3 text-sm text-gray-500">{ticket.created_at ? new Date(ticket.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '—'}</td>
+                    <td className="px-4 sm:px-6 py-3 text-sm text-gray-500 dark:text-gray-400">{ticket.created_at ? new Date(ticket.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '—'}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-4 sm:px-6 py-8 text-center text-gray-500 text-sm">No tickets found</td>
+                  <td colSpan={4} className="px-4 sm:px-6 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">No tickets found</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        <div className="px-4 sm:px-6 py-3 border-t border-gray-200 flex justify-end">
+        <div className="px-4 sm:px-6 py-3 border-t border-gray-200 dark:border-gray-800 flex justify-end">
           <Link
             to="/organized-tickets"
             className="text-sm font-medium transition-colors hover:opacity-90"

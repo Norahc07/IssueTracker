@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import DailyReportReminder from './DailyReportReminder.jsx';
 import { useSupabase } from '../context/supabase.jsx';
 import { getRoleDisplayName, getRoleColor, permissions } from '../utils/rolePermissions.js';
-import { queryCache } from '../utils/queryCache.js';
+import { createNotifications } from '../utils/notifications.js';
+import { applyTheme, getStoredTheme, setStoredTheme } from '../utils/theme.js';
 
 const PRIMARY = '#6795BE';
 const PRIMARY_LIGHT = 'rgba(103, 149, 190, 0.15)';
@@ -34,6 +35,216 @@ export default function SidebarLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [autoJobRunning, setAutoJobRunning] = useState(false);
+  const [theme, setTheme] = useState(() => getStoredTheme());
+  const canSendReminders = permissions.canManageAttendanceSchedules(userRole, userTeam); // Admin + Monitoring TL/VTL
+
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const loadNotifications = async () => {
+    if (!supabase || !user?.id) return;
+    setNotificationsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('recipient_user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      setNotifications(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.warn('Notifications load error:', e);
+      setNotifications([]);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (notificationsOpen) loadNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notificationsOpen, supabase, user?.id]);
+
+  // Keep the <html> class in sync with stored theme.
+  // (We apply via setStoredTheme to avoid any stale state re-applying "dark".)
+  useEffect(() => {
+    const t = getStoredTheme();
+    applyTheme(t);
+    setTheme(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const markAllAsRead = async () => {
+    if (!supabase || !user?.id) return;
+    const unread = notifications.filter((n) => !n.read_at);
+    if (!unread.length) return;
+    try {
+      const nowIso = new Date().toISOString();
+      const ids = unread.map((n) => n.id);
+      await supabase.from('notifications').update({ read_at: nowIso }).in('id', ids);
+      setNotifications((prev) => prev.map((n) => (ids.includes(n.id) ? { ...n, read_at: nowIso } : n)));
+    } catch (e) {
+      console.warn('Notifications mark read error:', e);
+    }
+  };
+
+  const getSegments = (log) => {
+    if (!log) return [];
+    const seg = log.segments;
+    if (Array.isArray(seg) && seg.length > 0) return seg;
+    if (log.time_in) return [{ time_in: log.time_in, time_out: log.time_out || null }];
+    return [];
+  };
+
+  const isClockedIn = (log) => {
+    const seg = getSegments(log);
+    if (!seg.length) return false;
+    const last = seg[seg.length - 1];
+    return last && !last.time_out;
+  };
+
+  const sendAutoClockOutReminders630 = async () => {
+    if (!supabase || !user?.id || !canSendReminders) return;
+    const key = `auto:reminders:630:${todayStr}`;
+    if (localStorage.getItem(key)) return;
+    setAutoJobRunning(true);
+    try {
+      const { data: logs, error: logsErr } = await supabase
+        .from('attendance_logs')
+        .select('user_id, log_date, segments, time_in, time_out')
+        .eq('log_date', todayStr);
+      if (logsErr) throw logsErr;
+      const list = Array.isArray(logs) ? logs : [];
+      const active = list.filter((l) => isClockedIn(l));
+      if (!active.length) {
+        localStorage.setItem(key, '1');
+        return;
+      }
+      const payload = active.map((l) => {
+        const seg = getSegments(l);
+        const last = seg[seg.length - 1];
+        const startIso = last?.time_in || l.time_in;
+        return {
+          recipient_user_id: l.user_id,
+          sender_user_id: user.id,
+          type: 'reminder_clock_out_630',
+          title: 'Clock-out reminder',
+          body: `It is past 6:30 PM and you are still clocked in. Please clock out if you are done for the day.`,
+          context_date: todayStr,
+          metadata: { log_date: todayStr, since: startIso || null },
+        };
+      });
+      await createNotifications(supabase, payload);
+      localStorage.setItem(key, '1');
+    } catch (e) {
+      console.warn('Auto 6:30 reminders error:', e);
+    } finally {
+      setAutoJobRunning(false);
+    }
+  };
+
+  const autoClockOutAtMidnight = async () => {
+    if (!supabase || !user?.id || !canSendReminders) return;
+    const now = new Date();
+    const todayYmd = now.toISOString().slice(0, 10);
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const ymd = yesterday.toISOString().slice(0, 10);
+    const key = `auto:clockout:midnight:${ymd}`;
+    if (localStorage.getItem(key)) return;
+
+    setAutoJobRunning(true);
+    try {
+      const { data: logs, error: logsErr } = await supabase
+        .from('attendance_logs')
+        .select('user_id, log_date, segments, time_in, time_out')
+        .eq('log_date', ymd);
+      if (logsErr) throw logsErr;
+      const list = Array.isArray(logs) ? logs : [];
+      const active = list.filter((l) => isClockedIn(l));
+      if (!active.length) {
+        localStorage.setItem(key, '1');
+        return;
+      }
+
+      // Find Monitoring TL/VTL recipients + Admin
+      const { data: leads } = await supabase
+        .from('users')
+        .select('id, email, full_name, role, team')
+        .or('role.eq.admin,and(team.eq.monitoring,role.in.(tl,vtl))');
+      const leadIds = (Array.isArray(leads) ? leads : []).map((u) => u.id).filter(Boolean);
+
+      // Fetch user display details for the active interns
+      const userIds = [...new Set(active.map((l) => l.user_id))];
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, email, full_name')
+        .in('id', userIds);
+      const byId = {};
+      (Array.isArray(usersData) ? usersData : []).forEach((u) => { byId[u.id] = u; });
+
+      const midnightIso = new Date(`${todayYmd}T00:00:00`).toISOString(); // 12:00 AM of today (end of yesterday)
+
+      // Auto-clockout each active session on yesterday's log
+      for (const log of active) {
+        const seg = getSegments(log);
+        const updatedSeg = seg.map((s, i) => (i === seg.length - 1 ? { ...s, time_out: midnightIso } : s));
+        const { error: updErr } = await supabase
+          .from('attendance_logs')
+          .update({ time_out: midnightIso, segments: updatedSeg, updated_at: new Date().toISOString() })
+          .eq('user_id', log.user_id)
+          .eq('log_date', ymd);
+        if (updErr) throw updErr;
+      }
+
+      // Notify Monitoring TL/VTL
+      if (leadIds.length) {
+        const internLines = active.map((l) => {
+          const u = byId[l.user_id] || {};
+          return `- ${u.full_name || u.email || l.user_id}`;
+        }).join('\n');
+        const payload = leadIds.map((leadId) => ({
+          recipient_user_id: leadId,
+          sender_user_id: user.id,
+          type: 'alert_missed_clock_out',
+          title: 'Auto clock-out executed',
+          body: `Some interns were still clocked in and were auto clocked out at 12:00 AM for ${ymd}:\n${internLines}`,
+          context_date: ymd,
+          metadata: { log_date: ymd, count: active.length, user_ids: userIds },
+        }));
+        await createNotifications(supabase, payload);
+      }
+
+      localStorage.setItem(key, '1');
+    } catch (e) {
+      console.warn('Auto midnight clock-out error:', e);
+    } finally {
+      setAutoJobRunning(false);
+    }
+  };
+
+  // Automatic jobs (best-effort while app is open):
+  // - 6:30 PM: remind interns still clocked in
+  // - 12:00 AM: auto clock-out yesterday's still-active logs and notify Monitoring TL/VTL
+  useEffect(() => {
+    if (!supabase || !user?.id || !canSendReminders) return;
+    const tick = () => {
+      const d = new Date();
+      const h = d.getHours();
+      const m = d.getMinutes();
+      // 18:30 - 18:59
+      if (h === 18 && m >= 30) sendAutoClockOutReminders630();
+      // 00:00 - 00:10 (run after midnight)
+      if (h === 0 && m <= 10) autoClockOutAtMidnight();
+    };
+    tick();
+    const id = setInterval(tick, 60000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, user?.id, canSendReminders]);
 
   const getDashboardPath = () => {
     if (userRole === 'admin' || userRole === 'tla') return '/admin/dashboard';
@@ -53,7 +264,7 @@ export default function SidebarLayout() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Sidebar */}
       <aside
         className="fixed left-0 top-0 z-40 w-64 lg:w-72 flex flex-col transition-transform duration-200 ease-out md:translate-x-0"
@@ -101,7 +312,7 @@ export default function SidebarLayout() {
                 to={to}
                 title={item.label}
                 className={`flex min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  active ? 'bg-white/20 text-white' : 'text-white/90 hover:bg-white/10 hover:text-white'
+                  active ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
                 }`}
               >
                 <Icon path={item.icon} className="h-5 w-5 flex-shrink-0" />
@@ -113,7 +324,7 @@ export default function SidebarLayout() {
             <Link
               to="/user-management"
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                location.pathname === '/user-management' ? 'bg-white/20 text-white' : 'text-white/90 hover:bg-white/10 hover:text-white'
+                location.pathname === '/user-management' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
               }`}
             >
               <Icon path="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" className="h-5 w-5 flex-shrink-0" />
@@ -124,7 +335,7 @@ export default function SidebarLayout() {
             <Link
               to="/role-permissions"
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                location.pathname === '/role-permissions' ? 'bg-white/20 text-white' : 'text-white/90 hover:bg-white/10 hover:text-white'
+                location.pathname === '/role-permissions' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
               }`}
             >
               <Icon path="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" className="h-5 w-5 flex-shrink-0" />
@@ -135,7 +346,7 @@ export default function SidebarLayout() {
             <Link
               to="/daily-report/manage"
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                location.pathname === '/daily-report/manage' ? 'bg-white/20 text-white' : 'text-white/90 hover:bg-white/10 hover:text-white'
+                location.pathname === '/daily-report/manage' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
               }`}
             >
               <Icon path="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.5a2 2 0 012 2v5.5a2 2 0 01-2 2z" className="h-5 w-5 flex-shrink-0" />
@@ -159,11 +370,32 @@ export default function SidebarLayout() {
       {/* Main content */}
       <div className="flex flex-1 flex-col pl-64 lg:pl-72">
         {/* Top header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-end gap-3 border-b border-gray-200 bg-white px-4 sm:px-6 shadow-sm">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-end gap-2 border-b border-gray-200 bg-white px-4 sm:px-6 shadow-sm dark:bg-gray-950 dark:border-gray-800">
           <button
             type="button"
-            onClick={() => setNotificationsOpen((o) => !o)}
-            className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#6795BE]"
+            onClick={() => {
+              const next = theme === 'dark' ? 'light' : 'dark';
+              const persisted = setStoredTheme(next);
+              setTheme(persisted);
+            }}
+            className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#6795BE] dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-gray-100 dark:focus:ring-offset-gray-950"
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          >
+            {theme === 'dark' ? (
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364-6.364l-1.414 1.414M7.05 16.95l-1.414 1.414m0-11.314L7.05 7.05m9.9 9.9l1.414 1.414M12 8a4 4 0 100 8 4 4 0 000-8z" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setNotificationsOpen(true)}
+            className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#6795BE] dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-gray-100 dark:focus:ring-offset-gray-950"
             aria-label="Notifications"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -175,7 +407,7 @@ export default function SidebarLayout() {
           </span>
           <button
             type="button"
-            className="rounded-full p-1.5 text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#6795BE]"
+            className="rounded-full p-1.5 text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#6795BE] dark:text-gray-300 dark:hover:bg-gray-900 dark:focus:ring-offset-gray-950"
             aria-label="Profile"
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm font-medium text-gray-600">
@@ -184,11 +416,89 @@ export default function SidebarLayout() {
           </button>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6">
+        <main className="flex-1 p-4 sm:p-6 text-gray-900 dark:text-gray-100">
           <Outlet />
         </main>
       </div>
       <DailyReportReminder />
+
+      {notificationsOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setNotificationsOpen(false)}>
+          <div
+            className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-gray-200 dark:border-gray-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">All notifications are shown here. Close anytime.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                aria-label="Close notifications"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={loadNotifications}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    onClick={markAllAsRead}
+                    disabled={!notifications.some((n) => !n.read_at)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60"
+                  >
+                    Mark all as read
+                  </button>
+                </div>
+
+                {canSendReminders && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Reminders are sent automatically at 6:30 PM; missed clock-outs auto close at 12:00 AM and notify Monitoring TL/VTL.
+                    {autoJobRunning ? ' (running…)': ''}
+                  </span>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                {notificationsLoading ? (
+                  <div className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">Loading notifications…</div>
+                ) : notifications.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">No notifications yet.</div>
+                ) : (
+                  <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {notifications.map((n) => (
+                      <li key={n.id} className={`px-4 py-3 ${n.read_at ? 'bg-white dark:bg-gray-900' : 'bg-blue-50/40 dark:bg-blue-950/30'}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{n.title}</p>
+                            {n.body && <p className="mt-0.5 text-xs text-gray-700 dark:text-gray-200 whitespace-pre-line">{n.body}</p>}
+                            <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                              {n.created_at ? new Date(n.created_at).toLocaleString() : '—'}
+                              {n.read_at ? ' • Read' : ' • Unread'}
+                            </p>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

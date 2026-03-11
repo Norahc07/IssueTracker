@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
 import { queryCache } from '../utils/queryCache.js';
+import { ticketPriorityPill, ticketStatusLabel, ticketStatusPill } from '../utils/uiPills.js';
 
 const PRIMARY = '#6795BE';
 const MONTHS = [
@@ -17,6 +18,7 @@ export default function OrganizedTickets() {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [sortField, setSortField] = useState('created_desc'); // 'created_desc' | 'created_asc' | 'priority_desc' | 'priority_asc' | 'status' | 'title'
 
   useEffect(() => {
     fetchTickets();
@@ -99,6 +101,46 @@ export default function OrganizedTickets() {
   const monthsWithTickets = getMonthsWithTickets(selectedYear);
   const filteredTickets = getTicketsByYearMonth(selectedYear, selectedMonth);
 
+  const sortedTickets = useMemo(() => {
+    const list = [...filteredTickets];
+    const priorityRank = { critical: 3, high: 2, normal: 1, low: 0 };
+    const statusRank = { open: 1, 'in-progress': 2, closed: 3 };
+
+    return list.sort((a, b) => {
+      const [field, dir] = sortField.split('_'); // e.g. 'created_desc'
+      const mul = dir === 'asc' ? 1 : -1;
+
+      if (field === 'created') {
+        const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return (da - db) * mul;
+      }
+
+      if (field === 'priority') {
+        const pa = priorityRank[(a.priority || '').toLowerCase()] ?? -1;
+        const pb = priorityRank[(b.priority || '').toLowerCase()] ?? -1;
+        if (pa === pb) return 0;
+        return (pa - pb) * mul;
+      }
+
+      if (field === 'status') {
+        const sa = statusRank[(a.status || '').toLowerCase()] ?? 99;
+        const sb = statusRank[(b.status || '').toLowerCase()] ?? 99;
+        if (sa === sb) return 0;
+        return (sa - sb) * mul;
+      }
+
+      if (field === 'title') {
+        const ta = (a.title || '').toLowerCase();
+        const tb = (b.title || '').toLowerCase();
+        if (ta === tb) return 0;
+        return ta < tb ? -1 : 1;
+      }
+
+      return 0;
+    });
+  }, [filteredTickets, sortField]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -108,17 +150,17 @@ export default function OrganizedTickets() {
   }
 
   return (
-    <div className="w-full space-y-4 sm:space-y-6">
+    <div className="w-full space-y-5 sm:space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Organized Tickets</h1>
-        <p className="mt-1 text-sm text-gray-600">Browse tickets by year and month</p>
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight" style={{ color: PRIMARY }}>Organized Tickets</h1>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Browse tickets by year, month, and sort tickets the way you need.</p>
       </div>
 
       {/* Year Tabs */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 sm:p-5 shadow-sm">
         <div className="mb-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Select Year</h2>
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Select Year</h2>
           <div className="flex flex-wrap gap-2">
             {years.map((year) => (
               <button
@@ -133,11 +175,12 @@ export default function OrganizedTickets() {
                     setSelectedMonth(new Date().getMonth() + 1);
                   }
                 }}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-3.5 py-1.5 rounded-full text-sm font-semibold transition-colors border ${
                   selectedYear === year
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'text-white border-transparent'
+                    : 'text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800'
                 }`}
+                style={selectedYear === year ? { backgroundColor: PRIMARY } : {}}
               >
                 {year}
               </button>
@@ -148,7 +191,7 @@ export default function OrganizedTickets() {
         {/* Month Tabs */}
         {selectedYear && (
           <div>
-            <h2 className="text-sm font-semibold text-gray-700 mb-2">Select Month</h2>
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Select Month</h2>
             <div className="flex flex-wrap gap-2">
               {MONTHS.map((month, index) => {
                 const monthNum = index + 1;
@@ -158,13 +201,14 @@ export default function OrganizedTickets() {
                     key={monthNum}
                     onClick={() => setSelectedMonth(monthNum)}
                     disabled={!hasTickets}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-colors border ${
                       selectedMonth === monthNum
-                        ? 'bg-blue-600 text-white'
+                        ? 'text-white border-transparent'
                         : hasTickets
-                        ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                        ? 'text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        : 'text-gray-400 dark:text-gray-500 border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 cursor-not-allowed'
                     }`}
+                    style={selectedMonth === monthNum ? { backgroundColor: PRIMARY } : {}}
                   >
                     {month}
                   </button>
@@ -176,22 +220,42 @@ export default function OrganizedTickets() {
       </div>
 
       {/* Tickets List */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900">
-            Tickets - {MONTHS[selectedMonth - 1]} {selectedYear}
-            <span className="ml-2 text-sm font-normal text-gray-500">
-              ({filteredTickets.length} {filteredTickets.length === 1 ? 'ticket' : 'tickets'})
-            </span>
-          </h2>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+        <div className="px-4 sm:px-6 py-3.5 border-b border-gray-200 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Tickets – {MONTHS[selectedMonth - 1]} {selectedYear}
+            </h2>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              {filteredTickets.length} {filteredTickets.length === 1 ? 'ticket' : 'tickets'} in this month
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 md:justify-end">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-300" htmlFor="ticket-sort">
+              Sort by
+            </label>
+            <select
+              id="ticket-sort"
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value)}
+              className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs sm:text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+            >
+              <option value="created_desc">Newest created</option>
+              <option value="created_asc">Oldest created</option>
+              <option value="priority_desc">Priority (high → low)</option>
+              <option value="priority_asc">Priority (low → high)</option>
+              <option value="status">Status</option>
+              <option value="title">Title (A–Z)</option>
+            </select>
+          </div>
         </div>
-        <div className="divide-y divide-gray-200">
-          {filteredTickets.length > 0 ? (
-            filteredTickets.map((ticket) => (
+        <div className="divide-y divide-gray-200 dark:divide-gray-800">
+          {sortedTickets.length > 0 ? (
+            sortedTickets.map((ticket) => (
               <div
                 key={ticket.id}
                 onClick={() => setSelectedTicket(ticket)}
-                className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                className="px-4 sm:px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors cursor-pointer"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                   <div className="flex-1 min-w-0">
@@ -212,20 +276,11 @@ export default function OrganizedTickets() {
                     </div>
                   </div>
                   <div className="flex-shrink-0 sm:ml-4 flex items-center gap-2">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      ticket.status === 'open' ? 'bg-green-100 text-green-800' :
-                      ticket.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {ticket.status}
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ticketStatusPill(ticket.status)}`}>
+                      {ticketStatusLabel(ticket.status)}
                     </span>
                     {ticket.priority && (
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        ticket.priority === 'critical' ? 'bg-red-100 text-red-800' :
-                        ticket.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                        ticket.priority === 'normal' ? 'bg-blue-100 text-blue-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ticketPriorityPill(ticket.priority)}`}>
                         {ticket.priority}
                       </span>
                     )}

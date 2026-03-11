@@ -6,6 +6,7 @@ import { getRoleDisplayName } from '../utils/rolePermissions.js';
 import DailyReportForm from './DailyReportForm.jsx';
 import { queryCache } from '../utils/queryCache.js';
 import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
+import { useSearchParams } from 'react-router-dom';
 
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -55,7 +56,8 @@ export default function DailyReportManage() {
   const canManage = permissions.canManageDailyReport(userRole);
   const showMyFormTab = userRole === 'tl' || userRole === 'vtl';
   const showTeamReportTab = userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl';
-  const [activeTab, setActiveTab] = useState('status'); // 'status' | 'questions' | 'my' | 'team'
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState('status'); // 'status' | 'questions' | 'my' | 'team' | 'attendanceReports'
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [interns, setInterns] = useState([]);
@@ -75,6 +77,25 @@ export default function DailyReportManage() {
   const [savingTeamReport, setSavingTeamReport] = useState(false);
   const [isEditingTeamReport, setIsEditingTeamReport] = useState(true);
 
+  // Attendance Reports (from team_daily_report.attendance_counts)
+  const [attendanceReportRange, setAttendanceReportRange] = useState('30'); // '30' | '90' | 'all'
+  const [attendanceReportTab, setAttendanceReportTab] = useState('late'); // 'late' | 'leave' | 'absent'
+  const [attendanceReportRows, setAttendanceReportRows] = useState([]);
+  const [attendanceReportsLoading, setAttendanceReportsLoading] = useState(false);
+
+  // Deep-link support: /daily-report/manage?tab=attendanceReports&sub=late|leave|absent&range=30|90|all
+  useEffect(() => {
+    if (!canManage) return;
+    const tab = searchParams.get('tab');
+    const sub = searchParams.get('sub');
+    const range = searchParams.get('range');
+
+    if (tab === 'attendanceReports') setActiveTab('attendanceReports');
+    if (sub === 'late' || sub === 'leave' || sub === 'absent') setAttendanceReportTab(sub);
+    if (range === '30' || range === '90' || range === 'all') setAttendanceReportRange(range);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManage]);
+
   useEffect(() => {
     if (!canManage) return;
     fetchData();
@@ -82,6 +103,13 @@ export default function DailyReportManage() {
       fetchTeamReport();
     }
   }, [canManage, selectedDate, activeTab, teamReportDate]);
+
+  useEffect(() => {
+    if (!canManage) return;
+    if (activeTab !== 'attendanceReports') return;
+    fetchAttendanceReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManage, activeTab, attendanceReportRange]);
 
   // Onboarding records contain department (source of truth for IT/HR/Marketing)
   useEffect(() => {
@@ -300,6 +328,50 @@ export default function DailyReportManage() {
     }
   };
 
+  const fetchAttendanceReports = async (bypassCache = false) => {
+    if (!supabase) return;
+    const cacheKey = `daily-report:attendance-reports:${attendanceReportRange}`;
+    if (!bypassCache) {
+      const cached = queryCache.get(cacheKey);
+      if (Array.isArray(cached)) {
+        setAttendanceReportRows(cached);
+        return;
+      }
+    }
+    setAttendanceReportsLoading(true);
+    try {
+      let q = supabase
+        .from('team_daily_report')
+        .select('report_date, attendance_counts, prepared_by, updated_at')
+        .order('report_date', { ascending: false });
+
+      if (attendanceReportRange !== 'all') {
+        const days = Number(attendanceReportRange) || 30;
+        const start = new Date();
+        start.setDate(start.getDate() - (days - 1));
+        const startStr = start.toISOString().slice(0, 10);
+        q = q.gte('report_date', startStr);
+      }
+
+      const { data, error } = await q.limit(180);
+      if (error) throw error;
+      const list = (Array.isArray(data) ? data : []).map((row) => ({
+        ...row,
+        attendance_counts:
+          typeof row.attendance_counts === 'string'
+            ? JSON.parse(row.attendance_counts)
+            : (row.attendance_counts || {}),
+      }));
+      queryCache.set(cacheKey, list);
+      setAttendanceReportRows(list);
+    } catch (e) {
+      console.warn('Attendance reports fetch error:', e);
+      toast.error(e?.message || 'Failed to load attendance reports.');
+    } finally {
+      setAttendanceReportsLoading(false);
+    }
+  };
+
   const saveTeamReport = async () => {
     if (!teamReport) return;
     setSavingTeamReport(true);
@@ -404,6 +476,16 @@ export default function DailyReportManage() {
               Team Daily Report
             </button>
           )}
+          {showTeamReportTab && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('attendanceReports')}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium ${activeTab === 'attendanceReports' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'text-gray-600 hover:bg-gray-100'}`}
+              style={activeTab === 'attendanceReports' ? { borderTopColor: PRIMARY } : {}}
+            >
+              Attendance Reports
+            </button>
+          )}
         </div>
         {activeTab === 'status' && (
           <div className="flex items-center gap-2">
@@ -429,6 +511,56 @@ export default function DailyReportManage() {
               onChange={(e) => setTeamReportDate(e.target.value)}
               ariaLabel="Select team report date"
             />
+          </div>
+        )}
+        {activeTab === 'attendanceReports' && (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Range:</span>
+              <select
+                value={attendanceReportRange}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setAttendanceReportRange(v);
+                  const next = new URLSearchParams(searchParams);
+                  next.set('tab', 'attendanceReports');
+                  next.set('sub', attendanceReportTab);
+                  next.set('range', v);
+                  setSearchParams(next, { replace: true });
+                }}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+              >
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="all">All time</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
+              {[
+                { id: 'late', label: 'Lates' },
+                { id: 'leave', label: 'Leaves' },
+                { id: 'absent', label: 'Absences' },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => {
+                    setAttendanceReportTab(t.id);
+                    const next = new URLSearchParams(searchParams);
+                    next.set('tab', 'attendanceReports');
+                    next.set('sub', t.id);
+                    next.set('range', attendanceReportRange);
+                    setSearchParams(next, { replace: true });
+                  }}
+                  className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${
+                    attendanceReportTab === t.id ? 'text-white' : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                  style={attendanceReportTab === t.id ? { backgroundColor: PRIMARY } : {}}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -1711,6 +1843,100 @@ export default function DailyReportManage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'attendanceReports' && showTeamReportTab && (
+        <div>
+          <div className="flex items-baseline justify-between mb-3">
+            <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+              Attendance Reports
+            </h2>
+            <p className="text-sm text-gray-600">
+              Click a date row to open that day’s Team Daily Report.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+            <table className="w-full text-sm min-w-[720px]">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Date</th>
+                  {attendanceReportTab === 'late' && (
+                    <>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-900">Late</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-900">Notable late</th>
+                    </>
+                  )}
+                  {attendanceReportTab === 'leave' && (
+                    <th className="text-left px-4 py-3 font-semibold text-gray-900">On leave</th>
+                  )}
+                  {attendanceReportTab === 'absent' && (
+                    <>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-900">Absent</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-900">Half-day</th>
+                    </>
+                  )}
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Prepared by</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attendanceReportsLoading ? (
+                  <tr>
+                    <td colSpan={attendanceReportTab === 'leave' ? 4 : 5} className="px-4 py-8 text-center text-gray-500">
+                      Loading…
+                    </td>
+                  </tr>
+                ) : attendanceReportRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={attendanceReportTab === 'leave' ? 4 : 5} className="px-4 py-8 text-center text-gray-500">
+                      No team daily reports found for the selected range.
+                    </td>
+                  </tr>
+                ) : (
+                  attendanceReportRows.map((row) => {
+                    const counts = row.attendance_counts || {};
+                    const onClick = () => {
+                      setTeamReportDate(row.report_date);
+                      setActiveTab('team');
+                    };
+                    return (
+                      <tr
+                        key={row.report_date}
+                        className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer"
+                        onClick={onClick}
+                        title="Open Team Daily Report"
+                      >
+                        <td className="px-4 py-3 font-medium text-gray-900">
+                          {prettyDateOrFallback(row.report_date)}
+                        </td>
+                        {attendanceReportTab === 'late' && (
+                          <>
+                            <td className="px-4 py-3 text-gray-700">{Number(counts.late) || 0}</td>
+                            <td className="px-4 py-3 text-gray-700">{Number(counts.notable_late) || 0}</td>
+                          </>
+                        )}
+                        {attendanceReportTab === 'leave' && (
+                          <td className="px-4 py-3 text-gray-700">{Number(counts.on_leave) || 0}</td>
+                        )}
+                        {attendanceReportTab === 'absent' && (
+                          <>
+                            <td className="px-4 py-3 text-gray-700">{Number(counts.absent) || 0}</td>
+                            <td className="px-4 py-3 text-gray-700">{Number(counts.half_day) || 0}</td>
+                          </>
+                        )}
+                        <td className="px-4 py-3 text-gray-600">{row.prepared_by || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {row.updated_at ? new Date(row.updated_at).toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

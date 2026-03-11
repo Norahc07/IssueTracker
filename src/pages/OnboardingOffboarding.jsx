@@ -246,13 +246,18 @@ export default function OnboardingOffboarding() {
   const [offboardingVerifiedByName, setOffboardingVerifiedByName] = useState(null);
   const [, setStatusTick] = useState(0); // force re-render for Intern Status every minute
 
+  // Records search/sort (admin + TL/VTL only)
+  const [onboardingSearch, setOnboardingSearch] = useState('');
+  const [offboardingSearch, setOffboardingSearch] = useState('');
+  const [onboardingSort, setOnboardingSort] = useState('date_desc'); // date_desc | date_asc | name_asc | name_desc | email_asc | email_desc | team_asc
+  const [offboardingSort, setOffboardingSort] = useState('date_desc'); // date_desc | date_asc | last_asc | last_desc | email_asc | email_desc | hours_desc | hours_asc
+
   const isTlaTeam = userTeam && String(userTeam).toLowerCase() === 'tla';
 
-  const canManage =
+  const canManageRecords = userRole === 'admin' || userRole === 'tl' || userRole === 'vtl';
+  const canManageRequirements =
     userRole === 'admin' ||
     ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam);
-
-  const canManageRequirements = canManage;
 
   const canSubmitRequirements =
     userRole === 'intern' ||
@@ -526,6 +531,76 @@ export default function OnboardingOffboarding() {
 
   const filteredOffboarding = offboarding.filter((r) => getYear(r.actual_end_date) === activeYear);
 
+  const displayedOnboarding = useMemo(() => {
+    const q = onboardingSearch.trim().toLowerCase();
+    let list = filteredOnboarding;
+    if (q) {
+      list = list.filter(({ onboarding: r, user: u }) => {
+        const name = String(r?.name || u?.full_name || '').toLowerCase();
+        const email = String(r?.email || u?.email || '').toLowerCase();
+        const dept = String(r?.department || '').toLowerCase();
+        const team = String(formatTeamLabel(r?.team || u?.team) || '').toLowerCase();
+        return [name, email, dept, team].some((v) => v.includes(q));
+      });
+    }
+    const safeDate = (x) => {
+      const dt = x?.onboarding_datetime ? new Date(x.onboarding_datetime) : null;
+      return dt && !Number.isNaN(dt.getTime()) ? dt.getTime() : 0;
+    };
+    const safeName = (x) => String(x?.name || '').toLowerCase();
+    const safeEmail = (x) => String(x?.email || '').toLowerCase();
+    list = [...list].sort((a, b) => {
+      const ra = a.onboarding || {};
+      const rb = b.onboarding || {};
+      if (onboardingSort === 'date_asc') return safeDate(ra) - safeDate(rb);
+      if (onboardingSort === 'date_desc') return safeDate(rb) - safeDate(ra);
+      if (onboardingSort === 'name_asc') return safeName(ra).localeCompare(safeName(rb));
+      if (onboardingSort === 'name_desc') return safeName(rb).localeCompare(safeName(ra));
+      if (onboardingSort === 'email_asc') return safeEmail(ra).localeCompare(safeEmail(rb));
+      if (onboardingSort === 'email_desc') return safeEmail(rb).localeCompare(safeEmail(ra));
+      if (onboardingSort === 'team_asc') {
+        const ta = String(formatTeamLabel(ra.team || a.user?.team) || '').toLowerCase();
+        const tb = String(formatTeamLabel(rb.team || b.user?.team) || '').toLowerCase();
+        return ta.localeCompare(tb);
+      }
+      return safeDate(rb) - safeDate(ra);
+    });
+    return list;
+  }, [filteredOnboarding, onboardingSearch, onboardingSort]);
+
+  const displayedOffboarding = useMemo(() => {
+    const q = offboardingSearch.trim().toLowerCase();
+    let list = filteredOffboarding;
+    if (q) {
+      list = list.filter((r) => {
+        const dept = String(r?.department || '').toLowerCase();
+        const last = String(r?.last_name || '').toLowerCase();
+        const first = String(r?.first_name || '').toLowerCase();
+        const email = String(r?.email || '').toLowerCase();
+        return [dept, last, first, email].some((v) => v.includes(q));
+      });
+    }
+    const safeDate = (r) => {
+      const dt = r?.actual_end_date ? new Date(r.actual_end_date) : null;
+      return dt && !Number.isNaN(dt.getTime()) ? dt.getTime() : 0;
+    };
+    const safeEmail = (r) => String(r?.email || '').toLowerCase();
+    const safeLast = (r) => String(r?.last_name || '').toLowerCase();
+    const safeHours = (r) => Number(r?.hours) || 0;
+    list = [...list].sort((a, b) => {
+      if (offboardingSort === 'date_asc') return safeDate(a) - safeDate(b);
+      if (offboardingSort === 'date_desc') return safeDate(b) - safeDate(a);
+      if (offboardingSort === 'last_asc') return safeLast(a).localeCompare(safeLast(b));
+      if (offboardingSort === 'last_desc') return safeLast(b).localeCompare(safeLast(a));
+      if (offboardingSort === 'email_asc') return safeEmail(a).localeCompare(safeEmail(b));
+      if (offboardingSort === 'email_desc') return safeEmail(b).localeCompare(safeEmail(a));
+      if (offboardingSort === 'hours_asc') return safeHours(a) - safeHours(b);
+      if (offboardingSort === 'hours_desc') return safeHours(b) - safeHours(a);
+      return safeDate(b) - safeDate(a);
+    });
+    return list;
+  }, [filteredOffboarding, offboardingSearch, offboardingSort]);
+
   const onboardingCandidates = useMemo(() => {
     return onboarding.filter((r) => {
       const email = (r.email || '').trim().toLowerCase();
@@ -536,6 +611,7 @@ export default function OnboardingOffboarding() {
 
   const handleOnboardingSubmit = async (e) => {
     e.preventDefault();
+    setOnboardingSubmitAttempted(true);
     const { onboarding_date, onboarding_time, name, email, department, team, start_date } = onboardingForm;
     if (!onboarding_date || !name.trim()) {
       toast.error('Onboarding date and name are required.');
@@ -577,6 +653,7 @@ export default function OnboardingOffboarding() {
       });
       setEditingOnboardingId(null);
       setShowOnboardingModal(false);
+      setOnboardingSubmitAttempted(false);
       queryCache.invalidate('onboarding:records');
       await fetchData(true);
     } catch (err) {
@@ -648,6 +725,7 @@ export default function OnboardingOffboarding() {
 
   const handleOffboardingSubmit = async (e) => {
     e.preventDefault();
+    setOffboardingSubmitAttempted(true);
     const { department, last_name, first_name, actual_end_date, hours, email } = offboardingForm;
     if (!actual_end_date || !email?.trim()) {
       toast.error('Actual end date and email (from onboarding) are required.');
@@ -674,6 +752,7 @@ export default function OnboardingOffboarding() {
         email: '',
       });
       setShowOffboardingModal(false);
+      setOffboardingSubmitAttempted(false);
       queryCache.invalidate('offboarding:records');
       await fetchData(true);
     } catch (err) {
@@ -887,6 +966,8 @@ export default function OnboardingOffboarding() {
 
   const [showTerminateOnboardingModal, setShowTerminateOnboardingModal] = useState(false);
   const [terminatingOnboarding, setTerminatingOnboarding] = useState(false);
+  const [onboardingSubmitAttempted, setOnboardingSubmitAttempted] = useState(false);
+  const [offboardingSubmitAttempted, setOffboardingSubmitAttempted] = useState(false);
 
   // Load human-readable verifier name for onboarding/offboarding requirement modals
   useEffect(() => {
@@ -954,21 +1035,21 @@ export default function OnboardingOffboarding() {
   return (
     <div className="w-full space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Onboarding & Offboarding</h1>
-        <p className="mt-1 text-sm text-gray-600">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>Onboarding & Offboarding</h1>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           Track intern onboarding and offboarding records by year.
         </p>
       </div>
 
       {/* Year tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
+      <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-800 pb-2">
         {allYears.map((year) => (
           <button
             key={year}
             type="button"
             onClick={() => setActiveYear(year)}
             className={`px-4 py-1.5 rounded-full text-sm font-medium ${
-              activeYear === year ? 'text-white' : 'text-gray-700 hover:bg-gray-100'
+              activeYear === year ? 'text-white' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
             style={activeYear === year ? { backgroundColor: PRIMARY } : {}}
           >
@@ -1004,8 +1085,8 @@ export default function OnboardingOffboarding() {
             }}
             className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
               activeTab === tab.id
-                ? 'bg-white text-gray-900 border-gray-300 shadow-sm'
-                : 'bg-gray-100 text-gray-700 border-transparent hover:bg-gray-200'
+                ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-700 shadow-sm'
+                : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 border-transparent hover:bg-gray-200 dark:hover:bg-gray-800'
             }`}
           >
             {tab.label}
@@ -1017,7 +1098,7 @@ export default function OnboardingOffboarding() {
       {activeTab === 'onboarding' && (
         <div className="space-y-3">
           <div className="space-y-1">
-            <h2 className="text-base font-semibold text-gray-900">Onboarding ({activeYear})</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Onboarding ({activeYear})</h2>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               {/* Nested tabs: Records / Requirements */}
               <div className="flex flex-wrap gap-2">
@@ -1033,8 +1114,8 @@ export default function OnboardingOffboarding() {
                     }}
                     className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                       onboardingInnerTab === tab.id
-                        ? 'bg-white text-gray-900 border-gray-300 shadow-sm'
-                        : 'bg-gray-100 text-gray-700 border-transparent hover:bg-gray-200'
+                        ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-700 shadow-sm'
+                        : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 border-transparent hover:bg-gray-200 dark:hover:bg-gray-800'
                     }`}
                   >
                     {tab.label}
@@ -1042,7 +1123,7 @@ export default function OnboardingOffboarding() {
                 ))}
               </div>
 
-              {canManage && onboardingInnerTab === 'records' && (
+              {canManageRecords && onboardingInnerTab === 'records' && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1069,6 +1150,27 @@ export default function OnboardingOffboarding() {
 
           {onboardingInnerTab === 'records' && (
             <div className="space-y-2">
+              {canManageRecords && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    value={onboardingSearch}
+                    onChange={(e) => setOnboardingSearch(e.target.value)}
+                    placeholder="Search name, email, department, team…"
+                    className="w-full sm:w-[320px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                  />
+                  <span className="text-sm text-gray-600">Sort:</span>
+                  <select
+                    value={onboardingSort}
+                    onChange={(e) => setOnboardingSort(e.target.value)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                  >
+                    <option value="date_desc">New</option>
+                    <option value="date_asc">Old</option>
+                    <option value="name_asc">Ascending Name</option>
+                    <option value="name_desc">Descending Name</option>
+                  </select>
+                </div>
+              )}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead>
@@ -1079,13 +1181,13 @@ export default function OnboardingOffboarding() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Department</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Team</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Start date</th>
-                      {canManage && (
+                      {canManageRecords && (
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Actions</th>
                       )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredOnboarding.map(({ onboarding: r, user: u }) => (
+                    {displayedOnboarding.map(({ onboarding: r, user: u }) => (
                       <tr key={r?.id || u?.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm text-gray-900">
                           {r?.onboarding_datetime
@@ -1113,7 +1215,7 @@ export default function OnboardingOffboarding() {
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {r?.start_date ? new Date(r.start_date).toLocaleDateString() : '—'}
                         </td>
-                        {canManage && (
+                        {canManageRecords && (
                           <td className="px-4 py-3 text-sm text-gray-600 space-x-2">
                             {r && (
                               <button
@@ -1165,9 +1267,9 @@ export default function OnboardingOffboarding() {
                         )}
                       </tr>
                     ))}
-                    {filteredOnboarding.length === 0 && (
+                    {displayedOnboarding.length === 0 && (
                       <tr>
-                        <td className="px-4 py-4 text-sm text-gray-500 text-center" colSpan={6}>
+                        <td className="px-4 py-4 text-sm text-gray-500 text-center" colSpan={canManageRecords ? 7 : 6}>
                           No onboarding records for {activeYear}.
                         </td>
                       </tr>
@@ -1301,7 +1403,7 @@ export default function OnboardingOffboarding() {
                 ))}
               </div>
 
-              {canManage && offboardingInnerTab === 'records' && (
+              {canManageRecords && offboardingInnerTab === 'records' && (
                 <button
                   type="button"
                   onClick={() => setShowOffboardingModal(true)}
@@ -1316,6 +1418,31 @@ export default function OnboardingOffboarding() {
 
           {offboardingInnerTab === 'records' && (
             <div className="space-y-2">
+              {canManageRecords && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    value={offboardingSearch}
+                    onChange={(e) => setOffboardingSearch(e.target.value)}
+                    placeholder="Search department, name, email…"
+                    className="w-full sm:w-[320px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                  />
+                  <span className="text-sm text-gray-600">Sort:</span>
+                  <select
+                    value={offboardingSort}
+                    onChange={(e) => setOffboardingSort(e.target.value)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                  >
+                    <option value="date_desc">Actual end date (newest)</option>
+                    <option value="date_asc">Actual end date (oldest)</option>
+                    <option value="last_asc">Last name (A–Z)</option>
+                    <option value="last_desc">Last name (Z–A)</option>
+                    <option value="email_asc">Email (A–Z)</option>
+                    <option value="email_desc">Email (Z–A)</option>
+                    <option value="hours_desc">Hours (high → low)</option>
+                    <option value="hours_asc">Hours (low → high)</option>
+                  </select>
+                </div>
+              )}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead>
@@ -1329,7 +1456,7 @@ export default function OnboardingOffboarding() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredOffboarding.map((r) => (
+                    {displayedOffboarding.map((r) => (
                       <tr key={r.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm text-gray-900">{r.department || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{r.last_name || '—'}</td>
@@ -1341,7 +1468,7 @@ export default function OnboardingOffboarding() {
                         <td className="px-4 py-3 text-sm text-gray-600">{r.email || '—'}</td>
                       </tr>
                     ))}
-                    {filteredOffboarding.length === 0 && (
+                    {displayedOffboarding.length === 0 && (
                       <tr>
                         <td className="px-4 py-4 text-sm text-gray-500 text-center" colSpan={6}>
                           No offboarding records for {activeYear}.
@@ -2182,7 +2309,7 @@ export default function OnboardingOffboarding() {
         </Modal>
       )}
       {/* Onboarding modal form */}
-      {canManage && (
+      {canManageRecords && (
         <Modal
           open={showOnboardingModal}
           onClose={() => {
@@ -2217,6 +2344,9 @@ export default function OnboardingOffboarding() {
                     className="w-full"
                   />
                   <p className="mt-1 text-xs text-gray-500">dd/mm/yyyy</p>
+                  {onboardingSubmitAttempted && !onboardingForm.onboarding_date && (
+                    <p className="mt-1 text-xs font-medium text-red-600">Required.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Onboarding time (optional)</label>
@@ -2268,6 +2398,9 @@ export default function OnboardingOffboarding() {
                     placeholder="e.g. Juan Dela Cruz"
                     required
                   />
+                  {onboardingSubmitAttempted && !onboardingForm.name.trim() && (
+                    <p className="mt-1 text-xs font-medium text-red-600">Required.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -2330,7 +2463,7 @@ export default function OnboardingOffboarding() {
                     type="submit"
                     className="px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm"
                     style={{ backgroundColor: PRIMARY }}
-                    disabled={terminatingOnboarding}
+                    disabled={terminatingOnboarding || !onboardingForm.onboarding_date || !onboardingForm.name.trim()}
                   >
                     {editingOnboardingId ? 'Save changes' : 'Save onboarding'}
                   </button>
@@ -2342,7 +2475,7 @@ export default function OnboardingOffboarding() {
       )}
 
       {/* Terminate onboarding confirmation modal */}
-      {canManage && (
+      {canManageRecords && (
         <Modal
           open={showTerminateOnboardingModal}
           onClose={() => {
@@ -2388,7 +2521,7 @@ export default function OnboardingOffboarding() {
       )}
 
       {/* Offboarding modal form */}
-      {canManage && (
+      {canManageRecords && (
         <Modal open={showOffboardingModal} onClose={() => setShowOffboardingModal(false)}>
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-gray-200">
             <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
@@ -2414,6 +2547,9 @@ export default function OnboardingOffboarding() {
                     className="w-full"
                   />
                   <p className="mt-1 text-xs text-gray-500">dd/mm/yyyy</p>
+                  {offboardingSubmitAttempted && !offboardingForm.actual_end_date && (
+                    <p className="mt-1 text-xs font-medium text-red-600">Required.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Hours</label>
@@ -2462,6 +2598,9 @@ export default function OnboardingOffboarding() {
                 <p className="mt-1 text-xs text-gray-500">
                   Choose an email from onboarding; department and name will fill automatically.
                 </p>
+                {offboardingSubmitAttempted && !offboardingForm.email?.trim() && (
+                  <p className="mt-1 text-xs font-medium text-red-600">Required.</p>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -2476,6 +2615,7 @@ export default function OnboardingOffboarding() {
                   type="submit"
                   className="px-4 py-2 rounded-lg text-sm font-medium text-white"
                   style={{ backgroundColor: PRIMARY }}
+                  disabled={!offboardingForm.actual_end_date || !offboardingForm.email?.trim()}
                 >
                   Save offboarding
                 </button>
