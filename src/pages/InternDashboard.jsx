@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
 import { Link } from 'react-router-dom';
 import { queryCache } from '../utils/queryCache.js';
+import DashboardTicketCharts from '../components/DashboardTicketCharts.jsx';
 
 const PRIMARY = '#6795BE';
 const DEFAULT_OJT_REQUIRED_HOURS = 400;
@@ -259,6 +260,9 @@ export default function InternDashboard() {
           ))}
         </div>
       </div>
+
+      {/* Ticket Analytics */}
+      <DashboardTicketCharts tickets={tickets} title="Ticket Analytics" />
 
       {/* My Tickets */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">

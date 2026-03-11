@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
 import { Link } from 'react-router-dom';
 import { queryCache } from '../utils/queryCache.js';
+import DashboardTicketCharts from '../components/DashboardTicketCharts.jsx';
 
 const PRIMARY = '#6795BE';
 const DEFAULT_OJT_REQUIRED_HOURS = 400;
@@ -224,19 +225,7 @@ export default function LeadDashboard() {
 
       <div>
         <h2 className="text-base font-semibold text-gray-900 mb-3">Ticket Overview</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: 'Total', value: stats.totalTickets },
-            { label: 'Open', value: stats.openTickets },
-            { label: 'In Progress', value: stats.inProgressTickets },
-            { label: 'Completed', value: stats.closedTickets },
-          ].map(({ label, value }) => (
-            <div key={label} className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
-            </div>
-          ))}
-        </div>
+        <DashboardTicketCharts tickets={tickets} title="Ticket Analytics" />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">

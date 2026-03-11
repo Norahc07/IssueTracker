@@ -6,6 +6,7 @@ import TicketDetailModal from '../components/TicketDetailModal.jsx';
 import { Link } from 'react-router-dom';
 import { permissions } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
+import DashboardTicketCharts from '../components/DashboardTicketCharts.jsx';
 
 const PRIMARY = '#6795BE';
 const DEFAULT_OJT_REQUIRED_HOURS = 400;
@@ -225,23 +226,11 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <div>
-        <h2 className="text-base font-semibold text-gray-900 mb-3">Overview</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-          {[
-            { label: 'Total Tickets', value: stats.totalTickets },
-            { label: 'Open', value: stats.openTickets },
-            { label: 'In Progress', value: stats.inProgressTickets },
-            { label: 'Completed', value: stats.closedTickets },
-            { label: 'Total Users', value: stats.totalUsers },
-          ].map(({ label, value }) => (
-            <div key={label} className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
-            </div>
-          ))}
-        </div>
-      </div>
+      <DashboardTicketCharts
+        tickets={tickets}
+        title="Ticket Analytics"
+        totalUsers={stats.totalUsers}
+      />
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
