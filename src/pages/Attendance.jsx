@@ -140,6 +140,121 @@ function formatDateMonthDayYear(logDate) {
   return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
+/** Short hours label for DTR export: "H hr | M mins" */
+function formatHoursMinutesShort(totalSeconds) {
+  if (totalSeconds == null || Number.isNaN(totalSeconds)) return '';
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const hrs = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  const hLabel = hrs === 1 ? 'hr' : 'hrs';
+  const mLabel = mins === 1 ? 'min' : 'mins';
+  return `${hrs} ${hLabel} | ${mins} ${mLabel}`;
+}
+
+// Apply styling, borders, column widths, and alignment to the DTR worksheet
+function styleDtrSheet(ws, aoa) {
+  if (!ws) return;
+
+  // Auto-fit-like column widths (A-G) based on content length
+  const colCount = 7;
+  const baseWidths = [16, 14, 14, 18, 20, 16, 28];
+  const maxWidths = Array(colCount).fill(0);
+
+  if (Array.isArray(aoa)) {
+    aoa.forEach((row) => {
+      (row || []).forEach((val, cIdx) => {
+        if (cIdx >= colCount) return;
+        const s = String(val ?? '');
+        if (!s) return;
+        maxWidths[cIdx] = Math.max(maxWidths[cIdx], s.length);
+      });
+    });
+  }
+
+  ws['!cols'] = baseWidths.map((base, idx) => {
+    const len = maxWidths[idx] || 0;
+    // Rough heuristic: characters to Excel width units, clamped
+    const wch = Math.min(Math.max(base, len + 2), 40);
+    return { wch };
+  });
+
+  const center = { horizontal: 'center', vertical: 'center' };
+  const left = { horizontal: 'left', vertical: 'center' };
+  const wrap = { wrapText: true, vertical: 'center' };
+  const bold = { bold: true };
+  const border = {
+    top: { style: 'thin', color: { rgb: 'FFCCCCCC' } },
+    bottom: { style: 'thin', color: { rgb: 'FFCCCCCC' } },
+    left: { style: 'thin', color: { rgb: 'FFCCCCCC' } },
+    right: { style: 'thin', color: { rgb: 'FFCCCCCC' } },
+  };
+
+  const headerFill = { fgColor: { rgb: 'FFE5EEF7' }, patternType: 'solid' };
+  const titleFill = { fgColor: { rgb: 'FF6795BE' }, patternType: 'solid' };
+  const titleFont = { bold: true, color: { rgb: 'FFFFFFFF' }, sz: 14 };
+
+  // Ensure a cell object exists
+  const ensureCell = (r, c) => {
+    const ref = XLSX.utils.encode_cell({ r, c });
+    if (!ws[ref]) {
+      ws[ref] = { t: 's', v: '' };
+    }
+    return ws[ref];
+  };
+
+  // Title row (row index 0, col 0)
+  const titleCell = ensureCell(0, 0);
+  titleCell.s = {
+    alignment: center,
+    font: titleFont,
+    fill: titleFill,
+  };
+
+  // Meta rows: 3–6 (index 2–5)
+  for (let r = 2; r <= 5; r += 1) {
+    for (let c = 0; c <= 6; c += 1) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (!cell) continue;
+      const isLabelCol = c === 0 || c === 4;
+      const existing = cell.s || {};
+      cell.s = {
+        ...existing,
+        alignment: isLabelCol ? left : left,
+        font: isLabelCol ? { bold: true } : existing.font,
+      };
+    }
+  }
+
+  // Header row for table: row 8 (index 7)
+  for (let c = 0; c <= 6; c += 1) {
+    const cell = ensureCell(7, c);
+    const existing = cell.s || {};
+    cell.s = {
+      ...existing,
+      alignment: center,
+      font: { ...(existing.font || {}), ...bold },
+      fill: headerFill,
+      border,
+    };
+  }
+
+  // Data rows start at row 9 (index 8)
+  const totalRows = Array.isArray(aoa) ? aoa.length : 0;
+  for (let r = 8; r < totalRows; r += 1) {
+    for (let c = 0; c <= 6; c += 1) {
+      const cell = ensureCell(r, c);
+      const isCenter = c === 0 || c === 1 || c === 2 || c === 3 || c === 5;
+      const isRemarks = c === 6;
+      const existing = cell.s || {};
+      cell.s = {
+        ...existing,
+        alignment: isRemarks ? wrap : isCenter ? center : left,
+        border,
+      };
+    }
+  }
+}
+
 /** Elapsed clock display: HH:MM:SS (used when clocked in, no time out yet) */
 function formatElapsed(ms) {
   const totalSeconds = Math.floor(ms / 1000);
@@ -535,41 +650,92 @@ export default function Attendance() {
       toast.error('No DTR data to download.');
       return;
     }
-    const header = ['Date', 'First in', 'Latest in', 'Latest out', 'Rendered time (seconds)', 'Late'];
+    const userForDtr = usersById[dtrSelected.user_id];
+    const name = getUserDisplayName(userForDtr);
+    const periodCovered = `${formatDateMonthDayYear(dtrSelected.date_from)} to ${formatDateMonthDayYear(dtrSelected.date_to)}`;
+    const daysPresent = dtrLogs.length;
+    const headerRow = ['Daily Time Record (DTR)', '', '', '', '', '', ''];
+
+    // Meta rows formatted for Excel-style merging (values in B, F, with C/D/G left blank)
+    const row3 = ['Name:', name || '', '', '', 'No. of Days Absent:', '', ''];
+    const row4 = [
+      'Position:',
+      getRoleDisplayName(userForDtr?.role) || '',
+      '',
+      '',
+      'No. of Days Present:',
+      String(daysPresent),
+      '',
+    ];
+    const row5 = [
+      'Team Department:',
+      getUserTeam(userForDtr) || '',
+      '',
+      '',
+      'No. of Hours Undertime:',
+      '',
+      '',
+    ];
+    const row6 = ['Period Covered:', periodCovered, '', '', '', '', ''];
+
+    const columnsHeader = [
+      'Date',
+      'Time In',
+      'Time Out',
+      'No. of Hours',
+      'No. of Working Hours',
+      'Hours Overtime',
+      'Remarks/Signature',
+    ];
+
     const rows = dtrLogs.map((log) => {
       const seg = getSegments(log);
       const firstInLog = seg.length > 0 ? seg[0].time_in : log.time_in;
       const latestInLog = seg.length > 0 ? seg[seg.length - 1].time_in : log.time_in;
       const lastOutLog = seg.length > 0 ? seg[seg.length - 1].time_out : log.time_out;
       const totalSec = getLogRenderedSeconds(log);
+      const hoursLabel = formatHoursMinutesShort(totalSec);
       return [
-        log.log_date,
+        formatDateMonthDayYear(log.log_date),
         firstInLog ? formatTimeHHMM(firstInLog) : '',
-        latestInLog ? formatTimeHHMM(latestInLog) : '',
         lastOutLog ? formatTimeHHMM(lastOutLog) : '',
-        totalSec,
-        log.is_late ? 'Yes' : 'No',
+        hoursLabel,
+        '', // No. of Working Hours
+        '', // Hours Overtime
+        log.is_late ? 'Late' : '',
       ];
     });
-    const csvLines = [header, ...rows]
-      .map((cols) =>
-        cols
-          .map((v) => {
-            const s = String(v ?? '');
-            if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-              return `"${s.replace(/"/g, '""')}"`;
-            }
-            return s;
-          })
-          .join(',')
-      )
-      .join('\r\n');
-    const blob = new Blob([csvLines], { type: 'text/csv;charset=utf-8;' });
+    const aoa = [headerRow, [], row3, row4, row5, row6, [], columnsHeader, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    // Merges for header/meta rows:
+    // Row 1: A1-G1
+    // Row 3-5: B-D and F-G, Row 6: B-D
+    ws['!merges'] = [
+      // Row 1
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+      // Row 3 (index 2)
+      { s: { r: 2, c: 1 }, e: { r: 2, c: 3 } },
+      { s: { r: 2, c: 5 }, e: { r: 2, c: 6 } },
+      // Row 4 (index 3)
+      { s: { r: 3, c: 1 }, e: { r: 3, c: 3 } },
+      { s: { r: 3, c: 5 }, e: { r: 3, c: 6 } },
+      // Row 5 (index 4)
+      { s: { r: 4, c: 1 }, e: { r: 4, c: 3 } },
+      { s: { r: 4, c: 5 }, e: { r: 4, c: 6 } },
+      // Row 6 (index 5)
+      { s: { r: 5, c: 1 }, e: { r: 5, c: 3 } },
+    ];
+    styleDtrSheet(ws, aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'DTR');
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const fileSafeEmail = (dtrSelected.requested_by_email || 'dtr').replace(/[^a-z0-9@._-]/gi, '_');
     a.href = url;
-    a.download = `DTR_${fileSafeEmail}_${dtrSelected.date_from}_${dtrSelected.date_to}.csv`;
+    a.download = 'DTR.xlsx';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -613,41 +779,79 @@ export default function Attendance() {
       toast.error('No DTR data to download for this request.');
       return;
     }
-    const header = ['Date', 'First in', 'Latest in', 'Latest out', 'Rendered time (seconds)', 'Late'];
+    const headerRow = ['Daily Time Record (DTR)', '', '', '', '', '', ''];
+    const name = user?.user_metadata?.full_name || user?.email || '';
+    const periodCovered = `${formatDateMonthDayYear(myDtrSelected.date_from)} to ${formatDateMonthDayYear(myDtrSelected.date_to)}`;
+    const daysPresent = myDtrLogs.length;
+
+    const row3 = ['Name:', name, '', '', 'No. of Days Absent:', '', ''];
+    const row4 = [
+      'Position:',
+      getRoleDisplayName(userRole) || '',
+      '',
+      '',
+      'No. of Days Present:',
+      String(daysPresent),
+      '',
+    ];
+    const row5 = ['Team Department:', myTeam || '', '', '', 'No. of Hours Undertime:', '', ''];
+    const row6 = ['Period Covered:', periodCovered, '', '', '', '', ''];
+
+    const columnsHeader = [
+      'Date',
+      'Time In',
+      'Time Out',
+      'No. of Hours',
+      'No. of Working Hours',
+      'Hours Overtime',
+      'Remarks/Signature',
+    ];
+
     const rows = myDtrLogs.map((log) => {
       const seg = getSegments(log);
       const firstInLog = seg.length > 0 ? seg[0].time_in : log.time_in;
       const latestInLog = seg.length > 0 ? seg[seg.length - 1].time_in : log.time_in;
       const lastOutLog = seg.length > 0 ? seg[seg.length - 1].time_out : log.time_out;
       const totalSec = getLogRenderedSeconds(log);
+      const hoursLabel = formatHoursMinutesShort(totalSec);
       return [
-        log.log_date,
+        formatDateMonthDayYear(log.log_date),
         firstInLog ? formatTimeHHMM(firstInLog) : '',
-        latestInLog ? formatTimeHHMM(latestInLog) : '',
         lastOutLog ? formatTimeHHMM(lastOutLog) : '',
-        totalSec,
-        log.is_late ? 'Yes' : 'No',
+        hoursLabel,
+        '', // No. of Working Hours
+        '', // Hours Overtime
+        log.is_late ? 'Late' : '',
       ];
     });
-    const csvLines = [header, ...rows]
-      .map((cols) =>
-        cols
-          .map((v) => {
-            const s = String(v ?? '');
-            if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-              return `"${s.replace(/"/g, '""')}"`;
-            }
-            return s;
-          })
-          .join(',')
-      )
-      .join('\r\n');
-    const blob = new Blob([csvLines], { type: 'text/csv;charset=utf-8;' });
+    const aoa = [headerRow, [], row3, row4, row5, row6, [], columnsHeader, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = [
+      // Row 1
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+      // Row 3 (index 2)
+      { s: { r: 2, c: 1 }, e: { r: 2, c: 3 } },
+      { s: { r: 2, c: 5 }, e: { r: 2, c: 6 } },
+      // Row 4 (index 3)
+      { s: { r: 3, c: 1 }, e: { r: 3, c: 3 } },
+      { s: { r: 3, c: 5 }, e: { r: 3, c: 6 } },
+      // Row 5 (index 4)
+      { s: { r: 4, c: 1 }, e: { r: 4, c: 3 } },
+      { s: { r: 4, c: 5 }, e: { r: 4, c: 6 } },
+      // Row 6 (index 5)
+      { s: { r: 5, c: 1 }, e: { r: 5, c: 3 } },
+    ];
+    styleDtrSheet(ws, aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'DTR');
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const fileSafeEmail = (user?.email || 'my-dtr').replace(/[^a-z0-9@._-]/gi, '_');
     a.href = url;
-    a.download = `DTR_${fileSafeEmail}_${myDtrSelected.date_from}_${myDtrSelected.date_to}.csv`;
+    a.download = 'DTR.xlsx';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

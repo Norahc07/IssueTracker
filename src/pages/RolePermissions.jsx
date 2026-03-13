@@ -65,17 +65,19 @@ export default function RolePermissions() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6 p-4 sm:p-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
-          Role Permissions
-        </h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Overview of permissions by role. Rows are capabilities; columns are roles.
-        </p>
-        <p className="mt-2 text-xs text-gray-500">
-          ✓ = allowed for that role. Blank = not allowed. Some permissions (e.g. WordPress tasks, resolve issues) may also depend on team assignment.
-        </p>
+    <div className="w-full space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+            Role Permissions
+          </h1>
+          <p className="mt-1 text-sm text-gray-600">
+            Overview of permissions by role. Rows are capabilities; columns are roles.
+          </p>
+          <p className="mt-2 text-xs text-gray-500">
+            ✓ = allowed for that role. Blank = not allowed. Some permissions (e.g. WordPress tasks, resolve issues) may also depend on team assignment.
+          </p>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">

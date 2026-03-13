@@ -187,10 +187,16 @@ export default function LeadDashboard() {
   }
 
   return (
-      <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Overview of team tickets and activity</p>
+    <div className="w-full space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+            Dashboard
+          </h1>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Overview of team tickets and activity
+          </p>
+        </div>
       </div>
 
       {/* OJT Hours (TLA/PAT1/Monitoring TL-VTL/Interns) + Tasks */}

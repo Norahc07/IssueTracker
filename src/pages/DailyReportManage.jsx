@@ -428,17 +428,19 @@ export default function DailyReportManage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1" style={{ color: PRIMARY }}>
-          Daily Report Management
-        </h1>
-        <p className="text-sm text-gray-600">
-          Track who submitted, view intern responses, and manage the Daily Report Template.
-        </p>
+    <div className="w-full space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+            Daily Report Management
+          </h1>
+          <p className="mt-1 text-sm text-gray-600">
+            Track who submitted, view intern responses, and manage the Daily Report Template.
+          </p>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-4 items-center border-b border-gray-200 mb-6">
+      <div className="flex flex-wrap gap-4 items-center border-b border-gray-200 mb-6 mt-2">
         <div className="flex gap-2">
           <button
             type="button"

@@ -150,11 +150,20 @@ export default function OrganizedTickets() {
   }
 
   return (
-    <div className="w-full space-y-5 sm:space-y-6">
+    <div className="w-full space-y-4 sm:space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight" style={{ color: PRIMARY }}>Organized Tickets</h1>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Browse tickets by year, month, and sort tickets the way you need.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1
+            className="text-2xl font-bold text-gray-900"
+            style={{ color: PRIMARY }}
+          >
+            Organized Tickets
+          </h1>
+          <p className="mt-1 text-sm text-gray-600">
+            Browse tickets by year, month, and sort tickets the way you need.
+          </p>
+        </div>
       </div>
 
       {/* Year Tabs */}

@@ -27,6 +27,7 @@ const DailyReportManage = lazy(() => import('./pages/DailyReportManage'));
 const ScheduleFormPage = lazy(() => import('./pages/ScheduleFormPage'));
 const TrackerPage = lazy(() => import('./pages/TrackerPage'));
 const MonitoringTasks = lazy(() => import('./pages/MonitoringTasks'));
+const AdminTasks = lazy(() => import('./pages/AdminTasks'));
 
 function PageFallback() {
   return (
@@ -107,7 +108,14 @@ function AppContent() {
                 <Route path="/dashboard" element={<Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/kanban" element={<Kanban />} />
                 <Route path="/organized-tickets" element={<OrganizedTickets />} />
-                <Route path="/tasks" element={canAccessTasks() ? <TaskAssignmentLog /> : <Navigate to={getDashboardRoute()} replace />} />
+                <Route
+                  path="/tasks"
+                  element={
+                    canAccessTasks()
+                      ? (role === 'admin' ? <AdminTasks /> : <TaskAssignmentLog />)
+                      : <Navigate to={getDashboardRoute()} replace />
+                  }
+                />
                 <Route path="/monitoring-tasks" element={<MonitoringTasks />} />
                 <Route path="/tracker" element={<TrackerPage />} />
                 <Route path="/domain-updates" element={canAccessTasks() ? <Navigate to="/tasks?tab=domain-updates" replace /> : <Navigate to={getDashboardRoute()} replace />} />

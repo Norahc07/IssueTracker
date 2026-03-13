@@ -203,10 +203,16 @@ export default function InternDashboard() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>My Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Track your assigned tasks, tickets, and daily progress</p>
+    <div className="w-full space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+            My Dashboard
+          </h1>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Track your assigned tasks, tickets, and daily progress
+          </p>
+        </div>
       </div>
 
       {/* OJT Hours */}
