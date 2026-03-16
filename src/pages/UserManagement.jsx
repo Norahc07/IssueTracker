@@ -8,6 +8,7 @@ import {
   TEAMS,
 } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
+import { createAuthUserAndProfile, deleteUserAccount } from '../utils/userProvisioning.js';
 
 // Map onboarding_records.team (e.g. 'TLA', 'Monitoring', 'PAT1') to users.team ('tla', 'monitoring', 'pat1')
 function onboardingTeamToUserTeam(obTeam) {
@@ -20,12 +21,28 @@ function onboardingTeamToUserTeam(obTeam) {
 }
 
 const PRIMARY = '#6795BE';
-const ROLE_OPTIONS = [ROLES.ADMIN, ROLES.INTERN, ROLES.TL, ROLES.VTL];
+// Roles that can be assigned/edited from the UI.
+// We intentionally exclude SUPERADMIN so it can only be set via SQL.
+const ROLE_OPTIONS = [
+  ROLES.ADMIN,
+  ROLES.TLA,
+  ROLES.MONITORING_TEAM,
+  ROLES.PAT1,
+  ROLES.INTERN,
+  ROLES.TL,
+  ROLES.VTL,
+];
 const TEAM_OPTIONS = [
   { value: '', label: '—' },
   { value: TEAMS.TLA, label: 'Team Lead Assistant' },
   { value: TEAMS.MONITORING, label: 'Monitoring' },
   { value: TEAMS.PAT1, label: 'PAT1' },
+];
+
+// Admin-only team options (organizational group for admins)
+const ADMIN_TEAM_OPTIONS = [
+  { value: 'HR', label: 'HR' },
+  { value: 'Supervisor', label: 'Supervisor' },
 ];
 
 // Filter options based on team column
@@ -37,7 +54,7 @@ const FILTER_OPTIONS = [
 ];
 
 function canAccessUserManagement(role) {
-  return role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl';
+  return role === 'superadmin' || role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl';
 }
 
 export default function UserManagement() {
@@ -50,6 +67,12 @@ export default function UserManagement() {
   const [editTeam, setEditTeam] = useState('');
   const [filterTeam, setFilterTeam] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [createEmail, setCreateEmail] = useState('');
+  const [createName, setCreateName] = useState('');
+  const [createRole, setCreateRole] = useState(ROLES.INTERN);
+  const [createTeam, setCreateTeam] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     if (canAccessUserManagement(userRole)) fetchUsers();
@@ -80,11 +103,15 @@ export default function UserManagement() {
   // Normalize row from DB (handles id/email/role/full_name/team/created_at)
   const normalizeUser = (row) => {
     if (!row || typeof row !== 'object') return null;
-    const rawRole = row.role ?? ROLES.INTERN;
+    let rawRole = row.role ?? ROLES.INTERN;
+    // Never show 'superadmin' inside this table; treat as 'admin' for display/editing.
+    if (rawRole === ROLES.SUPERADMIN) rawRole = ROLES.ADMIN;
     return {
       id: row.id,
       email: row.email ?? row.email_address ?? null,
-      role: ROLE_OPTIONS.includes(rawRole) ? rawRole : ROLES.INTERN,
+      // Always keep the actual role from the database.
+      // ROLE_OPTIONS only controls what can be chosen in the dropdown.
+      role: rawRole,
       full_name: row.full_name ?? row.fullname ?? row.name ?? null,
       team: row.team ?? null,
       created_at: row.created_at ?? null,
@@ -149,13 +176,84 @@ export default function UserManagement() {
     }
   };
 
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    if (!supabase) {
+      toast.error('Supabase client not ready');
+      return;
+    }
+    const email = createEmail.trim().toLowerCase();
+    const fullName = createName.trim();
+    if (!email) {
+      toast.error('Email is required');
+      return;
+    }
+    if (!createRole) {
+      toast.error('Role is required');
+      return;
+    }
+    setCreating(true);
+    try {
+      const created = await createAuthUserAndProfile(supabase, {
+        email,
+        fullName: fullName || email,
+        role: createRole,
+        team: createTeam || null,
+      });
+      // Refresh cache and local list
+      queryCache.invalidate('user_management:users');
+      const normalized = normalizeUser(created);
+      setUsers((prev) => {
+        const list = normalized ? [...prev, normalized] : prev;
+        return list.sort((a, b) => String(a.email || '').localeCompare(String(b.email || '')));
+      });
+      setCreateEmail('');
+      setCreateName('');
+      setCreateRole(ROLES.INTERN);
+      setCreateTeam('');
+      setShowCreateModal(false);
+      toast.success('User created via SuperAdmin');
+    } catch (err) {
+      console.error('Create user error:', err);
+      toast.error(err?.message || 'Failed to create user');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDeleteUser = async (user) => {
+    if (!supabase) {
+      toast.error('Supabase client not ready');
+      return;
+    }
+    if (!user?.id) return;
+    const confirmMsg = `Delete user "${user.email || user.full_name || user.id}"?\nThis should also remove their Supabase auth account (handled by the backend function).`;
+    // eslint-disable-next-line no-alert
+    const ok = window.confirm(confirmMsg);
+    if (!ok) return;
+    try {
+      await deleteUserAccount(supabase, { userId: user.id });
+      queryCache.invalidate('user_management:users');
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      toast.success('User deleted');
+    } catch (err) {
+      console.error('Delete user error:', err);
+      toast.error(err?.message || 'Failed to delete user');
+    }
+  };
+
   const handleSaveRole = async (userId) => {
     if (!editingId || editingId !== userId) return;
     try {
       const payload = { role: editRole };
-      // TL/VTL and interns can have a team (e.g. TLA interns need team = 'tla' for Domain Updates access)
-      if (editRole === 'tl' || editRole === 'vtl' || editRole === 'intern') payload.team = editTeam || null;
-      else payload.team = null;
+      // TL/VTL, interns, and admins can have a team:
+      // - TL/VTL/Intern: functional teams (TLA / Monitoring / PAT1)
+      // - Admin: organizational group (HR / Supervisor / Founder)
+      if (editRole === 'admin' || editRole === 'tl' || editRole === 'vtl' || editRole === 'intern') {
+        payload.team = editTeam || null;
+      } else {
+        payload.team = null;
+      }
 
       const { error } = await supabase
         .from('users')
@@ -200,6 +298,8 @@ export default function UserManagement() {
     if (teamValue === TEAMS.TLA) return 'Team Lead Assistant';
     if (teamValue === TEAMS.MONITORING) return 'Monitoring';
     if (teamValue === TEAMS.PAT1) return 'PAT1';
+    // Admin groupings: show HR / Supervisor as-is
+    if (teamValue === 'HR' || teamValue === 'Supervisor') return teamValue;
     return teamValue;
   };
 
@@ -251,9 +351,23 @@ export default function UserManagement() {
           User Management
         </h1>
         <p className="mt-1 text-sm text-gray-600">
-          View and edit user roles. Only Admin and Team Lead / Vice Team Lead can access.
+          View and edit user roles. Super Admin has full control; Admin and TL/VTL have limited access.
         </p>
       </div>
+
+      {/* SuperAdmin-only: Create user (opens modal) */}
+      {userRole === 'superadmin' && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm"
+            style={{ backgroundColor: PRIMARY }}
+          >
+            + Create user
+          </button>
+        </div>
+      )}
 
       {/* Statistics Cards */}
       <div>
@@ -342,7 +456,18 @@ export default function UserManagement() {
                     </td>
                     <td className="px-4 sm:px-6 py-3">
                       {editingId === user.id ? (
-                        (editRole === 'tl' || editRole === 'vtl' || editRole === 'intern') ? (
+                        editRole === 'admin' ? (
+                          <select
+                            value={editTeam}
+                            onChange={(e) => setEditTeam(e.target.value)}
+                            className="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+                          >
+                            <option value="">—</option>
+                            {ADMIN_TEAM_OPTIONS.map((t) => (
+                              <option key={t.value} value={t.value}>{t.label}</option>
+                            ))}
+                          </select>
+                        ) : (editRole === 'tl' || editRole === 'vtl' || editRole === 'intern') ? (
                           <select
                             value={editTeam}
                             onChange={(e) => setEditTeam(e.target.value)}
@@ -356,7 +481,7 @@ export default function UserManagement() {
                           <span className="text-gray-400">—</span>
                         )
                       ) : (
-                        <span className="text-sm text-gray-600">{teamDisplayLabel(user.effectiveTeam) || '—'}</span>
+                        <span className="text-sm text-gray-600">{teamDisplayLabel(user.effectiveTeam || user.team) || '—'}</span>
                       )}
                     </td>
                     <td className="px-4 sm:px-6 py-3">
@@ -377,13 +502,24 @@ export default function UserManagement() {
                           </button>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => startEdit(user)}
-                          className="text-sm font-medium hover:underline"
-                          style={{ color: PRIMARY }}
-                        >
-                          Edit
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => startEdit(user)}
+                            className="text-sm font-medium hover:underline"
+                            style={{ color: PRIMARY }}
+                          >
+                            Edit
+                          </button>
+                          {userRole === 'superadmin' && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUser(user)}
+                              className="text-sm font-medium text-red-600 hover:text-red-800"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -402,6 +538,97 @@ export default function UserManagement() {
         </div>
       </div>
 
+      {/* Create user modal (SuperAdmin only) */}
+      {userRole === 'superadmin' && showCreateModal && (
+        <div className="fixed inset-0 z-[10000] bg-black/20 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-lg my-6">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Create user</h2>
+                <p className="text-xs text-gray-500">
+                  This will create a Supabase auth account and a <code>public.users</code> record.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !creating && setShowCreateModal(false)}
+                className="text-gray-400 hover:text-gray-700 text-lg leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleCreateUser} className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={createEmail}
+                  onChange={(e) => setCreateEmail(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+                  placeholder="user@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Full name (optional)</label>
+                <input
+                  type="text"
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+                  placeholder="Full name"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Role</label>
+                  <select
+                    value={createRole}
+                    onChange={(e) => setCreateRole(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+                  >
+                    <option value={ROLES.INTERN}>{getRoleDisplayName(ROLES.INTERN)}</option>
+                    <option value={ROLES.TL}>{getRoleDisplayName(ROLES.TL)}</option>
+                    <option value={ROLES.VTL}>{getRoleDisplayName(ROLES.VTL)}</option>
+                    <option value={ROLES.ADMIN}>{getRoleDisplayName(ROLES.ADMIN)}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Team (for TL/VTL/Intern/Admin)</label>
+                  <select
+                    value={createTeam}
+                    onChange={(e) => setCreateTeam(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+                  >
+                    <option value="">—</option>
+                    {TEAM_OPTIONS.map((t) => (
+                      <option key={t.value || 'none'} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => !creating && setShowCreateModal(false)}
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  {creating ? 'Creating…' : 'Create user'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

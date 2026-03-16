@@ -1407,6 +1407,7 @@ export default function Attendance() {
             .from('users')
             .select('id, email, full_name, role, team, scheduled_time_in, scheduled_time_out, total_ojt_hours_required, schedule_configured_at, imported_rendered_minutes')
             .neq('role', 'admin')
+            .neq('role', 'superadmin')
             .order('full_name', { ascending: true }),
           supabase
             .from('onboarding_records')

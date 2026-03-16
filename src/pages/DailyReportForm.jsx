@@ -141,6 +141,27 @@ export default function DailyReportForm() {
     }
   };
 
+  const q1 = questions[0];
+  const sections2to7 = questions.slice(1, 7);
+  const today = todayStr();
+  const hasSubmittedToday = !!existing && String(existing.report_date) === today;
+  const selectedLog = detailIndex != null ? logs[detailIndex] : null;
+
+  const requiredQuestions = Array.isArray(questions) ? questions.filter((q) => q?.required) : [];
+  const requiredMissingById = (() => {
+    const map = {};
+    requiredQuestions.forEach((q) => {
+      const v = String(answers?.[q.id] ?? '').trim();
+      if (!v) map[q.id] = 'Required.';
+    });
+    return map;
+  })();
+  const isFormValid = (() => {
+    if (!String(reportDate || '').trim()) return false;
+    if (requiredQuestions.length === 0) return true;
+    return Object.keys(requiredMissingById).length === 0;
+  })();
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -148,32 +169,6 @@ export default function DailyReportForm() {
       </div>
     );
   }
-
-  const q1 = questions[0];
-  const sections2to7 = questions.slice(1, 7);
-  const today = todayStr();
-  const hasSubmittedToday = !!existing && String(existing.report_date) === today;
-  const selectedLog = detailIndex != null ? logs[detailIndex] : null;
-
-  const requiredQuestions = useMemo(
-    () => (Array.isArray(questions) ? questions.filter((q) => q?.required) : []),
-    [questions]
-  );
-
-  const requiredMissingById = useMemo(() => {
-    const map = {};
-    requiredQuestions.forEach((q) => {
-      const v = String(answers?.[q.id] ?? '').trim();
-      if (!v) map[q.id] = 'Required.';
-    });
-    return map;
-  }, [answers, requiredQuestions]);
-
-  const isFormValid = useMemo(() => {
-    if (!String(reportDate || '').trim()) return false;
-    if (requiredQuestions.length === 0) return true;
-    return Object.keys(requiredMissingById).length === 0;
-  }, [reportDate, requiredMissingById, requiredQuestions.length]);
 
   return (
     <div className="max-w-2xl mx-auto p-6">

@@ -3,6 +3,7 @@
 // Each position has TL (Team Lead) and VTL (Vice Team Lead)
 
 export const ROLES = {
+  SUPERADMIN: 'superadmin',
   ADMIN: 'admin',
   TLA: 'tla',
   MONITORING_TEAM: 'monitoring_team',
@@ -20,6 +21,7 @@ export const TEAMS = {
 
 // Role hierarchy for permission checking
 const ROLE_HIERARCHY = {
+  [ROLES.SUPERADMIN]: 110,
   [ROLES.ADMIN]: 100,
   [ROLES.TLA]: 90,
   [ROLES.MONITORING_TEAM]: 80,
@@ -55,11 +57,11 @@ export const isTeamLead = (userRole) => {
 export const permissions = {
   // User Management
   canCreateAccounts: (userRole) => {
-    return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA]);
+    return isAnyRole(userRole, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.TLA]);
   },
 
   canApproveAccounts: (userRole) => {
-    return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA]);
+    return isAnyRole(userRole, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.TLA]);
   },
 
   // Attendance & Onboarding
@@ -156,7 +158,7 @@ export const permissions = {
   canUseAttendance: (_userRole) => true,
 
   // Attendance: who can record time in/out (admin is view-only)
-  canClockInOut: (userRole) => userRole !== ROLES.ADMIN,
+  canClockInOut: (userRole) => userRole !== ROLES.ADMIN && userRole !== ROLES.SUPERADMIN,
 
   // Attendance: who can view all interns' attendance logs (admin, TLA, TL, VTL, Monitoring)
   canViewAllAttendanceLogs: (userRole) => {
@@ -190,6 +192,7 @@ export const permissions = {
 // Get role display name
 export const getRoleDisplayName = (role) => {
   const roleNames = {
+    [ROLES.SUPERADMIN]: 'Super Admin',
     [ROLES.ADMIN]: 'Admin',
     [ROLES.TLA]: 'Team Lead Assistant',
     [ROLES.MONITORING_TEAM]: 'Monitoring Team',
@@ -205,6 +208,7 @@ export const getRoleDisplayName = (role) => {
 // Get role description
 export const getRoleDescription = (role) => {
   const descriptions = {
+    [ROLES.SUPERADMIN]: 'Highest-level access, can manage admins and all system users, and configure core settings',
     [ROLES.ADMIN]: 'Full system access, can manage all modules and users',
     [ROLES.TLA]: 'Assistant to Supervisor, can create accounts, manage credentials, and monitor WordPress tasks',
     [ROLES.MONITORING_TEAM]: 'Manages attendance logs and verifies offboarding checklists',
@@ -224,6 +228,7 @@ export const getAllRoles = () => {
 // Get role color for badges
 export const getRoleColor = (role) => {
   const colors = {
+    [ROLES.SUPERADMIN]: 'bg-red-100 text-red-800',
     [ROLES.ADMIN]: 'bg-purple-100 text-purple-800',
     [ROLES.TLA]: 'bg-blue-100 text-blue-800',
     [ROLES.MONITORING_TEAM]: 'bg-green-100 text-green-800',

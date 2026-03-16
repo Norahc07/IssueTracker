@@ -247,6 +247,7 @@ export default function SidebarLayout() {
   }, [supabase, user?.id, canSendReminders]);
 
   const getDashboardPath = () => {
+    if (userRole === 'superadmin') return '/user-management';
     if (userRole === 'admin' || userRole === 'tla') return '/admin/dashboard';
     if (userRole === 'lead' || userRole === 'tl' || userRole === 'vtl' || userRole === 'monitoring_team' || userRole === 'pat1') return '/lead/dashboard';
     return '/intern/dashboard';
@@ -281,13 +282,18 @@ export default function SidebarLayout() {
             </Link>
           </div>
           <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-0.5" style={{ WebkitOverflowScrolling: 'touch' }}>
-          {navItems.map((item) => {
+          {userRole !== 'superadmin' && navItems.map((item) => {
             // Tracker: only for admin, tla, intern, TLA team, or TL/VTL in TLA
             const canAccessTracker = () => {
               const isTla = userTeam && String(userTeam).toLowerCase() === 'tla';
               return userRole === 'admin' || userRole === 'tla' || userRole === 'intern' || isTla || ((userRole === 'tl' || userRole === 'vtl') && isTla);
             };
             if (item.to === '/tracker' && !canAccessTracker()) return null;
+
+            // Hide Attendance page link for admin and superadmin (they don't use attendance)
+            if (item.to === '/attendance' && (userRole === 'admin' || userRole === 'superadmin')) {
+              return null;
+            }
             
             let to = item.to === 'dashboard' ? getDashboardPath() : item.to;
 
@@ -320,7 +326,29 @@ export default function SidebarLayout() {
               </Link>
             );
           })}
-          {(userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl') && (
+          {userRole === 'superadmin' && (
+            <>
+              <Link
+                to="/superadmin/overview"
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                  location.pathname === '/superadmin/overview' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
+                }`}
+              >
+                <Icon path="M3 3h18M3 9h18M3 15h18M3 21h18" className="h-5 w-5 flex-shrink-0" />
+                <span>OJT Overview</span>
+              </Link>
+              <Link
+                to="/user-management"
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                  location.pathname === '/user-management' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
+                }`}
+              >
+                <Icon path="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" className="h-5 w-5 flex-shrink-0" />
+                <span>User Management</span>
+              </Link>
+            </>
+          )}
+          {(userRole !== 'superadmin' && (userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl')) && (
             <Link
               to="/user-management"
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${

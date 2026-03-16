@@ -21,6 +21,7 @@ export default function Navbar() {
   };
 
   const getDashboardPath = () => {
+    if (userRole === 'superadmin') return '/user-management';
     if (userRole === 'admin' || userRole === 'tla') return '/admin/dashboard';
     if (userRole === 'lead' || userRole === 'tl' || userRole === 'vtl' || userRole === 'monitoring_team' || userRole === 'pat1') return '/lead/dashboard';
     return '/intern/dashboard';
@@ -79,6 +80,8 @@ export default function Navbar() {
               >
                 Dashboard
               </Link>
+              {userRole !== 'superadmin' && (
+                <>
               <Link
                 to="/report"
                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -143,6 +146,8 @@ export default function Navbar() {
                 >
                   Permissions
                 </Link>
+              )}
+                </>
               )}
             </div>
           </div>
@@ -210,80 +215,84 @@ export default function Navbar() {
               to={getDashboardPath()}
               onClick={closeMobileMenu}
               className={`block px-3 py-2 rounded-md text-base font-medium ${
-                location.pathname.includes('dashboard')
+                location.pathname.includes('dashboard') || location.pathname === '/user-management'
                   ? 'bg-blue-50 text-blue-700'
                   : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
               }`}
             >
               Dashboard
             </Link>
-            <Link
-              to="/report"
-              onClick={closeMobileMenu}
-              className={`block px-3 py-2 rounded-md text-base font-medium ${
-                location.pathname === '/report'
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              Report Issue
-            </Link>
-            <Link
-              to="/kanban"
-              onClick={closeMobileMenu}
-              className={`block px-3 py-2 rounded-md text-base font-medium ${
-                location.pathname === '/kanban'
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              Kanban
-            </Link>
-            <Link
-              to="/organized-tickets"
-              onClick={closeMobileMenu}
-              className={`block px-3 py-2 rounded-md text-base font-medium ${
-                location.pathname === '/organized-tickets'
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              Organized Tickets
-            </Link>
-            <Link
-              to="/tasks"
-              onClick={closeMobileMenu}
-              className={`block px-3 py-2 rounded-md text-base font-medium ${
-                location.pathname === '/tasks'
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              Tasks
-            </Link>
-            <Link
-              to="/repository"
-              onClick={closeMobileMenu}
-              className={`block px-3 py-2 rounded-md text-base font-medium ${
-                location.pathname === '/repository'
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              Repository
-            </Link>
-            {(userRole === 'admin' || userRole === 'tla') && (
-              <Link
-                to="/role-permissions"
-                onClick={closeMobileMenu}
-                className={`block px-3 py-2 rounded-md text-base font-medium ${
-                  location.pathname === '/role-permissions'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                }`}
-              >
-                Permissions
-              </Link>
+            {userRole !== 'superadmin' && (
+              <>
+                <Link
+                  to="/report"
+                  onClick={closeMobileMenu}
+                  className={`block px-3 py-2 rounded-md text-base font-medium ${
+                    location.pathname === '/report'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  Report Issue
+                </Link>
+                <Link
+                  to="/kanban"
+                  onClick={closeMobileMenu}
+                  className={`block px-3 py-2 rounded-md text-base font-medium ${
+                    location.pathname === '/kanban'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  Kanban
+                </Link>
+                <Link
+                  to="/organized-tickets"
+                  onClick={closeMobileMenu}
+                  className={`block px-3 py-2 rounded-md text-base font-medium ${
+                    location.pathname === '/organized-tickets'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  Organized Tickets
+                </Link>
+                <Link
+                  to="/tasks"
+                  onClick={closeMobileMenu}
+                  className={`block px-3 py-2 rounded-md text-base font-medium ${
+                    location.pathname === '/tasks'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  Tasks
+                </Link>
+                <Link
+                  to="/repository"
+                  onClick={closeMobileMenu}
+                  className={`block px-3 py-2 rounded-md text-base font-medium ${
+                    location.pathname === '/repository'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  Repository
+                </Link>
+                {(userRole === 'admin' || userRole === 'tla') && (
+                  <Link
+                    to="/role-permissions"
+                    onClick={closeMobileMenu}
+                    className={`block px-3 py-2 rounded-md text-base font-medium ${
+                      location.pathname === '/role-permissions'
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    Permissions
+                  </Link>
+                )}
+              </>
             )}
 
             {/* Logout Button */}

@@ -73,7 +73,7 @@ export default function ReportIssue() {
         const [userRes, onboardingRes] = await Promise.all([
           supabase
             .from('users')
-            .select('full_name, email, role, team, department')
+            .select('full_name, email, role, team')
             .eq('id', user.id)
             .maybeSingle(),
           userEmail

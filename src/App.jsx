@@ -28,6 +28,7 @@ const ScheduleFormPage = lazy(() => import('./pages/ScheduleFormPage'));
 const TrackerPage = lazy(() => import('./pages/TrackerPage'));
 const MonitoringTasks = lazy(() => import('./pages/MonitoringTasks'));
 const AdminTasks = lazy(() => import('./pages/AdminTasks'));
+const SuperAdminOverview = lazy(() => import('./pages/SuperAdminOverview'));
 
 function PageFallback() {
   return (
@@ -55,6 +56,7 @@ function AppContent() {
 
   const getDashboardRoute = () => {
     if (!user) return '/login';
+    if (role === 'superadmin') return '/user-management';
     if (role === 'admin' || role === 'tla') return '/admin/dashboard';
     if (role === 'lead' || role === 'tl' || role === 'vtl' || role === 'monitoring_team' || role === 'pat1') return '/lead/dashboard';
     return '/intern/dashboard';
@@ -94,6 +96,21 @@ function AppContent() {
             </Routes>
           </Suspense>
         </ErrorBoundary>
+      ) : user && role === 'superadmin' ? (
+        <PresenceProvider>
+          <ErrorBoundary>
+            <Suspense fallback={<PageFallback />}>
+              <Routes>
+                <Route path="/" element={<Navigate to="/superadmin/overview" replace />} />
+                <Route element={<SidebarLayout />}>
+                  <Route path="/superadmin/overview" element={<SuperAdminOverview />} />
+                  <Route path="/user-management" element={<UserManagement />} />
+                  <Route path="*" element={<Navigate to="/superadmin/overview" replace />} />
+                </Route>
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
+        </PresenceProvider>
       ) : user ? (
         <PresenceProvider>
           <ErrorBoundary>
@@ -122,8 +139,15 @@ function AppContent() {
                 <Route path="/repository" element={<CentralizedRepository />} />
                 <Route path="/repository/view/:slug" element={<RepositoryView />} />
                 <Route path="/role-permissions" element={(role === 'admin' || role === 'tla') ? <RolePermissions /> : <Navigate to={getDashboardRoute()} replace />} />
-                <Route path="/user-management" element={(role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl') ? <UserManagement /> : <Navigate to={getDashboardRoute()} replace />} />
-                <Route path="/attendance" element={<Attendance />} />
+                <Route path="/user-management" element={(role === 'superadmin' || role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl') ? <UserManagement /> : <Navigate to={getDashboardRoute()} replace />} />
+                <Route
+                  path="/attendance"
+                  element={
+                    role === 'admin' || role === 'superadmin'
+                      ? <Navigate to={getDashboardRoute()} replace />
+                      : <Attendance />
+                  }
+                />
                 <Route path="/daily-report" element={(role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl') ? <Navigate to="/daily-report/manage" replace /> : <DailyReportForm />} />
                 <Route path="/daily-report/manage" element={(role === 'admin' || role === 'tla' || role === 'tl' || role === 'vtl') ? <DailyReportManage /> : <Navigate to="/daily-report" replace />} />
                 <Route path="/onboarding" element={<OnboardingOffboarding />} />
