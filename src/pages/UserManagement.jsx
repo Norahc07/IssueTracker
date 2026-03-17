@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import {
@@ -69,6 +70,7 @@ export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [createEmail, setCreateEmail] = useState('');
   const [createName, setCreateName] = useState('');
+  const [createPassword, setCreatePassword] = useState('');
   const [createRole, setCreateRole] = useState(ROLES.INTERN);
   const [createTeam, setCreateTeam] = useState('');
   const [creating, setCreating] = useState(false);
@@ -196,6 +198,7 @@ export default function UserManagement() {
     try {
       const created = await createAuthUserAndProfile(supabase, {
         email,
+        password: createPassword,
         fullName: fullName || email,
         role: createRole,
         team: createTeam || null,
@@ -209,6 +212,7 @@ export default function UserManagement() {
       });
       setCreateEmail('');
       setCreateName('');
+      setCreatePassword('');
       setCreateRole(ROLES.INTERN);
       setCreateTeam('');
       setShowCreateModal(false);
@@ -539,8 +543,16 @@ export default function UserManagement() {
       </div>
 
       {/* Create user modal (SuperAdmin only) */}
-      {userRole === 'superadmin' && showCreateModal && (
-        <div className="fixed inset-0 z-[10000] bg-black/20 backdrop-blur-sm flex items-center justify-center px-4">
+      {userRole === 'superadmin' && showCreateModal && typeof document !== 'undefined' &&
+        createPortal(
+        <div
+          className="fixed inset-0 z-[10000] bg-black/20 backdrop-blur-sm flex items-center justify-center px-4"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !creating) setShowCreateModal(false);
+          }}
+        >
           <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-lg my-6">
             <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-2">
               <div>
@@ -568,6 +580,17 @@ export default function UserManagement() {
                   onChange={(e) => setCreateEmail(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
                   placeholder="user@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
+                <input
+                  type="password"
+                  required
+                  value={createPassword}
+                  onChange={(e) => setCreatePassword(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+                  placeholder="Set an initial password"
                 />
               </div>
               <div>
@@ -627,7 +650,8 @@ export default function UserManagement() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
