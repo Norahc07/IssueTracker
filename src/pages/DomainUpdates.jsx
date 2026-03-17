@@ -8,7 +8,7 @@ const POST_UPDATE_CHECK_OPTIONS = ['Ok', 'Issue Found'];
 const DOMAIN_ROW_STATUS_OPTIONS = ['done', 'need verification', 'blocked access'];
 
 export default function DomainUpdates() {
-  const { supabase, user } = useSupabase();
+  const { supabase, user, userRole } = useSupabase();
   const [domains, setDomains] = useState([]);
   const [updates, setUpdates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +27,7 @@ export default function DomainUpdates() {
   });
   const [savingUpdate, setSavingUpdate] = useState(false);
   const [showAddUpdateModal, setShowAddUpdateModal] = useState(false);
+  const isAdmin = userRole === 'admin';
 
   useEffect(() => {
     if (!user?.id) return;
@@ -204,6 +205,43 @@ export default function DomainUpdates() {
     }
   };
 
+  const handleRemoveAllUpdatesForDomain = async (domainId) => {
+    if (!isAdmin) return;
+    if (!domainId) return;
+    // eslint-disable-next-line no-alert
+    const ok = window.confirm('Remove ALL plugin updates for this domain and reset it back to start?');
+    if (!ok) return;
+    try {
+      setUpdatesLoading(true);
+      const { error } = await supabase.from('task_plugin_update_rows').delete().eq('domain_id', domainId);
+      if (error) throw error;
+
+      // Sync reset to domain_claims for this domain (if claimed)
+      await supabase
+        .from('domain_claims')
+        .update({
+          update_status: null,
+          post_update_check: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('domain_id', domainId);
+
+      // Refresh updates list
+      const { data: updatesData, error: updatesError } = await supabase
+        .from('task_plugin_update_rows')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (updatesError) throw updatesError;
+      setUpdates(Array.isArray(updatesData) ? updatesData : []);
+      toast.success('Domain updates removed');
+    } catch (err) {
+      console.error('Remove domain updates error:', err);
+      toast.error(err?.message || 'Failed to remove domain updates');
+    } finally {
+      setUpdatesLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-10">
@@ -241,14 +279,16 @@ export default function DomainUpdates() {
             New Domains
           </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAddUpdateModal(true)}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-          style={{ backgroundColor: PRIMARY }}
-        >
-          Add update
-        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowAddUpdateModal(true)}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+            style={{ backgroundColor: PRIMARY }}
+          >
+            Add update
+          </button>
+        )}
       </div>
 
       {/* Add update modal */}
@@ -422,6 +462,9 @@ export default function DomainUpdates() {
                   )}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Updated At</th>
+                  {isAdmin && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -455,18 +498,27 @@ export default function DomainUpdates() {
                           </td>
                           <td
                             className="px-4 py-3 text-xs text-gray-500"
-                            colSpan={domainTypeFilter === 'new' ? 8 : 7}
+                            colSpan={(domainTypeFilter === 'new' ? 8 : 7) + (isAdmin ? 1 : 0)}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <span>Plugin updates for this domain</span>
-                              {item.domainId && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleQuickAddForDomain(item.domainId)}
-                                  className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-                                >
-                                  Add plugin
-                                </button>
+                              {isAdmin && item.domainId && (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickAddForDomain(item.domainId)}
+                                    className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                                  >
+                                    Add plugin
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveAllUpdatesForDomain(item.domainId)}
+                                    className="inline-flex items-center rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm hover:bg-red-50"
+                                  >
+                                    Remove updates
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </td>
@@ -504,6 +556,7 @@ export default function DomainUpdates() {
                             ? new Date(row.created_at).toLocaleString()
                             : '—'}
                         </td>
+                        {isAdmin && <td className="px-4 py-3 text-sm" />}
                       </tr>
                     );
                   });

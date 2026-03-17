@@ -1139,6 +1139,36 @@ export default function TaskAssignmentLog() {
     }
   };
 
+  const handleRemoveDomainClaim = async (claimRow) => {
+    if (userRole !== 'admin') return;
+    if (!claimRow?.domain_id) return;
+    // eslint-disable-next-line no-alert
+    const ok = window.confirm('Remove this domain claim and return it to claimable state?');
+    if (!ok) return;
+    try {
+      // Delete by domain_id to avoid any mismatch between UI keys and DB PK.
+      // Return deleted rows so we can verify something was actually removed.
+      const { data: deleted, error } = await supabase
+        .from('domain_claims')
+        .delete()
+        .eq('domain_id', claimRow.domain_id)
+        .select('id, domain_id');
+
+      if (error) throw error;
+      if (!deleted || deleted.length === 0) {
+        throw new Error('No claim was removed. Check RLS/policies for domain_claims delete.');
+      }
+
+      const removedDomainIds = new Set(deleted.map((d) => d.domain_id));
+      setDomainClaims((prev) => prev.filter((c) => !removedDomainIds.has(c.domain_id)));
+      await fetchDomainClaims();
+      toast.success('Domain claim removed');
+    } catch (error) {
+      const msg = error?.message || 'Failed to remove domain claim';
+      toast.error(msg);
+    }
+  };
+
   // Onboarding name by email (source of truth for intern names when users.full_name is empty)
   const onboardingByNameByEmail = useMemo(() => {
     const map = new Map();
@@ -3664,6 +3694,9 @@ export default function TaskAssignmentLog() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Update Status</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Post Update Check</th>
+                    {userRole === 'admin' && (
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -3690,6 +3723,17 @@ export default function TaskAssignmentLog() {
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-600">{row.update_status || '—'}</td>
                           <td className="px-4 py-3 text-sm text-gray-600">{row.post_update_check || '—'}</td>
+                          {userRole === 'admin' && (
+                            <td className="px-4 py-3 text-sm">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDomainClaim(row)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-200 bg-white hover:bg-red-50"
+                              >
+                                Remove claim
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
