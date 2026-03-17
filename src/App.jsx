@@ -143,7 +143,7 @@ function AppContent() {
                 <Route
                   path="/attendance"
                   element={
-                    role === 'admin' || role === 'superadmin'
+                    role === 'superadmin'
                       ? <Navigate to={getDashboardRoute()} replace />
                       : <Attendance />
                   }

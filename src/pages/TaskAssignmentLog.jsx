@@ -1244,7 +1244,7 @@ export default function TaskAssignmentLog() {
   if (loading && tasks.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-600">Loading tasks...</div>
+        <div className="text-gray-600 dark:text-gray-400">Loading tasks...</div>
       </div>
     );
   }
@@ -1263,20 +1263,22 @@ export default function TaskAssignmentLog() {
     <div className="w-full space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
             Task Assignment Log
           </h1>
-          <p className="mt-1 text-sm text-gray-600">Manage tasks and domains</p>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Manage tasks and domains</p>
         </div>
       </div>
 
       {/* Main tabs */}
-      <div className="flex gap-2 border-b border-gray-200">
+      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
         <button
           type="button"
           onClick={() => { setActiveMainTab('tasks'); setSearchParams({}); }}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-            activeMainTab === 'tasks' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            activeMainTab === 'tasks'
+              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
           }`}
           style={activeMainTab === 'tasks' ? { borderTopColor: PRIMARY } : {}}
         >
@@ -1287,8 +1289,8 @@ export default function TaskAssignmentLog() {
           onClick={() => { setActiveMainTab('udemy-course'); setSearchParams({ tab: 'udemy-course' }); }}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
             activeMainTab === 'udemy-course'
-              ? 'bg-white border border-b-0 border-gray-200 -mb-px'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
           }`}
           style={activeMainTab === 'udemy-course' ? { borderTopColor: PRIMARY } : {}}
         >
@@ -1300,8 +1302,8 @@ export default function TaskAssignmentLog() {
             onClick={() => { setActiveMainTab('course-list'); setSearchParams({ tab: 'course-list' }); }}
             className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
               activeMainTab === 'course-list'
-                ? 'bg-white border border-b-0 border-gray-200 -mb-px'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
             }`}
             style={activeMainTab === 'course-list' ? { borderTopColor: PRIMARY } : {}}
           >
@@ -1312,7 +1314,9 @@ export default function TaskAssignmentLog() {
           type="button"
           onClick={() => { setActiveMainTab('domains'); setSearchParams({ tab: 'domains' }); }}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-            activeMainTab === 'domains' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            activeMainTab === 'domains'
+              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
           }`}
         >
           Domains
@@ -1322,7 +1326,9 @@ export default function TaskAssignmentLog() {
             type="button"
             onClick={() => { setActiveMainTab('domain-claims'); setSearchParams({ tab: 'domain-claims' }); }}
             className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-              activeMainTab === 'domain-claims' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              activeMainTab === 'domain-claims'
+                ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
             }`}
           >
             Domain Claims
@@ -1333,7 +1339,9 @@ export default function TaskAssignmentLog() {
             type="button"
             onClick={() => { setActiveMainTab('domain-updates'); setSearchParams({ tab: 'domain-updates' }); }}
             className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-              activeMainTab === 'domain-updates' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              activeMainTab === 'domain-updates'
+                ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
             }`}
             style={activeMainTab === 'domain-updates' ? { borderTopColor: PRIMARY } : {}}
           >
@@ -1350,7 +1358,7 @@ export default function TaskAssignmentLog() {
                 type="button"
                 onClick={() => setTaskFilter('all')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                  taskFilter === 'all' ? 'text-white' : 'bg-gray-100 text-gray-700'
+                  taskFilter === 'all' ? 'text-white' : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
                 }`}
                 style={taskFilter === 'all' ? { backgroundColor: PRIMARY } : {}}
               >
@@ -1360,7 +1368,7 @@ export default function TaskAssignmentLog() {
                 type="button"
                 onClick={() => setTaskFilter('my-tasks')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                  taskFilter === 'my-tasks' ? 'text-white' : 'bg-gray-100 text-gray-700'
+                  taskFilter === 'my-tasks' ? 'text-white' : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
                 }`}
                 style={taskFilter === 'my-tasks' ? { backgroundColor: PRIMARY } : {}}
               >
@@ -1382,7 +1390,7 @@ export default function TaskAssignmentLog() {
                   <button
                     type="button"
                     onClick={cancelTaskEdit}
-                    className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
                   >
                     Cancel
                   </button>
@@ -1392,7 +1400,7 @@ export default function TaskAssignmentLog() {
                   <button
                     type="button"
                     onClick={startEditAllTasks}
-                    className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
                   >
                     Edit
                   </button>
@@ -1417,10 +1425,10 @@ export default function TaskAssignmentLog() {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
                     <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Task Name
@@ -1439,7 +1447,7 @@ export default function TaskAssignmentLog() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
                   {filteredTasks.length > 0 ? (
                     filteredTasks.map((task) => {
                       const draft = taskEditDrafts[task.id] || {
@@ -1449,9 +1457,9 @@ export default function TaskAssignmentLog() {
                       };
                       const rowEditable = isEditingAllTasks && canUpdateStatus(task);
                       return (
-                        <tr key={task.id} className={isEditingAllTasks ? 'bg-blue-50/50' : 'hover:bg-gray-50'}>
+                        <tr key={task.id} className={isEditingAllTasks ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/60'}>
                           <td className="px-4 sm:px-6 py-4">
-                            <div className="text-sm font-medium text-gray-900">{task.name}</div>
+                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{task.name}</div>
                           </td>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm">
                             {rowEditable ? (
@@ -1567,20 +1575,20 @@ export default function TaskAssignmentLog() {
         <UdemyCourseTab />
       )}
 
-      {activeMainTab === 'course-list' && canAccessCourseListTab(userRole, userTeam) && (
+          {activeMainTab === 'course-list' && canAccessCourseListTab(userRole, userTeam) && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
                 Course List
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                 Track course titles per domain and across corporate course categories.
               </p>
             </div>
             <div className="flex items-center gap-2">
               <div className="min-w-[220px]">
-                <label className="block text-xs font-medium text-gray-700 mb-1">Domain</label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Domain</label>
                 <select
                   value={courseListDomainId}
                   onChange={(e) => {
@@ -1599,7 +1607,7 @@ export default function TaskAssignmentLog() {
                     }
                     // Data fetch is handled by useEffect that watches courseListDomainId
                   }}
-                  className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
                 >
                   <option value="">Select domain…</option>
                   {COURSE_LIST_DOMAIN_COUNTRIES.map((name) => {
@@ -1671,19 +1679,19 @@ export default function TaskAssignmentLog() {
               )}
 
               {/* Per-domain course list table */}
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+              <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   {courseListLoading ? (
-                    <div className="py-10 text-center text-sm text-gray-500">Loading courses…</div>
+                    <div className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading courses…</div>
                   ) : courseListItems.length === 0 ? (
-                    <div className="py-10 text-center text-sm text-gray-500">
+                    <div className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                       No courses yet for this domain.{' '}
                       {canEditCourseList(userRole, userTeam) ? 'Use “Add course” to create the first row.' : ''}
                     </div>
                   ) : (
                     <>
-                    <table className="min-w-full divide-y divide-gray-200 text-sm">
-                      <thead className="bg-gray-50">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
+                      <thead className="bg-gray-50 dark:bg-gray-950/40">
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
                             Course title
@@ -1701,7 +1709,7 @@ export default function TaskAssignmentLog() {
                           )}
                         </tr>
                       </thead>
-                      <tbody className="bg-white divide-y divide-gray-100">
+                      <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                         {courseListItems
                           .slice((courseListPage - 1) * 10, courseListPage * 10)
                           .map((row) => {
@@ -1709,7 +1717,7 @@ export default function TaskAssignmentLog() {
                           const isEditingRow = canEdit && editingDomainCourseId === row.id;
                           const draft = isEditingRow ? editingDomainCourseDraft : null;
                           return (
-                            <tr key={row.id} className="hover:bg-gray-50">
+                            <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
                               <td className="px-4 py-2">
                                 {isEditingRow ? (
                                   <input
@@ -1722,10 +1730,10 @@ export default function TaskAssignmentLog() {
                                       }))
                                     }
                                     placeholder="Enter course title"
-                                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
                                   />
                                 ) : (
-                                  <span className="text-gray-900">
+                                  <span className="text-gray-900 dark:text-gray-100">
                                     {(row.course_title || '').trim() || '—'}
                                   </span>
                                 )}
@@ -1740,7 +1748,7 @@ export default function TaskAssignmentLog() {
                                         course_type: e.target.value,
                                       }))
                                     }
-                                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                                   >
                                 <option value="">—</option>
                                 <option value="G">G</option>
@@ -1748,7 +1756,7 @@ export default function TaskAssignmentLog() {
                                 <option value="G/S">G/S</option>
                                   </select>
                                 ) : (
-                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200">
                                     {courseTypeToUi(row.course_type) || '—'}
                                   </span>
                                 )}
@@ -1763,7 +1771,7 @@ export default function TaskAssignmentLog() {
                                         status: e.target.value,
                                       }))
                                     }
-                                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                                   >
                                     <option value="">—</option>
                                     <option value="done">Done</option>
@@ -2002,34 +2010,34 @@ export default function TaskAssignmentLog() {
                           </button>
                         )}
                       </div>
-                      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
                         <div className="overflow-x-auto">
                         {rows.length === 0 ? (
-                          <div className="py-6 text-center text-xs text-gray-500">
+                          <div className="py-6 text-center text-xs text-gray-500 dark:text-gray-400">
                             No courses yet for this category.
                           </div>
                         ) : (
                           <>
-                          <table className="min-w-full divide-y divide-gray-200 text-sm">
-                            <thead className="bg-gray-50">
+                          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-950/40">
                               <tr>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                                   Course title
                                 </th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-28">
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide w-28">
                                   G / S
                                 </th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-40">
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide w-40">
                                   Status
                                 </th>
                                 {canEditCourseList(userRole, userTeam) && (
-                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide w-32">
+                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide w-32">
                                     Actions
                                   </th>
                                 )}
                               </tr>
                             </thead>
-                            <tbody className="bg-white divide-y divide-gray-100">
+                            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                               {rows
                                 .slice((page - 1) * 10, page * 10)
                                 .map((row) => {
@@ -2037,7 +2045,7 @@ export default function TaskAssignmentLog() {
                                 const isEditingRow = canEdit && editingCorporateCourseId === row.id;
                                 const draft = isEditingRow ? editingCorporateCourseDraft : null;
                                 return (
-                                  <tr key={row.id} className="hover:bg-gray-50">
+                                  <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
                                     <td className="px-4 py-2">
                                       {isEditingRow ? (
                                         <input
@@ -2050,10 +2058,10 @@ export default function TaskAssignmentLog() {
                                             }))
                                           }
                                           placeholder="Enter course title"
-                                          className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                                          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
                                         />
                                       ) : (
-                                        <span className="text-gray-900">
+                                        <span className="text-gray-900 dark:text-gray-100">
                                           {(row.course_title || '').trim() || '—'}
                                         </span>
                                       )}
@@ -2068,7 +2076,7 @@ export default function TaskAssignmentLog() {
                                               course_type: e.target.value,
                                             }))
                                           }
-                                          className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                                         >
                                           <option value="">—</option>
                                           <option value="G">G</option>
@@ -2076,7 +2084,7 @@ export default function TaskAssignmentLog() {
                                           <option value="G/S">G/S</option>
                                         </select>
                                       ) : (
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200">
                                           {courseTypeToUi(row.course_type) || '—'}
                                         </span>
                                       )}
@@ -2091,7 +2099,7 @@ export default function TaskAssignmentLog() {
                                               status: e.target.value,
                                             }))
                                           }
-                                          className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                                         >
                                           <option value="">—</option>
                                           <option value="done">Done</option>

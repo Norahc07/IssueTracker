@@ -1803,7 +1803,7 @@ export default function Attendance() {
 
       {/* Admin: view-only message */}
       {!canClockInOut && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-800">
+        <div className="rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/30 p-4 text-blue-800 dark:text-blue-200">
           You are viewing attendance in read-only mode. Only interns and team leads record time in/out.
         </div>
       )}

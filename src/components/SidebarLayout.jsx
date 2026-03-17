@@ -290,8 +290,8 @@ export default function SidebarLayout() {
             };
             if (item.to === '/tracker' && !canAccessTracker()) return null;
 
-            // Hide Attendance page link for admin and superadmin (they don't use attendance)
-            if (item.to === '/attendance' && (userRole === 'admin' || userRole === 'superadmin')) {
+            // Hide Attendance page link only for superadmin (locked to management views)
+            if (item.to === '/attendance' && userRole === 'superadmin') {
               return null;
             }
             

@@ -1156,13 +1156,13 @@ export default function OnboardingOffboarding() {
                     value={onboardingSearch}
                     onChange={(e) => setOnboardingSearch(e.target.value)}
                     placeholder="Search name, email, department, team…"
-                    className="w-full sm:w-[320px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                    className="w-full sm:w-[320px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
                   />
-                  <span className="text-sm text-gray-600">Sort:</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-300">Sort:</span>
                   <select
                     value={onboardingSort}
                     onChange={(e) => setOnboardingSort(e.target.value)}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                    className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
                   >
                     <option value="date_desc">New</option>
                     <option value="date_asc">Old</option>
@@ -1171,25 +1171,25 @@ export default function OnboardingOffboarding() {
                   </select>
                 </div>
               )}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+              <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                   <thead>
-                    <tr className="bg-gray-50">
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Onboarding date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Email</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Department</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Team</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Start date</th>
+                    <tr className="bg-gray-50 dark:bg-gray-950/40">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Onboarding date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Department</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Team</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Start date</th>
                       {canManageRecords && (
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Actions</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Actions</th>
                       )}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                     {displayedOnboarding.map(({ onboarding: r, user: u }) => (
-                      <tr key={r?.id || u?.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">
+                      <tr key={r?.id || u?.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                           {r?.onboarding_datetime
                             ? new Date(r.onboarding_datetime).toLocaleString([], {
                                 year: 'numeric',
@@ -1200,23 +1200,23 @@ export default function OnboardingOffboarding() {
                               })
                             : '—'}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                           {r?.name || u?.full_name || '—'}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                           {r?.email || u?.email || '—'}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                           {r?.department || '—'}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                           {formatTeamLabel(r?.team || u?.team) || '—'}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {r?.start_date ? new Date(r.start_date).toLocaleDateString() : '—'}
                         </td>
                         {canManageRecords && (
-                          <td className="px-4 py-3 text-sm text-gray-600 space-x-2">
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 space-x-2">
                             {r && (
                               <button
                                 type="button"
@@ -1237,7 +1237,7 @@ export default function OnboardingOffboarding() {
                                   });
                                   setShowOnboardingModal(true);
                                 }}
-                                className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100"
+                                className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50"
                               >
                                 Edit
                               </button>
@@ -1258,7 +1258,7 @@ export default function OnboardingOffboarding() {
                                   });
                                   setShowOnboardingModal(true);
                                 }}
-                                className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100"
+                                className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/30 hover:bg-green-100 dark:hover:bg-green-900/50"
                               >
                                 Add onboarding
                               </button>
@@ -1269,7 +1269,7 @@ export default function OnboardingOffboarding() {
                     ))}
                     {displayedOnboarding.length === 0 && (
                       <tr>
-                        <td className="px-4 py-4 text-sm text-gray-500 text-center" colSpan={canManageRecords ? 7 : 6}>
+                        <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={canManageRecords ? 7 : 6}>
                           No onboarding records for {activeYear}.
                         </td>
                       </tr>
@@ -1291,27 +1291,27 @@ export default function OnboardingOffboarding() {
                   else statusCounts.offline += 1;
                 });
                 return (
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium text-green-600">{statusCounts.online} online</span>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    <span className="font-medium text-green-600 dark:text-green-400">{statusCounts.online} online</span>
                     {' · '}
-                    <span className="font-medium text-amber-600">{statusCounts.inactive} inactive</span>
+                    <span className="font-medium text-amber-600 dark:text-amber-400">{statusCounts.inactive} inactive</span>
                     {' · '}
-                    <span className="font-medium text-gray-500">{statusCounts.offline} offline</span>
+                    <span className="font-medium text-gray-500 dark:text-gray-400">{statusCounts.offline} offline</span>
                   </p>
                 );
               })()}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+              <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                   <thead>
-                    <tr className="bg-gray-50">
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Email</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Department</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Team</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Status</th>
+                    <tr className="bg-gray-50 dark:bg-gray-950/40">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Department</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Team</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                     {internUsers.map((u) => {
                       const status = getStatus(u.id);
                       const emailKey = (u.email || '').trim().toLowerCase();
@@ -1320,11 +1320,11 @@ export default function OnboardingOffboarding() {
                       const department = ob?.department || '—';
                       const team = formatTeamLabel(u.team || ob?.team) || '—';
                       return (
-                        <tr key={u.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-900">{displayName}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{u.email || '—'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{department}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{team}</td>
+                        <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{displayName}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{u.email || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{department}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{team}</td>
                           <td className="px-4 py-3 text-sm">
                             <span
                               className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium"
@@ -1377,7 +1377,7 @@ export default function OnboardingOffboarding() {
       {activeTab === 'offboarding' && (
         <div className="space-y-3">
           <div className="space-y-1">
-            <h2 className="text-base font-semibold text-gray-900">Offboarding ({activeYear})</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Offboarding ({activeYear})</h2>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               {/* Nested tabs: Records / Requirements / Requirements tracker */}
               <div className="flex flex-wrap gap-2">
@@ -1394,8 +1394,8 @@ export default function OnboardingOffboarding() {
                     }}
                     className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                       offboardingInnerTab === tab.id
-                        ? 'bg-white text-gray-900 border-gray-300 shadow-sm'
-                        : 'bg-gray-100 text-gray-700 border-transparent hover:bg-gray-200'
+                        ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-700 shadow-sm'
+                        : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 border-transparent hover:bg-gray-200 dark:hover:bg-gray-800'
                     }`}
                   >
                     {tab.label}
@@ -1424,13 +1424,13 @@ export default function OnboardingOffboarding() {
                     value={offboardingSearch}
                     onChange={(e) => setOffboardingSearch(e.target.value)}
                     placeholder="Search department, name, email…"
-                    className="w-full sm:w-[320px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                    className="w-full sm:w-[320px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
                   />
-                  <span className="text-sm text-gray-600">Sort:</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-300">Sort:</span>
                   <select
                     value={offboardingSort}
                     onChange={(e) => setOffboardingSort(e.target.value)}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                    className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
                   >
                     <option value="date_desc">Actual end date (newest)</option>
                     <option value="date_asc">Actual end date (oldest)</option>
@@ -1443,34 +1443,34 @@ export default function OnboardingOffboarding() {
                   </select>
                 </div>
               )}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+              <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                   <thead>
-                    <tr className="bg-gray-50">
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Department</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Last name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">First name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Actual end date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Hours</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Email</th>
+                    <tr className="bg-gray-50 dark:bg-gray-950/40">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Department</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Last name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">First name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Actual end date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Hours</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Email</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                     {displayedOffboarding.map((r) => (
-                      <tr key={r.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">{r.department || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{r.last_name || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{r.first_name || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                      <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{r.department || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{r.last_name || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{r.first_name || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                           {r.actual_end_date ? new Date(r.actual_end_date).toLocaleDateString() : '—'}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{r.hours ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{r.email || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{r.hours ?? '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{r.email || '—'}</td>
                       </tr>
                     ))}
                     {displayedOffboarding.length === 0 && (
                       <tr>
-                        <td className="px-4 py-4 text-sm text-gray-500 text-center" colSpan={6}>
+                        <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={6}>
                           No offboarding records for {activeYear}.
                         </td>
                       </tr>
@@ -1587,39 +1587,39 @@ export default function OnboardingOffboarding() {
       {activeTab === 'onboarding' && onboardingInnerTab === 'requirementsTracker' && canManageRequirements && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 className="text-base font-semibold text-gray-900">Onboarding Requirements Tracker</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Onboarding Requirements Tracker</h2>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-900">Requirements tracker (staff view)</h3>
-              <p className="mt-1 text-xs text-gray-600">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden overflow-x-auto">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Requirements tracker (staff view)</h3>
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
                 Admin and TL/VTL of the TLA team can verify intern requirements here.
               </p>
             </div>
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dept</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Email</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Dept</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Team</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                 {requirementsTrackerRows.map(({ user: u, req, on }) => (
-                  <tr key={u.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900">{(on?.name || u.full_name || req?.name || '').trim() || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{u.email || req?.email || on?.email || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                  <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{(on?.name || u.full_name || req?.name || '').trim() || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{u.email || req?.email || on?.email || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                       {req?.department || on?.department || '—'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                       {formatTeamLabel(req?.team || on?.team || u.team) || '—'}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-700">
+                    <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">
                       {(() => {
                         const hasRow = !!req;
                         const total = REQUIREMENTS_META.length;
@@ -1653,13 +1653,13 @@ export default function OnboardingOffboarding() {
                         );
                       })()}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-600 space-x-2">
+                    <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 space-x-2">
                       <button
                         type="button"
                         onClick={() => {
                           setViewOnboardingRequirementsRow({ user: u, req: req || null, on: on || null });
                         }}
-                        className="px-3 py-1 rounded-lg text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                        className="px-3 py-1 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-100 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
                       >
                         View
                       </button>
@@ -1668,7 +1668,7 @@ export default function OnboardingOffboarding() {
                 ))}
                 {requirementsTrackerRows.length === 0 && (
                   <tr>
-                    <td className="px-4 py-4 text-sm text-gray-500 text-center" colSpan={15}>
+                    <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={15}>
                       No intern records found.
                     </td>
                   </tr>
@@ -1779,43 +1779,43 @@ export default function OnboardingOffboarding() {
       {activeTab === 'offboarding' && offboardingInnerTab === 'requirementsTracker' && canManageRequirements && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 className="text-base font-semibold text-gray-900">Offboarding Requirements Tracker</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Offboarding Requirements Tracker</h2>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-900">Requirements tracker (staff view)</h3>
-              <p className="mt-1 text-xs text-gray-600">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden overflow-x-auto">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Requirements tracker (staff view)</h3>
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
                 Admin and TL/VTL of the TLA team can verify offboarding requirements here.
               </p>
             </div>
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dept</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Email</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Dept</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Team</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                 {offboardingRequirementsTrackerRows.map(({ user: u, req, off }) => (
-                  <tr key={off.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900">
+                  <tr key={off.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                       {u?.full_name || req?.name || `${off.first_name || ''} ${off.last_name || ''}`.trim() || '—'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                       {u?.email || req?.email || off.email || '—'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                       {req?.department || off.department || '—'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                       {u?.team || req?.team || '—'}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-700">
+                    <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">
                       {(() => {
                         const hasRow = !!req;
                         const total = OFFBOARDING_REQUIREMENTS_META.length;
@@ -1849,13 +1849,13 @@ export default function OnboardingOffboarding() {
                         );
                       })()}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-600 space-x-2">
+                    <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 space-x-2">
                       <button
                         type="button"
                         onClick={() => {
                           setViewOffboardingRequirementsRow({ user: u, req: req || null, off });
                         }}
-                        className="px-3 py-1 rounded-lg text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                        className="px-3 py-1 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-100 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
                       >
                         View
                       </button>
@@ -1864,7 +1864,7 @@ export default function OnboardingOffboarding() {
                 ))}
                 {offboardingRequirementsTrackerRows.length === 0 && (
                   <tr>
-                    <td className="px-4 py-4 text-sm text-gray-500 text-center" colSpan={15}>
+                    <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={15}>
                       No intern records found.
                     </td>
                   </tr>
@@ -2316,9 +2316,9 @@ export default function OnboardingOffboarding() {
             if (!terminatingOnboarding) setShowOnboardingModal(false);
           }}
         >
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-gray-200">
-            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-900">
+          <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800">
+            <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 {editingOnboardingId ? 'Edit onboarding record' : 'Add onboarding record'}
               </h2>
               <button
@@ -2326,7 +2326,7 @@ export default function OnboardingOffboarding() {
                 onClick={() => {
                   if (!terminatingOnboarding) setShowOnboardingModal(false);
                 }}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
                 aria-label="Close"
               >
                 ×
@@ -2335,7 +2335,7 @@ export default function OnboardingOffboarding() {
             <form onSubmit={handleOnboardingSubmit} className="p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Onboarding date</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Onboarding date</label>
                   <PrettyDatePicker
                     id="onboarding-date"
                     value={onboardingForm.onboarding_date}
@@ -2343,26 +2343,26 @@ export default function OnboardingOffboarding() {
                     ariaLabel="Select onboarding date"
                     className="w-full"
                   />
-                  <p className="mt-1 text-xs text-gray-500">dd/mm/yyyy</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">dd/mm/yyyy</p>
                   {onboardingSubmitAttempted && !onboardingForm.onboarding_date && (
                     <p className="mt-1 text-xs font-medium text-red-600">Required.</p>
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Onboarding time (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Onboarding time (optional)</label>
                   <input
                     type="time"
                     value={onboardingForm.onboarding_time}
                     onChange={(e) => setOnboardingForm((f) => ({ ...f, onboarding_time: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
                   />
-                  <p className="mt-1 text-xs text-gray-500">--:-- --</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">--:-- --</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Start date</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Start date</label>
                   <PrettyDatePicker
                     id="onboarding-start-date"
                     value={onboardingForm.start_date}
@@ -2370,14 +2370,14 @@ export default function OnboardingOffboarding() {
                     ariaLabel="Select start date"
                     className="w-full"
                   />
-                  <p className="mt-1 text-xs text-gray-500">dd/mm/yyyy</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">dd/mm/yyyy</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Department</label>
                   <select
                     value={onboardingForm.department}
                     onChange={(e) => setOnboardingForm((f) => ({ ...f, department: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
                   >
                     <option value="">Select department</option>
                     <option value="IT">IT</option>
@@ -2389,12 +2389,12 @@ export default function OnboardingOffboarding() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Name</label>
                   <input
                     type="text"
                     value={onboardingForm.name}
                     onChange={(e) => setOnboardingForm((f) => ({ ...f, name: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
                     placeholder="e.g. Juan Dela Cruz"
                     required
                   />
@@ -2403,12 +2403,12 @@ export default function OnboardingOffboarding() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Email</label>
                   <input
                     type="email"
                     value={onboardingForm.email}
                     onChange={(e) => setOnboardingForm((f) => ({ ...f, email: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
                     placeholder="e.g. juan.delacruz@company.com"
                   />
                 </div>
@@ -2416,24 +2416,24 @@ export default function OnboardingOffboarding() {
 
               {onboardingForm.department === 'IT' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Team</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Team</label>
                   <select
                     value={onboardingForm.team}
                     onChange={(e) => setOnboardingForm((f) => ({ ...f, team: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
                   >
                     <option value="">Select team</option>
                     <option value="TLA">Team Lead Assistant</option>
                     <option value="PAT1">PAT1</option>
                     <option value="Monitoring">Monitoring Team</option>
                   </select>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     Team is only needed for IT; HR and Marketing are treated as HR/Marketing Interns automatically.
                   </p>
                 </div>
               )}
 
-              <div className="pt-3 border-t border-gray-100 mt-2 space-y-3">
+              <div className="pt-3 border-t border-gray-100 dark:border-gray-800 mt-2 space-y-3">
                 {editingOnboardingId && (
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div className="text-[11px] leading-snug text-red-600 sm:max-w-xs">
@@ -2454,7 +2454,7 @@ export default function OnboardingOffboarding() {
                   <button
                     type="button"
                     onClick={() => setShowOnboardingModal(false)}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
                     disabled={terminatingOnboarding}
                   >
                     Cancel
@@ -2523,13 +2523,13 @@ export default function OnboardingOffboarding() {
       {/* Offboarding modal form */}
       {canManageRecords && (
         <Modal open={showOffboardingModal} onClose={() => setShowOffboardingModal(false)}>
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-gray-200">
-            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-900">Add offboarding record</h2>
+          <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800">
+            <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Add offboarding record</h2>
               <button
                 type="button"
                 onClick={() => setShowOffboardingModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
                 aria-label="Close"
               >
                 ×
@@ -2538,7 +2538,7 @@ export default function OnboardingOffboarding() {
             <form onSubmit={handleOffboardingSubmit} className="p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Actual end date</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Actual end date</label>
                   <PrettyDatePicker
                     id="offboarding-actual-end-date"
                     value={offboardingForm.actual_end_date}
@@ -2546,27 +2546,27 @@ export default function OnboardingOffboarding() {
                     ariaLabel="Select actual end date"
                     className="w-full"
                   />
-                  <p className="mt-1 text-xs text-gray-500">dd/mm/yyyy</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">dd/mm/yyyy</p>
                   {offboardingSubmitAttempted && !offboardingForm.actual_end_date && (
                     <p className="mt-1 text-xs font-medium text-red-600">Required.</p>
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Hours</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Hours</label>
                   <input
                     type="number"
                     min="0"
                     step="0.5"
                     value={offboardingForm.hours}
                     onChange={(e) => setOffboardingForm((f) => ({ ...f, hours: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
                     placeholder="e.g. 160, 320"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email (from onboarding)</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Email (from onboarding)</label>
                 <select
                   value={offboardingForm.email}
                   onChange={(e) => {
@@ -2586,7 +2586,7 @@ export default function OnboardingOffboarding() {
                       }));
                     }
                   }}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                 >
                   <option value="">Select from onboarding...</option>
                   {onboardingCandidates.map((r) => (
@@ -2595,7 +2595,7 @@ export default function OnboardingOffboarding() {
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Choose an email from onboarding; department and name will fill automatically.
                 </p>
                 {offboardingSubmitAttempted && !offboardingForm.email?.trim() && (
@@ -2607,7 +2607,7 @@ export default function OnboardingOffboarding() {
                 <button
                   type="button"
                   onClick={() => setShowOffboardingModal(false)}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
                 >
                   Cancel
                 </button>

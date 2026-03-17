@@ -189,21 +189,23 @@ export default function TrackerPage() {
     <div className="w-full space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
             Tracker
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             TL/VTL tracker and schedule form. Use the tabs below to switch between views.
           </p>
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-gray-200">
+      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
         <button
           type="button"
           onClick={() => setSearchParams({ tab: 'tl-vtl' })}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-            trackerTab === 'tl-vtl' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            trackerTab === 'tl-vtl'
+              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
           }`}
           style={trackerTab === 'tl-vtl' ? { borderTopColor: PRIMARY } : {}}
         >
@@ -213,7 +215,9 @@ export default function TrackerPage() {
           type="button"
           onClick={() => setSearchParams({ tab: 'schedule' })}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-            trackerTab === 'schedule' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            trackerTab === 'schedule'
+              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
           }`}
           style={trackerTab === 'schedule' ? { borderTopColor: PRIMARY } : {}}
         >
@@ -241,7 +245,7 @@ export default function TrackerPage() {
                   type="button"
                   onClick={addTlVtlTrackerRow}
                   disabled={savingTlVtlTracker}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100 disabled:opacity-60"
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-60"
                 >
                   {savingTlVtlTracker ? 'Adding...' : 'Add row'}
                 </button>
@@ -258,7 +262,7 @@ export default function TrackerPage() {
                   type="button"
                   onClick={cancelTlVtlTrackerEdit}
                   disabled={savingTlVtlTracker}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100 disabled:opacity-60"
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-60"
                 >
                   Cancel
                 </button>
@@ -266,35 +270,35 @@ export default function TrackerPage() {
         )}
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           {tlVtlTrackerRows.length === 0 ? (
-            <div className="py-12 text-center text-sm text-gray-500">
+            <div className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">
               {isTlVtlTrackerEditMode ? 'No rows yet. Click "Add row" to add one.' : 'No rows yet. Click Edit then Add row to add one.'}
             </div>
           ) : (
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Department</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Team</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Role</th>
                   {isTlVtlTrackerEditMode && (
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Actions</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Actions</th>
                   )}
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
                 {tlVtlTrackerRows.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50">
+                  <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
                     {isTlVtlTrackerEditMode ? (
                       <>
                         <td className="px-4 py-2">
                           <select
                             value={row.department || 'IT'}
                             onChange={(e) => setTlVtlTrackerRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, department: e.target.value } : r)))}
-                            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
                           >
                             {TL_VTL_DEPARTMENTS.map((d) => (
                               <option key={d} value={d}>{d}</option>
@@ -305,7 +309,7 @@ export default function TrackerPage() {
                           <select
                             value={row.team || 'Team Lead Assistant'}
                             onChange={(e) => setTlVtlTrackerRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, team: e.target.value } : r)))}
-                            className="w-full min-w-[160px] rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                            className="w-full min-w-[160px] rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
                           >
                             {TL_VTL_TEAMS.map((t) => (
                               <option key={t} value={t}>{t}</option>
@@ -320,7 +324,7 @@ export default function TrackerPage() {
                                 prev.map((r) => (r.id === row.id ? { ...r, name: e.target.value } : r))
                               )
                             }
-                            className="w-full min-w-[160px] rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                            className="w-full min-w-[160px] rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
                           >
                             <option value="">Select intern / TL / VTL</option>
                             {tlVtlAssignableUsers.map((u) => (
@@ -334,7 +338,7 @@ export default function TrackerPage() {
                           <select
                             value={row.role || 'Team Leader'}
                             onChange={(e) => setTlVtlTrackerRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, role: e.target.value } : r)))}
-                            className="w-full min-w-[140px] rounded border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                            className="w-full min-w-[140px] rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]"
                           >
                             {TL_VTL_ROLES.map((r) => (
                               <option key={r} value={r}>{r}</option>
@@ -346,7 +350,7 @@ export default function TrackerPage() {
                             type="button"
                             onClick={() => deleteTlVtlTrackerRow(row.id)}
                             disabled={savingTlVtlTracker}
-                            className="p-1.5 rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            className="p-1.5 rounded text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
                             title="Delete row"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -357,10 +361,10 @@ export default function TrackerPage() {
                       </>
                     ) : (
                       <>
-                        <td className="px-4 py-3 text-sm text-gray-900">{row.department || 'IT'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.team || 'Team Lead Assistant'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.name || ''}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.role || 'Team Leader'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{row.department || 'IT'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.team || 'Team Lead Assistant'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.name || ''}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.role || 'Team Leader'}</td>
                       </>
                     )}
                   </tr>

@@ -42,20 +42,20 @@ export default function AdminTasks() {
     <div className="w-full space-y-4 sm:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
             Tasks
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Admin view: switch between TLA and Monitoring tasks.
           </p>
         </div>
 
-        <div className="flex gap-2 border border-gray-200 bg-white rounded-lg p-1 shadow-sm">
+        <div className="flex gap-2 border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-lg p-1 shadow-sm">
           <button
             type="button"
             onClick={() => setTab('tla')}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              active !== 'monitoring' ? 'text-white' : 'text-gray-700 hover:bg-gray-100'
+              active !== 'monitoring' ? 'text-white' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
             style={active !== 'monitoring' ? { backgroundColor: PRIMARY } : {}}
           >
@@ -65,7 +65,7 @@ export default function AdminTasks() {
             type="button"
             onClick={() => setTab('monitoring')}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              active === 'monitoring' ? 'text-white' : 'text-gray-700 hover:bg-gray-100'
+              active === 'monitoring' ? 'text-white' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
             style={active === 'monitoring' ? { backgroundColor: PRIMARY } : {}}
           >
