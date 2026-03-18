@@ -325,8 +325,8 @@ function Pagination({ total, page, setPage, pageSize }) {
   const start = (effectivePage - 1) * pageSize + 1;
   const end = Math.min(effectivePage * pageSize, total);
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-gray-200 mt-3">
-      <p className="text-sm text-gray-600">
+    <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-gray-200 dark:border-gray-800 mt-3">
+      <p className="text-sm text-gray-600 dark:text-gray-300">
         Showing {start}–{end} of {total}
       </p>
       <div className="flex items-center gap-1">
@@ -334,18 +334,18 @@ function Pagination({ total, page, setPage, pageSize }) {
           type="button"
           onClick={() => setPage((p) => Math.max(1, p - 1))}
           disabled={effectivePage <= 1}
-          className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+          className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800"
         >
           Previous
         </button>
-        <span className="px-2 text-sm text-gray-600">
+        <span className="px-2 text-sm text-gray-600 dark:text-gray-300">
           Page {effectivePage} of {totalPages}
         </span>
         <button
           type="button"
           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
           disabled={effectivePage >= totalPages}
-          className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+          className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800"
         >
           Next
         </button>
@@ -1405,25 +1405,30 @@ export default function Attendance() {
         setRenderedSeconds(fromLogsSec + importedSec);
       }
 
+      // Onboarding records are needed for correct name/team display (e.g. Total hours tab),
+      // even for roles that can view logs but cannot manage schedules.
+      if (canManageSchedules || canViewAllAttendanceLogs) {
+        const onboardingRes = await supabase
+          .from('onboarding_records')
+          .select('email, name, team')
+          .order('onboarding_datetime', { ascending: false });
+        setOnboardingRecords(Array.isArray(onboardingRes.data) ? onboardingRes.data : []);
+        if (onboardingRes.error) console.warn('Attendance onboarding records fetch error:', onboardingRes.error);
+      } else {
+        setOnboardingRecords([]);
+      }
+
       if (canManageSchedules) {
-        const [managedRes, onboardingRes] = await Promise.all([
-          supabase
-            .from('users')
-            .select('id, email, full_name, role, team, scheduled_time_in, scheduled_time_out, total_ojt_hours_required, schedule_configured_at, imported_rendered_minutes')
-            .neq('role', 'admin')
-            .neq('role', 'superadmin')
-            .order('full_name', { ascending: true }),
-          supabase
-            .from('onboarding_records')
-            .select('email, name, team')
-            .order('onboarding_datetime', { ascending: false }),
-        ]);
+        const managedRes = await supabase
+          .from('users')
+          .select('id, email, full_name, role, team, scheduled_time_in, scheduled_time_out, total_ojt_hours_required, schedule_configured_at, imported_rendered_minutes')
+          .neq('role', 'admin')
+          .neq('role', 'superadmin')
+          .order('full_name', { ascending: true });
         if (managedRes.error) console.warn('Attendance managed users fetch error:', managedRes.error);
         setManagedUsers(Array.isArray(managedRes.data) ? managedRes.data : []);
-        setOnboardingRecords(Array.isArray(onboardingRes.data) ? onboardingRes.data : []);
       } else {
         setManagedUsers([]);
-        setOnboardingRecords([]);
       }
     } catch (e) {
       console.error('Attendance fetch error:', e);
@@ -1454,13 +1459,16 @@ export default function Attendance() {
 
   const getUserEffectiveTeam = (u) => {
     if (!u) return '';
+    const emailKey = (u.email || '').trim().toLowerCase();
+    const onboardingTeam = emailKey ? (onboardingTeamByEmail.get(emailKey) || '') : '';
+    // Onboarding is the source of truth for team when available.
+    if (onboardingTeam) return onboardingTeam;
     if (u.team) return u.team;
     // Role fallback for users whose "team" is encoded via role
     if (u.role === ROLES.TLA) return TEAMS.TLA;
     if (u.role === ROLES.MONITORING_TEAM) return TEAMS.MONITORING;
     if (u.role === ROLES.PAT1) return TEAMS.PAT1;
-    const emailKey = (u.email || '').trim().toLowerCase();
-    return emailKey ? (onboardingTeamByEmail.get(emailKey) || '') : '';
+    return '';
   };
 
   const getUserDisplayName = (u) => {
