@@ -81,7 +81,7 @@ export function SupabaseProvider({ children }) {
         queryCache.set(cacheKey, { role, team }, ROLE_CACHE_TTL);
         setUserRole(role);
         setUserTeam(team);
-        syncRoleToJwt(role);
+        syncProfileToJwt({ role, team });
         return;
       }
 
@@ -89,10 +89,11 @@ export function SupabaseProvider({ children }) {
       const useMetadata = error?.code === '42501' || error?.status === 403 || userMetadata?.role;
       if (userMetadata?.role || useMetadata) {
         const role = userMetadata?.role || 'intern';
-        queryCache.set(cacheKey, { role, team: null }, ROLE_CACHE_TTL);
+        const team = userMetadata?.team ?? null;
+        queryCache.set(cacheKey, { role, team }, ROLE_CACHE_TTL);
         setUserRole(role);
-        setUserTeam(null);
-        syncRoleToJwt(role);
+        setUserTeam(team);
+        syncProfileToJwt({ role, team });
         return;
       }
 
@@ -101,19 +102,26 @@ export function SupabaseProvider({ children }) {
       queryCache.set(cacheKey, { role: 'intern', team: null }, ROLE_CACHE_TTL);
     } catch (error) {
       const role = userMetadata?.role || 'intern';
+      const team = userMetadata?.team ?? null;
       setUserRole(role);
-      setUserTeam(null);
-      queryCache.set(cacheKey, { role, team: null }, ROLE_CACHE_TTL);
-      syncRoleToJwt(role);
+      setUserTeam(team);
+      queryCache.set(cacheKey, { role, team }, ROLE_CACHE_TTL);
+      syncProfileToJwt({ role, team });
     }
   };
 
-  const syncRoleToJwt = (role) => {
-    if (!role) return;
+  const syncProfileToJwt = ({ role, team }) => {
+    if (!role && !team) return;
     supabase.auth.getUser().then(({ data: { user: u } }) => {
-      const current = u?.user_metadata?.role;
-      if (current === role) return;
-      supabase.auth.updateUser({ data: { role } }).then(() => supabase.auth.refreshSession()).catch(() => {});
+      const currentRole = u?.user_metadata?.role;
+      const currentTeam = u?.user_metadata?.team;
+      const nextRole = role || currentRole;
+      const nextTeam = team ?? currentTeam ?? null;
+      if (currentRole === nextRole && (currentTeam ?? null) === (nextTeam ?? null)) return;
+      supabase.auth
+        .updateUser({ data: { role: nextRole, team: nextTeam } })
+        .then(() => supabase.auth.refreshSession())
+        .catch(() => {});
     }).catch(() => {});
   };
 

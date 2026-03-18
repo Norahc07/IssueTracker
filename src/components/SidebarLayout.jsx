@@ -171,18 +171,36 @@ export default function SidebarLayout() {
       }
 
       // Find Monitoring TL/VTL recipients + Admin
-      const { data: leads } = await supabase
-        .from('users')
-        .select('id, email, full_name, role, team')
-        .or('role.eq.admin,and(team.eq.monitoring,role.in.(tl,vtl))');
-      const leadIds = (Array.isArray(leads) ? leads : []).map((u) => u.id).filter(Boolean);
+      let leadIds = [];
+      try {
+        const { data: leads, error: leadsErr } = await supabase
+          .from('users')
+          .select('id, email, full_name, role, team')
+          .or('role.eq.admin,and(team.eq.monitoring,role.in.(tl,vtl))');
+        if (leadsErr) throw leadsErr;
+        leadIds = (Array.isArray(leads) ? leads : []).map((u) => u.id).filter(Boolean);
+      } catch (e) {
+        // If RLS blocks reading public.users, proceed without lead notifications.
+        const status = e?.status ?? e?.cause?.status;
+        const code = e?.code ?? e?.cause?.code;
+        if (!(status === 403 || code === '42501')) throw e;
+      }
 
       // Fetch user display details for the active interns
       const userIds = [...new Set(active.map((l) => l.user_id))];
-      const { data: usersData } = await supabase
-        .from('users')
-        .select('id, email, full_name')
-        .in('id', userIds);
+      let usersData = [];
+      try {
+        const { data, error: uErr } = await supabase
+          .from('users')
+          .select('id, email, full_name')
+          .in('id', userIds);
+        if (uErr) throw uErr;
+        usersData = Array.isArray(data) ? data : [];
+      } catch (e) {
+        const status = e?.status ?? e?.cause?.status;
+        const code = e?.code ?? e?.cause?.code;
+        if (!(status === 403 || code === '42501')) throw e;
+      }
       const byId = {};
       (Array.isArray(usersData) ? usersData : []).forEach((u) => { byId[u.id] = u; });
 

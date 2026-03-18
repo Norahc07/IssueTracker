@@ -2,9 +2,17 @@
 
 export async function getUserIdsByRoles(supabase, roles = []) {
   if (!supabase || !Array.isArray(roles) || roles.length === 0) return [];
-  const { data, error } = await supabase.from('users').select('id').in('role', roles);
-  if (error) throw error;
-  return (Array.isArray(data) ? data : []).map((r) => r.id).filter(Boolean);
+  try {
+    const { data, error } = await supabase.from('users').select('id').in('role', roles);
+    if (error) throw error;
+    return (Array.isArray(data) ? data : []).map((r) => r.id).filter(Boolean);
+  } catch (e) {
+    // If RLS blocks reading public.users, callers should degrade gracefully.
+    const status = e?.status ?? e?.cause?.status;
+    const code = e?.code ?? e?.cause?.code;
+    if (status === 403 || code === '42501') return [];
+    throw e;
+  }
 }
 
 export async function createNotifications(supabase, rows = []) {
@@ -22,8 +30,37 @@ export async function createNotifications(supabase, rows = []) {
     }))
     .filter((r) => !!r.recipient_user_id);
   if (payload.length === 0) return;
-  const { error } = await supabase.from('notifications').insert(payload);
-  if (error) throw error;
+
+  // Dedupe in-memory to reduce conflicts (same reminder can be generated multiple times).
+  const seen = new Set();
+  const deduped = [];
+  for (const r of payload) {
+    const key = `${r.recipient_user_id}|${r.sender_user_id ?? ''}|${r.type}|${r.context_date ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(r);
+  }
+
+  // Prefer UPSERT so duplicates return 2xx (prevents noisy 409 in browser Network panel).
+  // Requires a UNIQUE constraint matching the conflict target.
+  const { error: upsertErr } = await supabase
+    .from('notifications')
+    .upsert(deduped, { onConflict: 'recipient_user_id,type,context_date', ignoreDuplicates: true });
+
+  if (!upsertErr) return;
+
+  const upsertStatus = upsertErr.status ?? upsertErr?.cause?.status;
+  const upsertCode = upsertErr.code ?? upsertErr?.cause?.code;
+  // 42P10 / 400 => on_conflict doesn't match any UNIQUE constraint in this environment
+  if (upsertStatus !== 400 && upsertCode !== '42P10') throw upsertErr;
+
+  // Fallback: plain insert and ignore duplicates.
+  const { error: insErr } = await supabase.from('notifications').insert(deduped);
+  if (!insErr) return;
+  const status = insErr.status ?? insErr?.cause?.status;
+  const code = insErr.code ?? insErr?.cause?.code;
+  if (status === 409 || code === '23505') return;
+  throw insErr;
 }
 
 export async function notifyUser(supabase, { recipient_user_id, sender_user_id, type, title, body, context_date, metadata }) {
@@ -36,9 +73,17 @@ export async function notifyUser(supabase, { recipient_user_id, sender_user_id, 
 // - 'pat1': Admin + anyone in PAT1 team (incl. role='pat1')
 export async function getUserIdsByScope(supabase, scope) {
   if (!supabase || !scope) return [];
-  const { data, error } = await supabase.from('users').select('id, role, team');
-  if (error) throw error;
-  const list = Array.isArray(data) ? data : [];
+  let list = [];
+  try {
+    const { data, error } = await supabase.from('users').select('id, role, team');
+    if (error) throw error;
+    list = Array.isArray(data) ? data : [];
+  } catch (e) {
+    const status = e?.status ?? e?.cause?.status;
+    const code = e?.code ?? e?.cause?.code;
+    if (status === 403 || code === '42501') return [];
+    throw e;
+  }
   const s = String(scope).toLowerCase();
   const ids = new Set();
   list.forEach((u) => {

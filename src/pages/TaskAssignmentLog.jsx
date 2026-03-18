@@ -47,13 +47,14 @@ const DOMAIN_ROW_STATUS_OPTIONS = ['done', 'need verification', 'blocked access'
 const UPDATE_STATUS_OPTIONS = ['Updated', 'Skipped', 'Failed'];
 const POST_UPDATE_CHECK_OPTIONS = ['Ok', 'Issue Found'];
 
-function Modal({ open, onClose, children, zIndexClassName = 'z-[9999]' }) {
+function Modal({ open, onClose, children, zIndexClassName = 'z-[2147483647]' }) {
   if (!open) return null;
   return createPortal(
     <div
       className={`fixed inset-0 ${zIndexClassName} bg-black/60 backdrop-blur-sm`}
       role="dialog"
       aria-modal="true"
+      style={{ zIndex: 2147483647 }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
@@ -265,6 +266,9 @@ export default function TaskAssignmentLog() {
   const [passwordHistoryModalDomain, setPasswordHistoryModalDomain] = useState(null);
   const [passwordHistoryAddForm, setPasswordHistoryAddForm] = useState({ month: '', password: '' });
   const [addingPasswordHistory, setAddingPasswordHistory] = useState(false);
+  const [editingPasswordHistoryRow, setEditingPasswordHistoryRow] = useState(null); // { id, domain_id, recorded_at, password }
+  const [passwordHistoryEditForm, setPasswordHistoryEditForm] = useState({ month: '', password: '' });
+  const [savingPasswordHistoryEdit, setSavingPasswordHistoryEdit] = useState(false);
   const [selectedDomainForAccounts, setSelectedDomainForAccounts] = useState(null);
   const [selectedNewDomainDetails, setSelectedNewDomainDetails] = useState(null);
   const [newDomainDrawerDomain, setNewDomainDrawerDomain] = useState(null);
@@ -528,13 +532,14 @@ export default function TaskAssignmentLog() {
     try {
       const { data, error } = await supabase
         .from('domain_password_history')
-        .select('password, recorded_at')
+        .select('id, domain_id, password, recorded_at')
         .eq('domain_id', domainId)
         .order('recorded_at', { ascending: false })
         .limit(20);
       if (error) throw error;
       setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: data || [] }));
     } catch (error) {
+      console.warn('fetchDomainPasswordHistory error:', error);
       setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: [] }));
     }
   };
@@ -552,6 +557,31 @@ export default function TaskAssignmentLog() {
       password: pwd,
       recorded_at,
     });
+    if (error) throw error;
+  };
+
+  const updateDomainPasswordHistory = async ({ id, domainId, month, password }) => {
+    if (!supabase || !id || !domainId) return;
+    const pwd = String(password || '').trim();
+    const m = String(month || '').trim(); // YYYY-MM
+    if (!m) throw new Error('Please select a month.');
+    if (!pwd) throw new Error('Please enter a previous password.');
+    const recorded_at = `${m}-01T00:00:00.000Z`;
+    const { error } = await supabase
+      .from('domain_password_history')
+      .update({ password: pwd, recorded_at })
+      .eq('id', id)
+      .eq('domain_id', domainId);
+    if (error) throw error;
+  };
+
+  const deleteDomainPasswordHistory = async ({ id, domainId }) => {
+    if (!supabase || !id || !domainId) return;
+    const { error } = await supabase
+      .from('domain_password_history')
+      .delete()
+      .eq('id', id)
+      .eq('domain_id', domainId);
     if (error) throw error;
   };
 
@@ -3772,7 +3802,11 @@ export default function TaskAssignmentLog() {
 
           {/* Password history modal for a specific domain */}
           {passwordHistoryModalDomain && (
-            <Modal open={!!passwordHistoryModalDomain} onClose={() => setPasswordHistoryModalDomain(null)}>
+            <Modal
+              open={!!passwordHistoryModalDomain}
+              onClose={() => setPasswordHistoryModalDomain(null)}
+              zIndexClassName="z-[2147483647]"
+            >
               <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                 <div className="p-5">
                   <div className="mb-4">
@@ -3837,7 +3871,14 @@ export default function TaskAssignmentLog() {
                               setPasswordHistoryAddForm({ month: '', password: '' });
                               await fetchDomainPasswordHistory(passwordHistoryModalDomain.id);
                             } catch (e) {
-                              toast.error(e?.message || 'Failed to add password history');
+                              console.warn('Add password history error:', e);
+                              const msg =
+                                e?.message ||
+                                e?.details ||
+                                e?.hint ||
+                                (typeof e === 'object' ? JSON.stringify(e) : '') ||
+                                'Failed to add password history';
+                              toast.error(msg);
                             } finally {
                               setAddingPasswordHistory(false);
                             }
@@ -3854,6 +3895,83 @@ export default function TaskAssignmentLog() {
                     </div>
                   )}
 
+                  {/* Edit row */}
+                  {editingPasswordHistoryRow && canManageDomainsForTla(userRole, userTeam) && (
+                    <div className="mb-4 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-amber-900 dark:text-amber-200">Editing history row</div>
+                          <div className="text-xs text-amber-700 dark:text-amber-300">
+                            Update the month/year and password, then save.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingPasswordHistoryRow(null);
+                            setPasswordHistoryEditForm({ month: '', password: '' });
+                          }}
+                          className="text-xs font-medium text-amber-800 dark:text-amber-200 hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-end gap-3">
+                        <div className="flex-1 min-w-[180px]">
+                          <label className="block text-xs font-semibold text-amber-800 dark:text-amber-200 mb-1">Month / Year</label>
+                          <input
+                            type="month"
+                            value={passwordHistoryEditForm.month}
+                            onChange={(e) => setPasswordHistoryEditForm((p) => ({ ...p, month: e.target.value }))}
+                            className="w-full rounded-lg border border-amber-200 dark:border-amber-900/60 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                          />
+                        </div>
+                        <div className="flex-[2] min-w-[220px]">
+                          <label className="block text-xs font-semibold text-amber-800 dark:text-amber-200 mb-1">Previous password</label>
+                          <input
+                            type="text"
+                            value={passwordHistoryEditForm.password}
+                            onChange={(e) => setPasswordHistoryEditForm((p) => ({ ...p, password: e.target.value }))}
+                            className="w-full rounded-lg border border-amber-200 dark:border-amber-900/60 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={savingPasswordHistoryEdit}
+                          onClick={async () => {
+                            try {
+                              setSavingPasswordHistoryEdit(true);
+                              await updateDomainPasswordHistory({
+                                id: editingPasswordHistoryRow.id,
+                                domainId: passwordHistoryModalDomain.id,
+                                month: passwordHistoryEditForm.month,
+                                password: passwordHistoryEditForm.password,
+                              });
+                              toast.success('Password history updated');
+                              setEditingPasswordHistoryRow(null);
+                              setPasswordHistoryEditForm({ month: '', password: '' });
+                              await fetchDomainPasswordHistory(passwordHistoryModalDomain.id);
+                            } catch (e) {
+                              const msg =
+                                e?.message ||
+                                e?.details ||
+                                e?.hint ||
+                                (typeof e === 'object' ? JSON.stringify(e) : '') ||
+                                'Failed to update password history';
+                              toast.error(msg);
+                            } finally {
+                              setSavingPasswordHistoryEdit(false);
+                            }
+                          }}
+                          className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                          style={{ backgroundColor: PRIMARY }}
+                        >
+                          {savingPasswordHistoryEdit ? 'Saving…' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                       <thead className="bg-gray-50 dark:bg-gray-950/40">
@@ -3864,6 +3982,11 @@ export default function TaskAssignmentLog() {
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">
                             Previous Password
                           </th>
+                          {canManageDomainsForTla(userRole, userTeam) && (
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">
+                              Actions
+                            </th>
+                          )}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-gray-900">
@@ -3891,6 +4014,53 @@ export default function TaskAssignmentLog() {
                                 <td className="px-4 py-3 text-sm font-mono text-gray-900 dark:text-gray-100 break-all">
                                   {h.password || '—'}
                                 </td>
+                                {canManageDomainsForTla(userRole, userTeam) && (
+                                  <td className="px-4 py-3 text-sm text-right whitespace-nowrap">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingPasswordHistoryRow(h);
+                                        const d = new Date(h.recorded_at);
+                                        const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+                                        const yyyy = String(d.getUTCFullYear());
+                                        setPasswordHistoryEditForm({
+                                          month: `${yyyy}-${mm}`,
+                                          password: h.password || '',
+                                        });
+                                      }}
+                                      className="px-2 py-1 rounded-md text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const ok = window.confirm('Delete this password history row? This cannot be undone.');
+                                        if (!ok) return;
+                                        try {
+                                          await deleteDomainPasswordHistory({ id: h.id, domainId: passwordHistoryModalDomain.id });
+                                          toast.success('Password history deleted');
+                                          if (editingPasswordHistoryRow?.id === h.id) {
+                                            setEditingPasswordHistoryRow(null);
+                                            setPasswordHistoryEditForm({ month: '', password: '' });
+                                          }
+                                          await fetchDomainPasswordHistory(passwordHistoryModalDomain.id);
+                                        } catch (e) {
+                                          const msg =
+                                            e?.message ||
+                                            e?.details ||
+                                            e?.hint ||
+                                            (typeof e === 'object' ? JSON.stringify(e) : '') ||
+                                            'Failed to delete password history';
+                                          toast.error(msg);
+                                        }
+                                      }}
+                                      className="ml-2 px-2 py-1 rounded-md text-xs font-medium border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-200 hover:bg-red-50/60 dark:hover:bg-red-950/30"
+                                    >
+                                      Delete
+                                    </button>
+                                  </td>
+                                )}
                               </tr>
                             );
                           });
