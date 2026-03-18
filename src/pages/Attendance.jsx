@@ -22,8 +22,12 @@ function onboardingTeamToUserTeam(obTeam) {
     .replace(/\s+/g, ' ');
   if (v.includes('onboarding')) return TEAMS.TLA;
   if (v === 'tla' || v === 'team lead assistant' || v.includes('tla')) return TEAMS.TLA;
-  if (v === 'monitoring' || v === 'monitoring team' || v === 'monitoring_team') return TEAMS.MONITORING;
-  if (v === 'pat1' || v === 'pat 1') return TEAMS.PAT1;
+  if (v === 'monitoring' || v === 'monitoring team' || v === 'monitoring_team' || v.includes('monitoring')) {
+    return TEAMS.MONITORING;
+  }
+  if (v === 'pat1' || v === 'pat 1' || v.includes('pat1')) {
+    return TEAMS.PAT1;
+  }
   return '';
 }
 
@@ -1812,7 +1816,7 @@ export default function Attendance() {
       {canClockInOut && (
         <>
           {!myScheduleSet && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800">
+            <div className="rounded-lg border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 p-4 text-amber-800 dark:text-amber-200">
               Your official schedule is not set yet. Time in/out will still work, but please confirm your official time frame with your supervisor/TL.
             </div>
           )}
