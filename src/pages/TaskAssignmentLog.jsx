@@ -97,6 +97,12 @@ const canManageDomainsForTla = (userRole, userTeam) => {
   return false;
 };
 
+const scanningLabel = (raw) => {
+  if (!raw) return '';
+  const key = String(raw).trim().toLowerCase();
+  return SCANNING_LABELS[key] || raw;
+};
+
 const COURSE_LIST_DOMAIN_COUNTRIES = [
   'Belize',
   'China',
@@ -257,8 +263,14 @@ export default function TaskAssignmentLog() {
   const [wpPluginRows, setWpPluginRows] = useState([]);
   const [domainPasswordHistory, setDomainPasswordHistory] = useState({});
   const [passwordHistoryModalDomain, setPasswordHistoryModalDomain] = useState(null);
+  const [passwordHistoryAddForm, setPasswordHistoryAddForm] = useState({ month: '', password: '' });
+  const [addingPasswordHistory, setAddingPasswordHistory] = useState(false);
   const [selectedDomainForAccounts, setSelectedDomainForAccounts] = useState(null);
   const [selectedNewDomainDetails, setSelectedNewDomainDetails] = useState(null);
+  const [newDomainDrawerDomain, setNewDomainDrawerDomain] = useState(null);
+  const [isEditingNewDomainDrawer, setIsEditingNewDomainDrawer] = useState(false);
+  const [savingNewDomainDrawer, setSavingNewDomainDrawer] = useState(false);
+  const [newDomainDrawerDraft, setNewDomainDrawerDraft] = useState(null);
   const [defaultAccounts, setDefaultAccounts] = useState({ intern: { username: '', password: '' }, sg: { username: '', password: '' } });
 
   // Reset table edit when modal opens
@@ -524,6 +536,89 @@ export default function TaskAssignmentLog() {
       setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: data || [] }));
     } catch (error) {
       setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: [] }));
+    }
+  };
+
+  const addDomainPasswordHistory = async ({ domainId, month, password }) => {
+    if (!supabase || !domainId) return;
+    const pwd = String(password || '').trim();
+    const m = String(month || '').trim(); // YYYY-MM
+    if (!m) throw new Error('Please select a month.');
+    if (!pwd) throw new Error('Please enter a previous password.');
+    // Store as first day of month (UTC-ish) so we can render Month/Year consistently.
+    const recorded_at = `${m}-01T00:00:00.000Z`;
+    const { error } = await supabase.from('domain_password_history').insert({
+      domain_id: domainId,
+      password: pwd,
+      recorded_at,
+    });
+    if (error) throw error;
+  };
+
+  const openNewDomainDrawer = (domain) => {
+    if (!domain) return;
+    setNewDomainDrawerDomain(domain);
+    setIsEditingNewDomainDrawer(false);
+    setSavingNewDomainDrawer(false);
+    setNewDomainDrawerDraft({
+      wp_username: domain.wp_username || '',
+      new_password: domain.new_password || '',
+      status: domain.status || '',
+      scanning_done_date: domain.scanning_done_date ? String(domain.scanning_done_date).slice(0, 10) : '',
+      scanning_date: domain.scanning_date || '',
+      scanning_plugin: domain.scanning_plugin || '',
+      scanning_2fa: domain.scanning_2fa || '',
+      recaptcha: !!domain.recaptcha,
+      backup: !!domain.backup,
+      url: domain.url || '',
+      country: domain.country || '',
+    });
+  };
+
+  const closeNewDomainDrawer = () => {
+    setNewDomainDrawerDomain(null);
+    setIsEditingNewDomainDrawer(false);
+    setSavingNewDomainDrawer(false);
+    setNewDomainDrawerDraft(null);
+  };
+
+  const saveNewDomainDrawer = async () => {
+    if (!supabase || !newDomainDrawerDomain?.id || !newDomainDrawerDraft) return;
+    setSavingNewDomainDrawer(true);
+    try {
+      const payload = {
+        wp_username: String(newDomainDrawerDraft.wp_username || '').trim() || null,
+        new_password: String(newDomainDrawerDraft.new_password || '').trim() || null,
+        status: String(newDomainDrawerDraft.status || '').trim() || null,
+        scanning_done_date: newDomainDrawerDraft.scanning_done_date ? newDomainDrawerDraft.scanning_done_date : null,
+        scanning_date: String(newDomainDrawerDraft.scanning_date || '').trim() || null,
+        scanning_plugin: String(newDomainDrawerDraft.scanning_plugin || '').trim() || null,
+        scanning_2fa: String(newDomainDrawerDraft.scanning_2fa || '').trim() || null,
+        recaptcha: !!newDomainDrawerDraft.recaptcha,
+        backup: !!newDomainDrawerDraft.backup,
+        url: String(newDomainDrawerDraft.url || '').trim() || null,
+        country: String(newDomainDrawerDraft.country || '').trim() || null,
+      };
+
+      const { error } = await supabase.from('domains').update(payload).eq('id', newDomainDrawerDomain.id);
+      if (error) throw error;
+
+      // Update local state
+      setDomains((prev) =>
+        (Array.isArray(prev) ? prev : []).map((d) =>
+          d.id === newDomainDrawerDomain.id
+            ? { ...d, ...payload, scanning_done_date: payload.scanning_done_date }
+            : d
+        )
+      );
+      setNewDomainDrawerDomain((prev) => (prev ? { ...prev, ...payload, scanning_done_date: payload.scanning_done_date } : prev));
+      queryCache.invalidate('domains');
+      toast.success('Domain updated');
+      setIsEditingNewDomainDrawer(false);
+    } catch (e) {
+      toast.error(e?.message || 'Failed to update domain');
+    } finally {
+      setSavingNewDomainDrawer(false);
     }
   };
 
@@ -1295,6 +1390,9 @@ export default function TaskAssignmentLog() {
     String(selectedCourseListDomain.country || '')
       .trim()
       .toLowerCase() === 'singapore';
+
+  const canBulkEditDomains = domainTypeFilter === 'old';
+  const isEditingDomains = isEditingDomainsTable && canBulkEditDomains;
 
   return (
     <div className="w-full space-y-4 sm:space-y-6">
@@ -2751,7 +2849,7 @@ export default function TaskAssignmentLog() {
             </div>
             {canManageDomainsForTla(userRole, userTeam) && (
               <div className="flex items-center gap-2">
-                {!isEditingDomainsTable ? (
+                {canBulkEditDomains && !isEditingDomains ? (
                   <button
                     type="button"
                     onClick={() => setIsEditingDomainsTable(true)}
@@ -2762,7 +2860,7 @@ export default function TaskAssignmentLog() {
                     </svg>
                     Edit
                   </button>
-                ) : (
+                ) : canBulkEditDomains && isEditingDomains ? (
                   <>
                     <button
                       type="button"
@@ -2785,6 +2883,10 @@ export default function TaskAssignmentLog() {
                       Cancel
                     </button>
                   </>
+                ) : (
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Click a domain to view/edit details.
+                  </div>
                 )}
                 <button
                   type="button"
@@ -3010,7 +3112,7 @@ export default function TaskAssignmentLog() {
                         className={`hover:bg-gray-50 dark:hover:bg-gray-800/60 ${isClaimed ? 'bg-green-50/70 dark:bg-green-900/30' : ''}`}
                       >
                         <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                          {isEditingDomainsTable ? (
+                          {isEditingDomains ? (
                             <input
                               type="text"
                               value={domain.country || ''}
@@ -3023,14 +3125,14 @@ export default function TaskAssignmentLog() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                          {!isEditingDomainsTable && (() => {
+                          {!isEditingDomains && (() => {
                             const summary = getDomainPluginSummary(domain);
                             return summary === 'OK / Updated' || summary === 'OK' ? 'Updated' : 'Not updated';
                           })()}
-                          {isEditingDomainsTable && <span className="text-gray-400">—</span>}
+                          {isEditingDomains && <span className="text-gray-400">—</span>}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 break-all">
-                          {isEditingDomainsTable ? (
+                          {isEditingDomains ? (
                             <input
                               type="url"
                               value={domain.url || ''}
@@ -3047,7 +3149,7 @@ export default function TaskAssignmentLog() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
-                          {isEditingDomainsTable ? (
+                          {isEditingDomains ? (
                             <select
                               value={domain.scanning_date || 'ok'}
                               onChange={(e) => updateDomainInState(domain.id, { scanning_date: e.target.value })}
@@ -3058,11 +3160,11 @@ export default function TaskAssignmentLog() {
                               ))}
                             </select>
                           ) : (
-                            domain.scanning_date || 'ok'
+                            scanningLabel(domain.scanning_date) || 'Ok'
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
-                          {isEditingDomainsTable ? (
+                          {isEditingDomains ? (
                             <PrettyDatePicker
                               value={domain.scanning_done_date ? domain.scanning_done_date.slice(0, 10) : ''}
                               onChange={(e) => updateDomainInState(domain.id, { scanning_done_date: e.target.value || null })}
@@ -3074,7 +3176,7 @@ export default function TaskAssignmentLog() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
-                          {isEditingDomainsTable ? (
+                          {isEditingDomains ? (
                             <select
                               value={domain.scanning_plugin || 'ok'}
                               onChange={(e) => updateDomainInState(domain.id, { scanning_plugin: e.target.value })}
@@ -3085,11 +3187,11 @@ export default function TaskAssignmentLog() {
                               ))}
                             </select>
                           ) : (
-                            domain.scanning_plugin || 'ok'
+                            scanningLabel(domain.scanning_plugin) || 'Ok'
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
-                          {isEditingDomainsTable ? (
+                          {isEditingDomains ? (
                             <select
                               value={domain.scanning_2fa || 'ok'}
                               onChange={(e) => updateDomainInState(domain.id, { scanning_2fa: e.target.value })}
@@ -3100,15 +3202,15 @@ export default function TaskAssignmentLog() {
                               ))}
                             </select>
                           ) : (
-                            domain.scanning_2fa || 'ok'
+                            scanningLabel(domain.scanning_2fa) || 'Ok'
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <input
                             type="checkbox"
                             checked={!!domain.recaptcha}
-                            readOnly={!isEditingDomainsTable}
-                            onChange={isEditingDomainsTable ? (e) => updateDomainInState(domain.id, { recaptcha: e.target.checked }) : undefined}
+                            readOnly={!isEditingDomains}
+                            onChange={isEditingDomains ? (e) => updateDomainInState(domain.id, { recaptcha: e.target.checked }) : undefined}
                             className="rounded"
                           />
                         </td>
@@ -3116,8 +3218,8 @@ export default function TaskAssignmentLog() {
                           <input
                             type="checkbox"
                             checked={!!domain.backup}
-                            readOnly={!isEditingDomainsTable}
-                            onChange={isEditingDomainsTable ? (e) => updateDomainInState(domain.id, { backup: e.target.checked }) : undefined}
+                            readOnly={!isEditingDomains}
+                            onChange={isEditingDomains ? (e) => updateDomainInState(domain.id, { backup: e.target.checked }) : undefined}
                             className="rounded"
                           />
                         </td>
@@ -3180,8 +3282,8 @@ export default function TaskAssignmentLog() {
                       return (
                       <tr
                         key={domain.id}
-                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/60 ${!isEditingDomainsTable ? 'cursor-pointer' : ''} ${isClaimed ? 'bg-green-50/70 dark:bg-green-900/30' : ''}`}
-                        onClick={!isEditingDomainsTable ? () => setSelectedNewDomainDetails(domain) : undefined}
+                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer ${isClaimed ? 'bg-green-50/70 dark:bg-green-900/30' : ''}`}
+                        onClick={() => openNewDomainDrawer(domain)}
                       >
                         <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           {isEditingDomainsTable ? (
@@ -3251,7 +3353,7 @@ export default function TaskAssignmentLog() {
                               ))}
                             </select>
                           ) : (
-                            domain.scanning_date || '—'
+                            scanningLabel(domain.scanning_date) || '—'
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
@@ -3267,7 +3369,7 @@ export default function TaskAssignmentLog() {
                               ))}
                             </select>
                           ) : (
-                            domain.scanning_plugin || '—'
+                            scanningLabel(domain.scanning_plugin) || '—'
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
@@ -3283,7 +3385,7 @@ export default function TaskAssignmentLog() {
                               ))}
                             </select>
                           ) : (
-                            domain.scanning_2fa || '—'
+                            scanningLabel(domain.scanning_2fa) || '—'
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
@@ -3462,58 +3564,205 @@ export default function TaskAssignmentLog() {
             </Modal>
           )}
 
-          {/* New Domains – details modal */}
-          {selectedNewDomainDetails && (
-            <Modal open={!!selectedNewDomainDetails} onClose={() => setSelectedNewDomainDetails(null)}>
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md border border-gray-200">
-                <div className="p-5 space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div className="flex-1 text-center">
-                      <h3 className="font-semibold text-gray-900" style={{ color: PRIMARY }}>
-                        {selectedNewDomainDetails.country || 'Domain'}
-                      </h3>
-                      {selectedNewDomainDetails.url && (
-                        <a
-                          href={selectedNewDomainDetails.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-1 inline-block text-xs text-[#6795BE] hover:underline break-all"
-                        >
-                          {selectedNewDomainDetails.url}
-                        </a>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedNewDomainDetails(null)}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div className="space-y-2 text-sm text-gray-800">
-                    <div className="flex justify-between">
-                      <span className="font-medium">WP Username:</span>
-                      <span className="font-mono break-all">{selectedNewDomainDetails.wp_username || '—'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">New Password:</span>
-                      <span className="font-mono break-all">
-                        {selectedNewDomainDetails.new_password || '—'}
-                      </span>
-                    </div>
-                    <div className="pt-2">
+          {/* New Domains – right-side slide-over details (admin can edit) */}
+          {newDomainDrawerDomain && (
+            <Modal open={!!newDomainDrawerDomain} onClose={closeNewDomainDrawer} zIndexClassName="z-[10000]">
+              <div className="fixed inset-0" />
+              <div className="fixed inset-0 flex items-stretch justify-end">
+                <div
+                  className="absolute inset-0"
+                  onMouseDown={(e) => {
+                    if (e.target === e.currentTarget) closeNewDomainDrawer();
+                  }}
+                />
+                <div className="relative w-full max-w-md sm:max-w-lg h-[100dvh] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-2xl">
+                  <div className="h-full flex flex-col">
+                    <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate" style={{ color: PRIMARY }}>
+                          {newDomainDrawerDomain.country || 'Domain'}
+                        </h3>
+                        {newDomainDrawerDomain.url && (
+                          <a
+                            href={newDomainDrawerDomain.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1 inline-block text-xs text-[#6795BE] hover:underline break-all"
+                          >
+                            {newDomainDrawerDomain.url}
+                          </a>
+                        )}
+                      </div>
                       <button
                         type="button"
-                        onClick={async () => {
-                          await fetchDomainPasswordHistory(selectedNewDomainDetails.id);
-                          setPasswordHistoryModalDomain(selectedNewDomainDetails);
-                        }}
-                        className="text-xs font-medium"
-                        style={{ color: PRIMARY }}
+                        onClick={closeNewDomainDrawer}
+                        className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
                       >
-                        View old password history
+                        Close
                       </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await fetchDomainPasswordHistory(newDomainDrawerDomain.id);
+                            setPasswordHistoryModalDomain(newDomainDrawerDomain);
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        >
+                          View old password history
+                        </button>
+
+                        {userRole === 'admin' && (
+                          <div className="flex items-center gap-2">
+                            {!isEditingNewDomainDrawer ? (
+                              <button
+                                type="button"
+                                onClick={() => setIsEditingNewDomainDrawer(true)}
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                              >
+                                Edit
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={saveNewDomainDrawer}
+                                  disabled={savingNewDomainDrawer}
+                                  className="px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                                  style={{ backgroundColor: PRIMARY }}
+                                >
+                                  {savingNewDomainDrawer ? 'Saving…' : 'Save'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsEditingNewDomainDrawer(false);
+                                    openNewDomainDrawer(newDomainDrawerDomain);
+                                  }}
+                                  disabled={savingNewDomainDrawer}
+                                  className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60"
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                        <div className="px-4 py-3 bg-gray-50 dark:bg-gray-950/40 border-b border-gray-200 dark:border-gray-800">
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Domain details</h4>
+                        </div>
+                        <div className="p-4 space-y-3">
+                          {[
+                            { key: 'country', label: 'Country', type: 'text', placeholder: 'Country' },
+                            { key: 'url', label: 'URL', type: 'url', placeholder: 'https://...' },
+                            { key: 'wp_username', label: 'WP Username', type: 'text', placeholder: 'WP Username' },
+                            { key: 'new_password', label: 'New Password', type: 'text', placeholder: 'Password' },
+                          ].map((f) => (
+                            <div key={f.key} className="space-y-1">
+                              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{f.label}</label>
+                              {isEditingNewDomainDrawer && userRole === 'admin' ? (
+                                <input
+                                  type={f.type}
+                                  value={newDomainDrawerDraft?.[f.key] ?? ''}
+                                  onChange={(e) =>
+                                    setNewDomainDrawerDraft((p) => ({ ...(p || {}), [f.key]: e.target.value }))
+                                  }
+                                  placeholder={f.placeholder}
+                                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                                />
+                              ) : (
+                                <div className="text-sm text-gray-900 dark:text-gray-100 break-all">
+                                  {newDomainDrawerDomain?.[f.key] || '—'}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                        <div className="px-4 py-3 bg-gray-50 dark:bg-gray-950/40 border-b border-gray-200 dark:border-gray-800">
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Scanning</h4>
+                        </div>
+                        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">Done date</label>
+                            {isEditingNewDomainDrawer && userRole === 'admin' ? (
+                              <PrettyDatePicker
+                                value={newDomainDrawerDraft?.scanning_done_date || ''}
+                                onChange={(e) =>
+                                  setNewDomainDrawerDraft((p) => ({ ...(p || {}), scanning_done_date: e.target.value }))
+                                }
+                                ariaLabel="Select scanning done date"
+                                className="w-full"
+                              />
+                            ) : (
+                              <div className="text-sm text-gray-900 dark:text-gray-100">
+                                {newDomainDrawerDomain?.scanning_done_date
+                                  ? new Date(newDomainDrawerDomain.scanning_done_date).toLocaleDateString()
+                                  : '—'}
+                              </div>
+                            )}
+                          </div>
+                          {[
+                            { key: 'scanning_date', label: 'Date status' },
+                            { key: 'scanning_plugin', label: 'Plugin' },
+                            { key: 'scanning_2fa', label: '2FA' },
+                            { key: 'status', label: 'Row status' },
+                          ].map((f) => (
+                            <div key={f.key} className="space-y-1">
+                              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{f.label}</label>
+                              {isEditingNewDomainDrawer && userRole === 'admin' ? (
+                                <select
+                                  value={newDomainDrawerDraft?.[f.key] ?? ''}
+                                  onChange={(e) =>
+                                    setNewDomainDrawerDraft((p) => ({ ...(p || {}), [f.key]: e.target.value }))
+                                  }
+                                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                                >
+                                  <option value="">—</option>
+                                  {(f.key === 'status' ? DOMAIN_ROW_STATUS_OPTIONS : SCANNING_OPTIONS).map((o) => (
+                                    <option key={o} value={o}>
+                                      {f.key === 'status' ? o : (SCANNING_LABELS[o] || o)}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div className="text-sm text-gray-900 dark:text-gray-100">
+                                  {f.key === 'status'
+                                    ? (newDomainDrawerDomain?.status || '—')
+                                    : (scanningLabel(newDomainDrawerDomain?.[f.key]) || '—')}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          <div className="flex items-center gap-4 sm:col-span-2 pt-1">
+                            {[
+                              { key: 'recaptcha', label: 'reCAPTCHA' },
+                              { key: 'backup', label: 'Backup' },
+                            ].map((c) => (
+                              <label key={c.key} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                                <input
+                                  type="checkbox"
+                                  checked={!!(isEditingNewDomainDrawer ? newDomainDrawerDraft?.[c.key] : newDomainDrawerDomain?.[c.key])}
+                                  disabled={!isEditingNewDomainDrawer || userRole !== 'admin'}
+                                  onChange={(e) =>
+                                    setNewDomainDrawerDraft((p) => ({ ...(p || {}), [c.key]: e.target.checked }))
+                                  }
+                                  className="rounded border-gray-300 dark:border-gray-700"
+                                />
+                                {c.label}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3524,47 +3773,130 @@ export default function TaskAssignmentLog() {
           {/* Password history modal for a specific domain */}
           {passwordHistoryModalDomain && (
             <Modal open={!!passwordHistoryModalDomain} onClose={() => setPasswordHistoryModalDomain(null)}>
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md border border-gray-200">
+              <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                 <div className="p-5">
                   <div className="mb-4">
                     <div className="flex justify-between items-center">
                       <button
                         type="button"
-                        onClick={() => setPasswordHistoryModalDomain(null)}
-                        className="text-gray-400 hover:text-gray-600"
+                        onClick={() => {
+                          setPasswordHistoryModalDomain(null);
+                          setPasswordHistoryAddForm({ month: '', password: '' });
+                          setAddingPasswordHistory(false);
+                        }}
+                        className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                       >
                         ✕
                       </button>
                     </div>
-                    <h3 className="mt-1 text-center font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                    <h3 className="mt-1 text-center font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
                       {passwordHistoryModalDomain.country || passwordHistoryModalDomain.url || 'Domain'}
                     </h3>
-                    <p className="mt-1 text-center text-xs text-gray-500">Password history by month and year</p>
+                    <p className="mt-1 text-center text-xs text-gray-500 dark:text-gray-400">
+                      Password history by month and year
+                    </p>
                   </div>
-                  <div className="space-y-2 max-h-80 overflow-y-auto text-sm text-gray-800">
-                    {(() => {
-                      const history = domainPasswordHistory[passwordHistoryModalDomain.id] || [];
-                      if (!history.length) {
-                        return <p className="text-sm text-gray-500">No password history recorded yet for this domain.</p>;
-                      }
-                      return history.map((h, idx) => {
-                        const date = new Date(h.recorded_at);
-                        const month = date.toLocaleString('default', { month: 'long' });
-                        const year = date.getFullYear();
-                        const label = `${month} - ${year}`;
-                        return (
-                          <div
-                            key={idx}
-                            className="flex items-center justify-between rounded border border-gray-100 bg-gray-50 px-3 py-2"
-                          >
-                            <div>
-                              <div className="text-xs font-medium text-gray-500 uppercase">{label}</div>
-                              <div className="font-mono text-sm break-all">{h.password || '—'}</div>
-                            </div>
-                          </div>
-                        );
-                      });
-                    })()}
+                  {canManageDomainsForTla(userRole, userTeam) && (
+                    <div className="mb-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/40 p-4">
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex-1 min-w-[180px]">
+                          <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                            Month / Year
+                          </label>
+                          <input
+                            type="month"
+                            value={passwordHistoryAddForm.month}
+                            onChange={(e) => setPasswordHistoryAddForm((p) => ({ ...p, month: e.target.value }))}
+                            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                          />
+                        </div>
+                        <div className="flex-[2] min-w-[220px]">
+                          <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                            Previous password
+                          </label>
+                          <input
+                            type="text"
+                            value={passwordHistoryAddForm.password}
+                            onChange={(e) => setPasswordHistoryAddForm((p) => ({ ...p, password: e.target.value }))}
+                            placeholder="Enter previous password"
+                            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={addingPasswordHistory}
+                          onClick={async () => {
+                            try {
+                              setAddingPasswordHistory(true);
+                              await addDomainPasswordHistory({
+                                domainId: passwordHistoryModalDomain.id,
+                                month: passwordHistoryAddForm.month,
+                                password: passwordHistoryAddForm.password,
+                              });
+                              toast.success('Password history added');
+                              setPasswordHistoryAddForm({ month: '', password: '' });
+                              await fetchDomainPasswordHistory(passwordHistoryModalDomain.id);
+                            } catch (e) {
+                              toast.error(e?.message || 'Failed to add password history');
+                            } finally {
+                              setAddingPasswordHistory(false);
+                            }
+                          }}
+                          className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                          style={{ backgroundColor: PRIMARY }}
+                        >
+                          {addingPasswordHistory ? 'Adding…' : 'Add'}
+                        </button>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        This adds a manual history row (Month/Year + previous password) for this domain.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                      <thead className="bg-gray-50 dark:bg-gray-950/40">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">
+                            Month Year
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">
+                            Previous Password
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-gray-900">
+                        {(() => {
+                          const history = domainPasswordHistory[passwordHistoryModalDomain.id] || [];
+                          if (!history.length) {
+                            return (
+                              <tr>
+                                <td colSpan={2} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                                  No password history recorded yet for this domain.
+                                </td>
+                              </tr>
+                            );
+                          }
+                          return history.map((h, idx) => {
+                            const date = new Date(h.recorded_at);
+                            const month = date.toLocaleString('default', { month: 'long' });
+                            const year = date.getFullYear();
+                            const label = `${month} ${year}`;
+                            return (
+                              <tr key={idx} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
+                                <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                                  {label}
+                                </td>
+                                <td className="px-4 py-3 text-sm font-mono text-gray-900 dark:text-gray-100 break-all">
+                                  {h.password || '—'}
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })()}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>
@@ -3946,49 +4278,49 @@ export default function TaskAssignmentLog() {
       {/* Create Domain Modal */}
       {showCreateDomainModal && (
         <Modal open={showCreateDomainModal} onClose={() => setShowCreateDomainModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto border border-gray-100">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto border border-gray-200 dark:border-gray-800">
             <div className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4" style={{ color: PRIMARY }}>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4" style={{ color: PRIMARY }}>
                 Add Domain
               </h2>
               <form onSubmit={handleCreateDomain} className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Type</label>
                   <select
                     value={createDomainForm.type}
                     onChange={(e) => setCreateDomainForm((f) => ({ ...f, type: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                   >
                     <option value="old">Old</option>
                     <option value="new">New</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Country</label>
                   <input
                     type="text"
                     value={createDomainForm.country}
                     onChange={(e) => setCreateDomainForm((f) => ({ ...f, country: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                     placeholder="Country"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">URL</label>
                   <input
                     type="url"
                     value={createDomainForm.url}
                     onChange={(e) => setCreateDomainForm((f) => ({ ...f, url: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                     placeholder="https://..."
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Status</label>
                   <select
                     value={createDomainForm.status}
                     onChange={(e) => setCreateDomainForm((f) => ({ ...f, status: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                   >
                     <option value="">—</option>
                     {SCANNING_OPTIONS.map((o) => (
@@ -3997,10 +4329,10 @@ export default function TaskAssignmentLog() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <span className="block text-sm font-medium text-gray-700">Scanning</span>
+                  <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">Scanning</span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Date (date of scanning)</label>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Date (date of scanning)</label>
                       <PrettyDatePicker
                         id="create-domain-scanning-date"
                         value={createDomainForm.scanning_done_date}
@@ -4010,11 +4342,11 @@ export default function TaskAssignmentLog() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Scanning status (ok / move on / on-going)</label>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Scanning status (ok / move on / on-going)</label>
                       <select
                         value={createDomainForm.scanning_date}
                         onChange={(e) => setCreateDomainForm((f) => ({ ...f, scanning_date: e.target.value }))}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                       >
                         <option value="">—</option>
                         {SCANNING_OPTIONS.map((o) => (
@@ -4026,11 +4358,11 @@ export default function TaskAssignmentLog() {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Plugin</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Plugin</label>
                     <select
                       value={createDomainForm.scanning_plugin}
                       onChange={(e) => setCreateDomainForm((f) => ({ ...f, scanning_plugin: e.target.value }))}
-                      className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                      className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                     >
                       <option value="">—</option>
                       {SCANNING_OPTIONS.map((o) => (
@@ -4039,11 +4371,11 @@ export default function TaskAssignmentLog() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">2FA</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">2FA</label>
                     <select
                       value={createDomainForm.scanning_2fa}
                       onChange={(e) => setCreateDomainForm((f) => ({ ...f, scanning_2fa: e.target.value }))}
-                      className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                      className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                     >
                       <option value="">—</option>
                       {SCANNING_OPTIONS.map((o) => (
@@ -4053,21 +4385,21 @@ export default function TaskAssignmentLog() {
                   </div>
                 </div>
                 <div className="flex gap-4">
-                  <label className="flex items-center gap-2 text-sm">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                     <input
                       type="checkbox"
                       checked={createDomainForm.recaptcha}
                       onChange={(e) => setCreateDomainForm((f) => ({ ...f, recaptcha: e.target.checked }))}
-                      className="rounded"
+                      className="rounded border-gray-300 dark:border-gray-700"
                     />
                     reCAPTCHA
                   </label>
-                  <label className="flex items-center gap-2 text-sm">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                     <input
                       type="checkbox"
                       checked={createDomainForm.backup}
                       onChange={(e) => setCreateDomainForm((f) => ({ ...f, backup: e.target.checked }))}
-                      className="rounded"
+                      className="rounded border-gray-300 dark:border-gray-700"
                     />
                     Backup
                   </label>
@@ -4076,7 +4408,7 @@ export default function TaskAssignmentLog() {
                   <button
                     type="submit"
                     disabled={!isDomainFormValid()}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 shadow-sm"
                     style={isDomainFormValid() ? { backgroundColor: PRIMARY } : {}}
                   >
                     Add Domain
@@ -4084,7 +4416,7 @@ export default function TaskAssignmentLog() {
                   <button
                     type="button"
                     onClick={() => setShowCreateDomainModal(false)}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-red-50 hover:text-red-700 hover:border-red-200 border border-transparent"
+                    className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
                   >
                     Cancel
                   </button>
