@@ -88,11 +88,30 @@ export default function MonitoringTasks({ embedded = false }) {
   const [monitoringUsers, setMonitoringUsers] = useState([]);
   const [myTasksOnly, setMyTasksOnly] = useState(false);
   const [onboardingRecords, setOnboardingRecords] = useState([]);
+  const [viewTab, setViewTab] = useState('tasks'); // 'tasks' | 'intern-records'
+
+  // Interns record state (admin/monitoring leads)
+  const [recordsTeamTab, setRecordsTeamTab] = useState(TEAMS.MONITORING); // 'tla' | 'monitoring' | 'pat1'
+  const [recordsLoading, setRecordsLoading] = useState(false);
+  const [internRecords, setInternRecords] = useState([]);
+  const [recordModalOpen, setRecordModalOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [recordForm, setRecordForm] = useState({
+    last_name: '',
+    first_name: '',
+    hours_per_day: '',
+    total_request: '',
+    hours_rendered: '',
+    start_date: '',
+    target_end_1: '',
+    target_end_2: '',
+  });
 
   // Verify access: Only Monitoring team or Admin
   const isMonitoringTeam = String(userTeam || '').toLowerCase().includes('monitoring');
   const isAdmin = userRole === 'admin';
   const canAccess = isMonitoringTeam || isAdmin;
+  const canManageAllTeamsInternRecords = isAdmin;
 
   useEffect(() => {
     if (!canAccess) return;
@@ -104,6 +123,19 @@ export default function MonitoringTasks({ embedded = false }) {
     if (!canAccess) return;
     fetchDailyRecord(selectedDate);
   }, [selectedDate, canAccess]);
+
+  useEffect(() => {
+    if (!canAccess) return;
+    if (viewTab !== 'intern-records') return;
+    fetchInternRecords();
+  }, [canAccess, viewTab, recordsTeamTab]);
+
+  useEffect(() => {
+    // Non-admin monitoring members can manage Monitoring records only
+    if (!canAccess) return;
+    if (canManageAllTeamsInternRecords) return;
+    setRecordsTeamTab(TEAMS.MONITORING);
+  }, [canAccess, canManageAllTeamsInternRecords]);
 
   const fetchMonitoringUsers = async () => {
     const { data } = await supabase
@@ -170,6 +202,134 @@ export default function MonitoringTasks({ embedded = false }) {
       toast.error('Failed to load records.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const resetRecordForm = () => {
+    setRecordForm({
+      last_name: '',
+      first_name: '',
+      hours_per_day: '',
+      total_request: '',
+      hours_rendered: '',
+      start_date: '',
+      target_end_1: '',
+      target_end_2: '',
+    });
+  };
+
+  const openAddRecord = () => {
+    setEditingRecord(null);
+    resetRecordForm();
+    setRecordModalOpen(true);
+  };
+
+  const openEditRecord = (rec) => {
+    setEditingRecord(rec);
+    setRecordForm({
+      last_name: rec?.last_name || '',
+      first_name: rec?.first_name || '',
+      hours_per_day: rec?.hours_per_day ?? '',
+      total_request: rec?.total_request ?? '',
+      hours_rendered: rec?.hours_rendered ?? '',
+      start_date: rec?.start_date || '',
+      target_end_1: rec?.target_end_1 || '',
+      target_end_2: rec?.target_end_2 || '',
+    });
+    setRecordModalOpen(true);
+  };
+
+  const closeRecordModal = () => {
+    setRecordModalOpen(false);
+    setEditingRecord(null);
+    resetRecordForm();
+  };
+
+  const fetchInternRecords = async () => {
+    if (!supabase) return;
+    setRecordsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('intern_records')
+        .select('*')
+        .eq('team', recordsTeamTab)
+        .order('last_name', { ascending: true });
+      if (error) throw error;
+      setInternRecords(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Fetch intern_records error:', err);
+      toast.error('Failed to load interns record.');
+      setInternRecords([]);
+    } finally {
+      setRecordsLoading(false);
+    }
+  };
+
+  const computeRemainingHours = (rec) => {
+    const totalReq = Number(rec?.total_request) || 0;
+    const rendered = Number(rec?.hours_rendered) || 0;
+    return Math.max(0, totalReq - rendered);
+  };
+
+  const computeDaysRemaining = (rec) => {
+    const pick = rec?.target_end_2 || rec?.target_end_1;
+    if (!pick) return '—';
+    const end = new Date(`${pick}T00:00:00`);
+    if (Number.isNaN(end.getTime())) return '—';
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffMs = end.getTime() - today.getTime();
+    return String(Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  };
+
+  const saveRecord = async () => {
+    if (!supabase) return;
+    const lastName = String(recordForm.last_name || '').trim();
+    const firstName = String(recordForm.first_name || '').trim();
+    if (!lastName || !firstName) {
+      toast.error('Last Name and First Name are required.');
+      return;
+    }
+
+    const payload = {
+      team: recordsTeamTab,
+      last_name: lastName,
+      first_name: firstName,
+      hours_per_day: recordForm.hours_per_day === '' ? null : Number(recordForm.hours_per_day),
+      total_request: recordForm.total_request === '' ? null : Number(recordForm.total_request),
+      hours_rendered: recordForm.hours_rendered === '' ? null : Number(recordForm.hours_rendered),
+      start_date: recordForm.start_date || null,
+      target_end_1: recordForm.target_end_1 || null,
+      target_end_2: recordForm.target_end_2 || null,
+      updated_at: new Date().toISOString(),
+      updated_by: user?.id || null,
+    };
+
+    try {
+      const q = supabase.from('intern_records');
+      const { error } = editingRecord?.id
+        ? await q.update(payload).eq('id', editingRecord.id)
+        : await q.insert({ ...payload, created_at: new Date().toISOString() });
+      if (error) throw error;
+      toast.success(editingRecord?.id ? 'Record updated.' : 'Record added.');
+      closeRecordModal();
+      fetchInternRecords();
+    } catch (err) {
+      console.error('Save intern record error:', err);
+      toast.error('Failed to save record. Check policies for intern_records.');
+    }
+  };
+
+  const deleteRecord = async (rec) => {
+    if (!supabase || !rec?.id) return;
+    try {
+      const { error } = await supabase.from('intern_records').delete().eq('id', rec.id);
+      if (error) throw error;
+      toast.success('Record removed.');
+      fetchInternRecords();
+    } catch (err) {
+      console.error('Delete intern record error:', err);
+      toast.error('Failed to delete record. Check policies for intern_records.');
     }
   };
 
@@ -248,34 +408,65 @@ export default function MonitoringTasks({ embedded = false }) {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
-        <button
-          type="button"
-          onClick={() => setMyTasksOnly(false)}
-          className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-            !myTasksOnly
-              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
-              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
-          }`}
-          style={!myTasksOnly ? { borderTopColor: PRIMARY } : {}}
-        >
-          All Tasks
-        </button>
-        <button
-          type="button"
-          onClick={() => setMyTasksOnly(true)}
-          className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-            myTasksOnly
-              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
-              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
-          }`}
-          style={myTasksOnly ? { borderTopColor: PRIMARY } : {}}
-        >
-          My Tasks
-        </button>
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setViewTab('tasks')}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              viewTab === 'tasks'
+                ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
+            }`}
+            style={viewTab === 'tasks' ? { borderTopColor: PRIMARY } : {}}
+          >
+            Tasks
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewTab('intern-records')}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              viewTab === 'intern-records'
+                ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
+            }`}
+            style={viewTab === 'intern-records' ? { borderTopColor: PRIMARY } : {}}
+          >
+            Interns Record
+          </button>
+        </div>
       </div>
 
-      {loading ? (
+      {viewTab === 'tasks' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setMyTasksOnly(false)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              !myTasksOnly
+                ? 'text-white'
+                : 'text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+            style={!myTasksOnly ? { backgroundColor: PRIMARY } : {}}
+          >
+            All Tasks
+          </button>
+          <button
+            type="button"
+            onClick={() => setMyTasksOnly(true)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              myTasksOnly
+                ? 'text-white'
+                : 'text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+            style={myTasksOnly ? { backgroundColor: PRIMARY } : {}}
+          >
+            My Tasks
+          </button>
+        </div>
+      )}
+
+      {viewTab === 'tasks' && (loading ? (
         <div className="py-12 text-center text-gray-500 dark:text-gray-400">Loading records...</div>
       ) : (
         <div className="space-y-6">
@@ -393,6 +584,185 @@ export default function MonitoringTasks({ embedded = false }) {
               </div>
             );
           })}
+        </div>
+      ))}
+
+      {viewTab === 'intern-records' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {canManageAllTeamsInternRecords ? (
+              <div className="flex gap-2 border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-lg p-1 shadow-sm">
+                {[
+                  { id: TEAMS.TLA, label: 'Team Lead Assistant' },
+                  { id: TEAMS.MONITORING, label: 'Monitoring Team' },
+                  { id: TEAMS.PAT1, label: 'PAT1' },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setRecordsTeamTab(t.id)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      recordsTeamTab === t.id
+                        ? 'text-white'
+                        : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                    style={recordsTeamTab === t.id ? { backgroundColor: PRIMARY } : {}}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-700 dark:text-gray-200">
+                Team: <span className="ml-1 font-semibold">Monitoring Team</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={openAddRecord}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white shadow-sm"
+              style={{ backgroundColor: PRIMARY }}
+            >
+              + Add record
+            </button>
+          </div>
+
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden overflow-x-auto bg-white dark:bg-gray-900">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Last Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">First Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Hours/Day</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Total Request</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Hours Rendered</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Remaining Hours</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Start Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Target End 1</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Target End 2</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Days Remaining</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                {recordsLoading ? (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                      Loading…
+                    </td>
+                  </tr>
+                ) : internRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                      No records yet.
+                    </td>
+                  </tr>
+                ) : (
+                  internRecords.map((rec) => (
+                    <tr key={rec.id} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
+                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{rec.last_name || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{rec.first_name || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{rec.hours_per_day ?? '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{rec.total_request ?? '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{rec.hours_rendered ?? '—'}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {computeRemainingHours(rec)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{rec.start_date || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{rec.target_end_1 || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{rec.target_end_2 || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{computeDaysRemaining(rec)}</td>
+                      <td className="px-4 py-3 text-sm text-right whitespace-nowrap space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => openEditRecord(rec)}
+                          className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteRecord(rec)}
+                          className="px-3 py-1.5 rounded-lg text-sm font-medium border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {recordModalOpen && (
+            <div className="fixed inset-0 z-[10000] bg-black/20 backdrop-blur-sm flex items-center justify-center px-4">
+              <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-2xl">
+                <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+                      {editingRecord ? 'Edit intern record' : 'Add intern record'}
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                      Team: <span className="font-medium">{recordsTeamTab}</span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeRecordModal}
+                    className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    { key: 'last_name', label: 'Last Name', type: 'text', required: true, placeholder: 'Dela Cruz' },
+                    { key: 'first_name', label: 'First Name', type: 'text', required: true, placeholder: 'Juan' },
+                    { key: 'hours_per_day', label: 'Hours/Day', type: 'number', placeholder: '8' },
+                    { key: 'total_request', label: 'Total Request', type: 'number', placeholder: '400' },
+                    { key: 'hours_rendered', label: 'Hours Rendered', type: 'number', placeholder: '120' },
+                    { key: 'start_date', label: 'Start Date', type: 'date', placeholder: '' },
+                    { key: 'target_end_1', label: 'Target End 1', type: 'date', placeholder: '' },
+                    { key: 'target_end_2', label: 'Target End 2', type: 'date', placeholder: '' },
+                  ].map((f) => (
+                    <div key={f.key} className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        {f.label}{f.required ? ' *' : ''}
+                      </label>
+                      <input
+                        type={f.type}
+                        value={recordForm[f.key]}
+                        onChange={(e) => setRecordForm((p) => ({ ...p, [f.key]: e.target.value }))}
+                        placeholder={f.placeholder}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeRecordModal}
+                    className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveRecord}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-white shadow-sm"
+                    style={{ backgroundColor: PRIMARY }}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

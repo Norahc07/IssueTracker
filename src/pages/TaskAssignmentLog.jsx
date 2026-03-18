@@ -90,6 +90,13 @@ const canDeleteCourseList = (userRole, userTeam) => {
   return false;
 };
 
+const canManageDomainsForTla = (userRole, userTeam) => {
+  const team = String(userTeam || '').toLowerCase();
+  if (userRole === 'admin' || userRole === 'tla') return true;
+  if ((userRole === 'tl' || userRole === 'vtl') && team === 'tla') return true;
+  return false;
+};
+
 const COURSE_LIST_DOMAIN_COUNTRIES = [
   'Belize',
   'China',
@@ -1387,8 +1394,10 @@ export default function TaskAssignmentLog() {
               <button
                 type="button"
                 onClick={() => setTaskFilter('all')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                  taskFilter === 'all' ? 'text-white' : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  taskFilter === 'all'
+                    ? 'text-white'
+                    : 'text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
                 style={taskFilter === 'all' ? { backgroundColor: PRIMARY } : {}}
               >
@@ -1397,8 +1406,10 @@ export default function TaskAssignmentLog() {
               <button
                 type="button"
                 onClick={() => setTaskFilter('my-tasks')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                  taskFilter === 'my-tasks' ? 'text-white' : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  taskFilter === 'my-tasks'
+                    ? 'text-white'
+                    : 'text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
                 style={taskFilter === 'my-tasks' ? { backgroundColor: PRIMARY } : {}}
               >
@@ -2738,7 +2749,7 @@ export default function TaskAssignmentLog() {
                 New Domains
               </button>
             </div>
-            {permissions.canManageDomains(userRole) && (
+            {canManageDomainsForTla(userRole, userTeam) && (
               <div className="flex items-center gap-2">
                 {!isEditingDomainsTable ? (
                   <button
@@ -3326,7 +3337,7 @@ export default function TaskAssignmentLog() {
                                   </svg>
                                 </button>
                               )}
-                              {permissions.canManageDomains(userRole) && !isEditingDomainsTable && (
+                              {canManageDomainsForTla(userRole, userTeam) && !isEditingDomainsTable && (
                                 <button
                                   type="button"
                                   onClick={(e) => {

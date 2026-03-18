@@ -1487,19 +1487,22 @@ export default function OnboardingOffboarding() {
       {activeTab === 'onboarding' && onboardingInnerTab === 'requirements' && canSubmitRequirements && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 className="text-base font-semibold text-gray-900">Onboarding Requirements</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Onboarding Requirements</h2>
           </div>
 
           {/* Intern submission form (all interns) */}
-          <form onSubmit={(e) => e.preventDefault()} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-            <p className="text-sm text-gray-600">
+          <form
+            onSubmit={(e) => e.preventDefault()}
+            className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-4 space-y-3"
+          >
+            <p className="text-sm text-gray-600 dark:text-gray-300">
               Submit your onboarding requirements files here. Your account details (name, email, team) are linked
               automatically; you don&apos;t need to type them.
             </p>
 
             <div className="mt-4">
-              <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Requirement
@@ -1512,7 +1515,7 @@ export default function OnboardingOffboarding() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-100">
+                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                   {REQUIREMENTS_META.map((meta) => {
                     const req = currentUserRequirements;
                     const hasFile = req && (req[meta.pathField] || req[meta.flagField]);
@@ -1521,17 +1524,17 @@ export default function OnboardingOffboarding() {
                       statusLabel = req?.status === 'verified' ? 'Verified' : 'Pending verification';
                     }
                     return (
-                      <tr key={meta.key}>
-                        <td className="px-4 py-2 text-sm text-gray-900">
+                      <tr key={meta.key} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
+                        <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
                           <div className="font-medium">{meta.label}</div>
                           {meta.description && (
-                            <div className="text-xs text-gray-500">{meta.description}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">{meta.description}</div>
                           )}
                         </td>
-                        <td className="px-4 py-2 text-sm text-gray-700">
+                        <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                           {statusLabel}
                         </td>
-                        <td className="px-4 py-2 text-sm text-gray-700">
+                        <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                           <div className="flex items-center gap-2">
                             <input
                               type="file"
@@ -1542,7 +1545,7 @@ export default function OnboardingOffboarding() {
                                   [meta.key]: file,
                                 }));
                               }}
-                              className="block w-full text-xs text-gray-700"
+                              className="block w-full text-xs text-gray-700 dark:text-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 dark:file:bg-gray-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700"
                             />
                             <button
                               type="button"
@@ -1561,7 +1564,7 @@ export default function OnboardingOffboarding() {
                             </button>
                           </div>
                           {req && req[meta.pathField] && (
-                            <div className="mt-1 text-xs text-gray-500">
+                            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                               File on record
                             </div>
                           )}
@@ -1571,7 +1574,7 @@ export default function OnboardingOffboarding() {
                   })}
                 </tbody>
               </table>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 Upload files for each requirement. Once reviewed by Admin / TL/VTL, the status will change from
                 &quot;Pending verification&quot; to &quot;Verified&quot;.
               </p>
@@ -1683,18 +1686,21 @@ export default function OnboardingOffboarding() {
       {activeTab === 'offboarding' && offboardingInnerTab === 'requirements' && canSubmitRequirements && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 className="text-base font-semibold text-gray-900">Offboarding Requirements</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Offboarding Requirements</h2>
           </div>
 
-          <form onSubmit={(e) => e.preventDefault()} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-            <p className="text-sm text-gray-600">
+          <form
+            onSubmit={(e) => e.preventDefault()}
+            className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-4 space-y-3"
+          >
+            <p className="text-sm text-gray-600 dark:text-gray-300">
               Submit your offboarding requirements files here. Your account details (name, email, team) are linked
               automatically; you don&apos;t need to type them.
             </p>
 
             <div className="mt-4">
-              <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Requirement
@@ -1707,7 +1713,7 @@ export default function OnboardingOffboarding() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-100">
+                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                   {OFFBOARDING_REQUIREMENTS_META.map((meta) => {
                     const req = currentUserOffboardingRequirements;
                     const hasFile = req && (req[meta.pathField] || req[meta.flagField]);
@@ -1716,17 +1722,17 @@ export default function OnboardingOffboarding() {
                       statusLabel = req?.status === 'verified' ? 'Verified' : 'Pending verification';
                     }
                     return (
-                      <tr key={meta.key}>
-                        <td className="px-4 py-2 text-sm text-gray-900">
+                      <tr key={meta.key} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
+                        <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
                           <div className="font-medium">{meta.label}</div>
                           {meta.description && (
-                            <div className="text-xs text-gray-500">{meta.description}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">{meta.description}</div>
                           )}
                         </td>
-                        <td className="px-4 py-2 text-sm text-gray-700">
+                        <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                           {statusLabel}
                         </td>
-                        <td className="px-4 py-2 text-sm text-gray-700">
+                        <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                           <div className="flex items-center gap-2">
                             <input
                               type="file"
@@ -1737,7 +1743,7 @@ export default function OnboardingOffboarding() {
                                   [meta.key]: file,
                                 }));
                               }}
-                              className="block w-full text-xs text-gray-700"
+                              className="block w-full text-xs text-gray-700 dark:text-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 dark:file:bg-gray-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700"
                             />
                             <button
                               type="button"
@@ -1756,7 +1762,7 @@ export default function OnboardingOffboarding() {
                             </button>
                           </div>
                           {req && req[meta.pathField] && (
-                            <div className="mt-1 text-xs text-gray-500">
+                            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                               File on record
                             </div>
                           )}
@@ -1766,7 +1772,7 @@ export default function OnboardingOffboarding() {
                   })}
                 </tbody>
               </table>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 Upload files for each offboarding requirement. Once reviewed by Admin / TL/VTL, the status will change
                 from &quot;Pending verification&quot; to &quot;Verified&quot;.
               </p>
