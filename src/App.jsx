@@ -86,7 +86,7 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className={isAuthPage ? 'min-h-screen bg-gray-50' : 'min-h-screen bg-gray-50 dark:bg-gray-950'}>
       {isAuthPage ? (
         <ErrorBoundary>
           <Suspense fallback={<PageFallback />}>
@@ -123,6 +123,8 @@ function AppContent() {
                 <Route path="/lead/dashboard" element={(role === 'lead' || role === 'tl' || role === 'vtl' || role === 'monitoring_team' || role === 'pat1') ? <LeadDashboard /> : <Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/intern/dashboard" element={(role === 'intern' || !userRole) ? <InternDashboard /> : <Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/dashboard" element={<Navigate to={getDashboardRoute()} replace />} />
+                {/* Avoid "No routes matched" flashes if userRole loads late */}
+                <Route path="/superadmin/overview" element={<Navigate to={getDashboardRoute()} replace />} />
                 <Route path="/kanban" element={<Kanban />} />
                 <Route path="/organized-tickets" element={<OrganizedTickets />} />
                 <Route

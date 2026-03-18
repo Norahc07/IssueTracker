@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import {
@@ -9,7 +8,8 @@ import {
   TEAMS,
 } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
-import { createAuthUserAndProfile, deleteUserAccount } from '../utils/userProvisioning.js';
+// NOTE: User accounts (Auth) are created manually in Supabase per workflow.
+// This page manages public.users role/team and can remove profile rows.
 
 // Map onboarding_records.team (e.g. 'TLA', 'Monitoring', 'PAT1') to users.team ('tla', 'monitoring', 'pat1')
 function onboardingTeamToUserTeam(obTeam) {
@@ -26,9 +26,6 @@ const PRIMARY = '#6795BE';
 // We intentionally exclude SUPERADMIN so it can only be set via SQL.
 const ROLE_OPTIONS = [
   ROLES.ADMIN,
-  ROLES.TLA,
-  ROLES.MONITORING_TEAM,
-  ROLES.PAT1,
   ROLES.INTERN,
   ROLES.TL,
   ROLES.VTL,
@@ -68,13 +65,6 @@ export default function UserManagement() {
   const [editTeam, setEditTeam] = useState('');
   const [filterTeam, setFilterTeam] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [createEmail, setCreateEmail] = useState('');
-  const [createName, setCreateName] = useState('');
-  const [createPassword, setCreatePassword] = useState('');
-  const [createRole, setCreateRole] = useState(ROLES.INTERN);
-  const [createTeam, setCreateTeam] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     if (canAccessUserManagement(userRole)) fetchUsers();
@@ -178,65 +168,31 @@ export default function UserManagement() {
     }
   };
 
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
-    if (!supabase) {
-      toast.error('Supabase client not ready');
-      return;
-    }
-    const email = createEmail.trim().toLowerCase();
-    const fullName = createName.trim();
-    if (!email) {
-      toast.error('Email is required');
-      return;
-    }
-    if (!createRole) {
-      toast.error('Role is required');
-      return;
-    }
-    setCreating(true);
-    try {
-      const created = await createAuthUserAndProfile(supabase, {
-        email,
-        password: createPassword,
-        fullName: fullName || email,
-        role: createRole,
-        team: createTeam || null,
-      });
-      // Refresh cache and local list
-      queryCache.invalidate('user_management:users');
-      const normalized = normalizeUser(created);
-      setUsers((prev) => {
-        const list = normalized ? [...prev, normalized] : prev;
-        return list.sort((a, b) => String(a.email || '').localeCompare(String(b.email || '')));
-      });
-      setCreateEmail('');
-      setCreateName('');
-      setCreatePassword('');
-      setCreateRole(ROLES.INTERN);
-      setCreateTeam('');
-      setShowCreateModal(false);
-      toast.success('User created via SuperAdmin');
-    } catch (err) {
-      console.error('Create user error:', err);
-      toast.error(err?.message || 'Failed to create user');
-    } finally {
-      setCreating(false);
-    }
-  };
-
   const handleDeleteUser = async (user) => {
     if (!supabase) {
       toast.error('Supabase client not ready');
       return;
     }
     if (!user?.id) return;
-    const confirmMsg = `Delete user "${user.email || user.full_name || user.id}"?\nThis should also remove their Supabase auth account (handled by the backend function).`;
+    const confirmMsg =
+      `Delete user profile "${user.email || user.full_name || user.id}"?\n` +
+      `This removes the row from public.users. (Supabase Auth user must be removed in Supabase Dashboard if needed.)`;
     // eslint-disable-next-line no-alert
     const ok = window.confirm(confirmMsg);
     if (!ok) return;
     try {
-      await deleteUserAccount(supabase, { userId: user.id });
+      // RLS can block deletes but still return 200 with no rows deleted.
+      // Require a returned row so we only show "success" when it actually persisted.
+      const { data: deletedRows, error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', user.id)
+        .select('id');
+      if (error) throw error;
+      const deleted = Array.isArray(deletedRows) ? deletedRows[0] : null;
+      if (!deleted?.id) {
+        throw new Error('No user was deleted. Check RLS/policies for public.users DELETE for superadmin.');
+      }
       queryCache.invalidate('user_management:users');
       setUsers((prev) => prev.filter((u) => u.id !== user.id));
       toast.success('User deleted');
@@ -259,25 +215,31 @@ export default function UserManagement() {
         payload.team = null;
       }
 
-      const { error } = await supabase
+      const { data: updatedRows, error } = await supabase
         .from('users')
         .update(payload)
-        .eq('id', userId);
+        .eq('id', userId)
+        .select('id, role, team');
 
       if (error) throw error;
+      const updated = Array.isArray(updatedRows) ? updatedRows[0] : null;
+      // If RLS blocks the update, PostgREST can return 200 with [] depending on config.
+      if (!updated) {
+        throw new Error('Update was not persisted (RLS blocked). Ask Admin to allow superadmin UPDATE on public.users.');
+      }
 
       queryCache.invalidate('user_management:users');
       queryCache.invalidate(`role:${userId}`);
       queryCache.invalidate(`profile:${userId}`);
       setUsers((prev) =>
         prev.map((u) =>
-          u.id === userId ? { ...u, role: editRole, team: payload.team } : u
+          u.id === userId ? { ...u, role: updated.role ?? editRole, team: updated.team ?? payload.team } : u
         )
       );
       setEditingId(null);
       setEditRole('');
       setEditTeam('');
-      toast.success('Role updated');
+      toast.success('Role updated. User may need to re-login to refresh permissions.');
     } catch (err) {
       console.error('Update role error:', err);
       toast.error(err.message || 'Failed to update role');
@@ -329,10 +291,10 @@ export default function UserManagement() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
             User Management
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
             Access denied. Only Admin and Team Lead / Vice Team Lead can view this page.
           </p>
         </div>
@@ -351,31 +313,17 @@ export default function UserManagement() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
           User Management
         </h1>
-        <p className="mt-1 text-sm text-gray-600">
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
           View and edit user roles. Super Admin has full control; Admin and TL/VTL have limited access.
         </p>
       </div>
 
-      {/* SuperAdmin-only: Create user (opens modal) */}
-      {userRole === 'superadmin' && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm"
-            style={{ backgroundColor: PRIMARY }}
-          >
-            + Create user
-          </button>
-        </div>
-      )}
-
       {/* Statistics Cards */}
       <div>
-        <h2 className="text-base font-semibold text-gray-900 mb-3">Team Statistics</h2>
+        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">Team Statistics</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
             { label: 'TLA', value: stats.tlaCount },
@@ -383,9 +331,13 @@ export default function UserManagement() {
             { label: 'Monitoring Team', value: stats.monitoringCount },
             { label: 'Total Users', value: stats.totalUsers },
           ].map(({ label, value }) => (
-            <div key={label} className="rounded-xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: PRIMARY }}>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-              <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
+            <div
+              key={label}
+              className="rounded-xl border-2 bg-white dark:bg-gray-900 p-4 shadow-sm"
+              style={{ borderColor: PRIMARY }}
+            >
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</p>
+              <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
             </div>
           ))}
         </div>
@@ -396,7 +348,7 @@ export default function UserManagement() {
         <select
           value={filterTeam}
           onChange={(e) => setFilterTeam(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+          className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
         >
           {FILTER_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -409,44 +361,44 @@ export default function UserManagement() {
           placeholder="Search by email or name..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+          className="flex-1 min-w-0 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
         />
         <button
           type="button"
           onClick={() => fetchUsers(true)}
           disabled={loading}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#6795BE] disabled:opacity-50"
+          className="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[#6795BE] disabled:opacity-50"
         >
           {loading ? 'Loading…' : 'Refresh'}
         </button>
       </div>
 
       {/* Users table with edit */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-200" />
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-800" />
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead>
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+            <thead className="bg-gray-50 dark:bg-gray-950/40">
               <tr>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team</th>
-                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email</th>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Role</th>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Team</th>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
               {filteredUsers.length > 0 ? (
                 filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-4 sm:px-6 py-3 text-sm text-gray-900">{user.email || '—'}</td>
-                    <td className="px-4 sm:px-6 py-3 text-sm text-gray-600">{user.displayName || '—'}</td>
+                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                    <td className="px-4 sm:px-6 py-3 text-sm text-gray-900 dark:text-gray-100">{user.email || '—'}</td>
+                    <td className="px-4 sm:px-6 py-3 text-sm text-gray-600 dark:text-gray-300">{user.displayName || '—'}</td>
                     <td className="px-4 sm:px-6 py-3">
                       {editingId === user.id ? (
                         <select
                           value={editRole}
                           onChange={(e) => setEditRole(e.target.value)}
-                          className="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+                          className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
                         >
                           {ROLE_OPTIONS.map((r) => (
                             <option key={r} value={r}>{getRoleDisplayName(r)}</option>
@@ -464,7 +416,7 @@ export default function UserManagement() {
                           <select
                             value={editTeam}
                             onChange={(e) => setEditTeam(e.target.value)}
-                            className="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+                            className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
                           >
                             <option value="">—</option>
                             {ADMIN_TEAM_OPTIONS.map((t) => (
@@ -475,17 +427,17 @@ export default function UserManagement() {
                           <select
                             value={editTeam}
                             onChange={(e) => setEditTeam(e.target.value)}
-                            className="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+                            className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
                           >
                             {TEAM_OPTIONS.map((t) => (
                               <option key={t.value || 'none'} value={t.value}>{t.label}</option>
                             ))}
                           </select>
                         ) : (
-                          <span className="text-gray-400">—</span>
+                          <span className="text-gray-400 dark:text-gray-500">—</span>
                         )
                       ) : (
-                        <span className="text-sm text-gray-600">{teamDisplayLabel(user.effectiveTeam || user.team) || '—'}</span>
+                        <span className="text-sm text-gray-600 dark:text-gray-300">{teamDisplayLabel(user.effectiveTeam || user.team) || '—'}</span>
                       )}
                     </td>
                     <td className="px-4 sm:px-6 py-3">
@@ -500,7 +452,7 @@ export default function UserManagement() {
                           </button>
                           <button
                             onClick={cancelEdit}
-                            className="text-sm font-medium text-gray-600 hover:text-gray-900"
+                            className="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
                           >
                             Cancel
                           </button>
@@ -530,7 +482,7 @@ export default function UserManagement() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="px-4 sm:px-6 py-8 text-center text-gray-500 text-sm">
+                  <td colSpan={5} className="px-4 sm:px-6 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
                     {users.length === 0
                       ? 'No users found. Ensure the public.users table exists and RLS allows your role (admin, tla, tl, vtl) to SELECT.'
                       : 'No users match the filter.'}
@@ -542,117 +494,8 @@ export default function UserManagement() {
         </div>
       </div>
 
-      {/* Create user modal (SuperAdmin only) */}
-      {userRole === 'superadmin' && showCreateModal && typeof document !== 'undefined' &&
-        createPortal(
-        <div
-          className="fixed inset-0 z-[10000] bg-black/20 backdrop-blur-sm flex items-center justify-center px-4"
-          role="dialog"
-          aria-modal="true"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget && !creating) setShowCreateModal(false);
-          }}
-        >
-          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-lg my-6">
-            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-2">
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Create user</h2>
-                <p className="text-xs text-gray-500">
-                  This will create a Supabase auth account and a <code>public.users</code> record.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => !creating && setShowCreateModal(false)}
-                className="text-gray-400 hover:text-gray-700 text-lg leading-none"
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-            <form onSubmit={handleCreateUser} className="px-5 py-4 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  required
-                  value={createEmail}
-                  onChange={(e) => setCreateEmail(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
-                  placeholder="user@example.com"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
-                <input
-                  type="password"
-                  required
-                  value={createPassword}
-                  onChange={(e) => setCreatePassword(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
-                  placeholder="Set an initial password"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Full name (optional)</label>
-                <input
-                  type="text"
-                  value={createName}
-                  onChange={(e) => setCreateName(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
-                  placeholder="Full name"
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Role</label>
-                  <select
-                    value={createRole}
-                    onChange={(e) => setCreateRole(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
-                  >
-                    <option value={ROLES.INTERN}>{getRoleDisplayName(ROLES.INTERN)}</option>
-                    <option value={ROLES.TL}>{getRoleDisplayName(ROLES.TL)}</option>
-                    <option value={ROLES.VTL}>{getRoleDisplayName(ROLES.VTL)}</option>
-                    <option value={ROLES.ADMIN}>{getRoleDisplayName(ROLES.ADMIN)}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Team (for TL/VTL/Intern/Admin)</label>
-                  <select
-                    value={createTeam}
-                    onChange={(e) => setCreateTeam(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
-                  >
-                    <option value="">—</option>
-                    {TEAM_OPTIONS.map((t) => (
-                      <option key={t.value || 'none'} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => !creating && setShowCreateModal(false)}
-                  className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-                  style={{ backgroundColor: PRIMARY }}
-                >
-                  {creating ? 'Creating…' : 'Create user'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* SuperAdmin user creation has been removed.
+          Accounts are created in Supabase Auth, then synced via Onboarding + SQL script. */}
     </div>
   );
 }

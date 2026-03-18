@@ -40,7 +40,7 @@ function Cell({ allowed }) {
   if (allowed) {
     return (
       <td className="px-3 py-2 text-center">
-        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-100 text-green-700 text-xs font-semibold" title="Allowed">
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200 text-xs font-semibold" title="Allowed">
           ✓
         </span>
       </td>
@@ -58,7 +58,9 @@ export default function RolePermissions() {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <p className="text-gray-600">Access denied. Only Admin and TLA can view role permissions.</p>
+          <p className="text-gray-600 dark:text-gray-400">
+            Access denied. Only Admin and TLA can view role permissions.
+          </p>
         </div>
       </div>
     );
@@ -68,47 +70,47 @@ export default function RolePermissions() {
     <div className="w-full space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
             Role Permissions
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
             Overview of permissions by role. Rows are capabilities; columns are roles.
           </p>
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
             ✓ = allowed for that role. Blank = not allowed. Some permissions (e.g. WordPress tasks, resolve issues) may also depend on team assignment.
           </p>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
           <thead>
-            <tr className="bg-gray-50">
-              <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-1/4">
+            <tr className="bg-gray-50 dark:bg-gray-950/40">
+              <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider w-1/4">
                 Category
               </th>
-              <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+              <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                 Permission
               </th>
               {roleList.map((role) => (
                 <th
                   key={role}
-                  className="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[4rem]"
+                  className="px-3 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider min-w-[4rem]"
                 >
-                  <span className={`inline-block px-2 py-0.5 rounded ${getRoleColor(role)}`}>
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${getRoleColor(role)}`}>
                     {getRoleDisplayName(role)}
                   </span>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-gray-900">
             {permissionRows.map((row, idx) => (
-              <tr key={idx} className="hover:bg-gray-50/80">
-                <td className="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">
+              <tr key={idx} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
+                <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
                   {row.category}
                 </td>
-                <td className="px-3 py-2 text-sm text-gray-900">
+                <td className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">
                   {row.label}
                 </td>
                 {roleList.map((role) => (
@@ -120,7 +122,7 @@ export default function RolePermissions() {
         </table>
       </div>
 
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
         To view and edit users by role, go to{' '}
         <Link to="/user-management" className="font-medium underline" style={{ color: PRIMARY }}>
           User Management

@@ -263,7 +263,7 @@ export default function ScheduleTab() {
 
   if (!canAccessScheduleFormTab(userRole, userTeam)) {
     return (
-      <div className="py-8 text-center text-sm text-gray-500">
+      <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
         You do not have access to the Schedule tab.
       </div>
     );
@@ -271,14 +271,16 @@ export default function ScheduleTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 border-b border-gray-200">
+      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
         {!isTlaIntern && (
           <>
             <button
               type="button"
               onClick={() => updateScheduleSubTab('form')}
               className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-                scheduleSubTab === 'form' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                scheduleSubTab === 'form'
+                  ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                  : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
               }`}
               style={scheduleSubTab === 'form' ? { borderTopColor: PRIMARY } : {}}
             >
@@ -288,7 +290,9 @@ export default function ScheduleTab() {
               type="button"
               onClick={() => updateScheduleSubTab('responses')}
               className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-                scheduleSubTab === 'responses' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                scheduleSubTab === 'responses'
+                  ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                  : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
               }`}
               style={scheduleSubTab === 'responses' ? { borderTopColor: PRIMARY } : {}}
             >
@@ -300,7 +304,9 @@ export default function ScheduleTab() {
           type="button"
           onClick={() => updateScheduleSubTab('interns')}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-            scheduleSubTab === 'interns' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            scheduleSubTab === 'interns'
+              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
           }`}
           style={scheduleSubTab === 'interns' ? { borderTopColor: PRIMARY } : {}}
         >
@@ -310,77 +316,77 @@ export default function ScheduleTab() {
 
       {scheduleSubTab === 'form' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>Schedule Form</h2>
-                <p className="mt-1 text-sm text-gray-600">Share the form link with interns to collect their preferred schedule. No login required.</p>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>Schedule Form</h2>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Share the form link with interns to collect their preferred schedule. No login required.</p>
               </div>
               <div className="flex items-center gap-2">
-                <input type="text" readOnly value={scheduleFormLink} className="rounded-lg border border-gray-300 px-3 py-2 text-sm w-72 max-w-full bg-gray-50" />
-                <button type="button" onClick={handleCopyScheduleFormLink} className="px-4 py-2 rounded-lg text-sm font-medium text-white whitespace-nowrap" style={{ backgroundColor: PRIMARY }}>Copy link</button>
+                <input type="text" readOnly value={scheduleFormLink} className="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm w-72 max-w-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100" />
+                <button type="button" onClick={handleCopyScheduleFormLink} className="px-4 py-2 rounded-lg text-sm font-medium text-white whitespace-nowrap disabled:opacity-60" style={{ backgroundColor: PRIMARY }}>Copy link</button>
               </div>
             </div>
           </div>
           {scheduleConfigForm && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:order-1">
-                <form onSubmit={handleSaveScheduleConfig} className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 space-y-4 h-full flex flex-col">
-                  <h3 className="text-base font-semibold text-gray-900" style={{ color: PRIMARY }}>Editable form content</h3>
+                <form onSubmit={handleSaveScheduleConfig} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm p-4 space-y-4 h-full flex flex-col">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>Editable form content</h3>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Office hours</label>
-                    <input type="text" value={scheduleConfigForm.office_hours || ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, office_hours: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. 8:00 AM – 6:00 PM" />
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Office hours</label>
+                    <input type="text" value={scheduleConfigForm.office_hours || ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, office_hours: e.target.value }))} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm" placeholder="e.g. 8:00 AM – 6:00 PM" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Minimum requirement</label>
-                    <input type="text" value={scheduleConfigForm.min_requirement || ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, min_requirement: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. 20 hours/week" />
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Minimum requirement</label>
+                    <input type="text" value={scheduleConfigForm.min_requirement || ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, min_requirement: e.target.value }))} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm" placeholder="e.g. 20 hours/week" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Schedule options (Option A/B text)</label>
-                    <textarea value={scheduleConfigForm.schedule_options_text || ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, schedule_options_text: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[80px]" rows={3} />
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Schedule options (Option A/B text)</label>
+                    <textarea value={scheduleConfigForm.schedule_options_text || ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, schedule_options_text: e.target.value }))} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm min-h-[80px]" rows={3} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Regular shifts text</label>
-                    <textarea value={scheduleConfigForm.regular_shifts_text || ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, regular_shifts_text: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[80px]" rows={3} />
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Regular shifts text</label>
+                    <textarea value={scheduleConfigForm.regular_shifts_text || ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, regular_shifts_text: e.target.value }))} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm min-h-[80px]" rows={3} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Other rules & reminders</label>
-                    <textarea value={scheduleConfigForm.other_rules_text || ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, other_rules_text: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[60px]" rows={2} />
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Other rules & reminders</label>
+                    <textarea value={scheduleConfigForm.other_rules_text || ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, other_rules_text: e.target.value }))} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm min-h-[60px]" rows={2} />
                   </div>
                   <button type="submit" disabled={savingScheduleConfig} className="mt-auto px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60 w-fit" style={{ backgroundColor: PRIMARY }}>{savingScheduleConfig ? 'Saving...' : 'Save form content'}</button>
                 </form>
               </div>
               <div className="lg:order-2">
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 h-full">
-                  <h3 className="text-base font-semibold text-gray-900 mb-3" style={{ color: PRIMARY }}>Monitoring Team contacts (shown on form)</h3>
-                  <p className="text-sm text-gray-600 mb-3">Edit the email for each slot.</p>
+                <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm p-4 h-full">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3" style={{ color: PRIMARY }}>Monitoring Team contacts (shown on form)</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">Edit the email for each slot.</p>
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Knowles Monitoring Team</label>
-                      <input type="email" value={scheduleConfigForm.contact_knowles_email ?? ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, contact_knowles_email: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]" placeholder="e.g. rowelakatelhynebarredo@gmail.com" />
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Knowles Monitoring Team</label>
+                      <input type="email" value={scheduleConfigForm.contact_knowles_email ?? ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, contact_knowles_email: e.target.value }))} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]" placeholder="e.g. rowelakatelhynebarredo@gmail.com" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Umonics Monitoring Intern TL</label>
-                      <input type="email" value={scheduleConfigForm.contact_umonics_email ?? ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, contact_umonics_email: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]" placeholder="e.g. johnearl.balabat@gmail.com" />
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Umonics Monitoring Intern TL</label>
+                      <input type="email" value={scheduleConfigForm.contact_umonics_email ?? ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, contact_umonics_email: e.target.value }))} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]" placeholder="e.g. johnearl.balabat@gmail.com" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Pinnacle</label>
-                      <input type="email" value={scheduleConfigForm.contact_pinnacle_email ?? ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, contact_pinnacle_email: e.target.value }))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]" placeholder="e.g. bermarvillarazojr@gmail.com" />
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Pinnacle</label>
+                      <input type="email" value={scheduleConfigForm.contact_pinnacle_email ?? ''} onChange={(e) => setScheduleConfigForm((f) => ({ ...f, contact_pinnacle_email: e.target.value }))} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-[#6795BE]" placeholder="e.g. bermarvillarazojr@gmail.com" />
                     </div>
                   </div>
-                  <p className="mt-3 text-xs text-gray-500">Emails auto-update on the public schedule form a moment after you type.</p>
+                  <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">Emails auto-update on the public schedule form a moment after you type.</p>
                 </div>
               </div>
               <div className="lg:order-3">
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 h-full sticky top-6">
-                  <h3 className="text-base font-semibold text-gray-900 mb-3" style={{ color: PRIMARY }}>Preview (as shown on the form)</h3>
-                  <div className="text-sm text-gray-700 space-y-3">
+                <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm p-4 h-full sticky top-6">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3" style={{ color: PRIMARY }}>Preview (as shown on the form)</h3>
+                  <div className="text-sm text-gray-700 dark:text-gray-200 space-y-3">
                     <p><strong>Office Hours:</strong> {scheduleConfigForm.office_hours || '—'}</p>
                     <p><strong>Minimum Requirement:</strong> {scheduleConfigForm.min_requirement || '—'}</p>
                     <p><strong>For those with schedule conflicts or overlapping classes:</strong><span className="whitespace-pre-wrap block mt-1">{scheduleConfigForm.schedule_options_text || '—'}</span></p>
                     <p><strong>Regular Shifts (Mon–Fri):</strong><span className="whitespace-pre-wrap block mt-1">{scheduleConfigForm.regular_shifts_text || '—'}</span></p>
                     <p><strong>Other Rules & Reminders:</strong><span className="whitespace-pre-wrap block mt-1">{scheduleConfigForm.other_rules_text || '—'}</span></p>
-                    <p className="pt-2 border-t border-gray-100"><strong>Monitoring contacts:</strong><span className="block mt-1">
+                    <p className="pt-2 border-t border-gray-100 dark:border-gray-800"><strong>Monitoring contacts:</strong><span className="block mt-1">
                       {scheduleConfigForm.contact_knowles_email && <span className="block">Knowles – {scheduleConfigForm.contact_knowles_email}</span>}
                       {scheduleConfigForm.contact_umonics_email && <span className="block">Umonics TL – {scheduleConfigForm.contact_umonics_email}</span>}
                       {scheduleConfigForm.contact_pinnacle_email && <span className="block">Pinnacle – {scheduleConfigForm.contact_pinnacle_email}</span>}
@@ -395,29 +401,29 @@ export default function ScheduleTab() {
       )}
 
       {scheduleSubTab === 'responses' && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>Intern schedule responses</h2>
-              <p className="mt-1 text-xs sm:text-sm text-gray-600">View preferred schedule submissions from the public form.</p>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>Intern schedule responses</h2>
+              <p className="mt-1 text-xs sm:text-sm text-gray-600 dark:text-gray-300">View preferred schedule submissions from the public form.</p>
             </div>
-            <div className="flex items-center gap-3 text-xs sm:text-sm text-gray-600">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200">
+            <div className="flex items-center gap-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
                 <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                <span className="font-medium text-gray-900">{scheduleResponses.length || 0}</span>
-                <span className="text-gray-500">{scheduleResponses.length === 1 ? 'response' : 'responses'}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{scheduleResponses.length || 0}</span>
+                <span className="text-gray-500 dark:text-gray-400">{scheduleResponses.length === 1 ? 'response' : 'responses'}</span>
               </div>
             </div>
           </div>
           <div className="overflow-x-auto">
             {scheduleResponses.length === 0 ? (
-              <div className="py-16 text-center text-sm text-gray-500">
-                <p className="font-medium text-gray-700 mb-1">No responses yet</p>
-                <p className="text-xs text-gray-500">Share the schedule form link to start collecting preferred schedules.</p>
+              <div className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">
+                <p className="font-medium text-gray-700 dark:text-gray-200 mb-1">No responses yet</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Share the schedule form link to start collecting preferred schedules.</p>
               </div>
             ) : (
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</th>
@@ -429,7 +435,7 @@ export default function ScheduleTab() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-100">
+                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                   {[...scheduleResponses]
                     .sort((a, b) => {
                       const da = a.submitted_at ? new Date(a.submitted_at).getTime() : 0;
@@ -439,19 +445,19 @@ export default function ScheduleTab() {
                     .map((row) => {
                       const preferredOptionLabel = row.preferred_option === 'option_a' ? 'Option A' : row.preferred_option === 'option_b' ? 'Option B' : row.preferred_option === 'combination' ? 'Combination' : row.preferred_option || '';
                       return (
-                        <tr key={row.id} className="hover:bg-gray-50/80">
-                          <td className="px-4 py-3 text-gray-900 font-medium">{row.intern_name || '—'}</td>
-                          <td className="px-4 py-3 text-gray-600">
-                            {row.email ? <a href={`mailto:${row.email}`} className="text-[#6795BE] hover:underline break-all">{row.email}</a> : '—'}
+                        <tr key={row.id} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
+                          <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-medium">{row.intern_name || '—'}</td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                            {row.email ? <a href={`mailto:${row.email}`} className="text-[#6795BE] dark:text-blue-400 hover:underline break-all">{row.email}</a> : '—'}
                           </td>
-                          <td className="px-4 py-3 text-gray-600">
-                            {preferredOptionLabel ? <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">{preferredOptionLabel}</span> : '—'}
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                            {preferredOptionLabel ? <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200">{preferredOptionLabel}</span> : '—'}
                           </td>
-                          <td className="px-4 py-3 text-gray-600 whitespace-pre-line">{row.preferred_days || '—'}</td>
-                          <td className="px-4 py-3 text-gray-600">{row.hours_per_week || '—'}</td>
-                          <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{row.start_date_preference ? new Date(row.start_date_preference).toLocaleDateString() : '—'}</td>
-                          <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{row.submitted_at ? new Date(row.submitted_at).toLocaleString() : '—'}</td>
-                          <td className="px-4 py-3 text-gray-600 max-w-xs">{row.notes ? <span className="block truncate" title={row.notes}>{row.notes}</span> : <span className="text-gray-400">—</span>}</td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-pre-line">{row.preferred_days || '—'}</td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{row.hours_per_week || '—'}</td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{row.start_date_preference ? new Date(row.start_date_preference).toLocaleDateString() : '—'}</td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{row.submitted_at ? new Date(row.submitted_at).toLocaleString() : '—'}</td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300 max-w-xs">{row.notes ? <span className="block truncate" title={row.notes}>{row.notes}</span> : <span className="text-gray-400 dark:text-gray-500">—</span>}</td>
                         </tr>
                       );
                     })}
@@ -463,11 +469,11 @@ export default function ScheduleTab() {
       )}
 
       {scheduleSubTab === 'interns' && (
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
-          <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>Interns schedule</h2>
-              <p className="mt-1 text-sm text-gray-600">Only fill in your columns, always update when needed.</p>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>Interns schedule</h2>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Only fill in your columns, always update when needed.</p>
             </div>
             <button
               type="button"
@@ -483,13 +489,17 @@ export default function ScheduleTab() {
               Add intern
             </button>
           </div>
-          <div className="flex gap-1 px-4 pt-2 border-b border-gray-200">
+          <div className="flex gap-1 px-4 pt-2 border-b border-gray-200 dark:border-gray-800">
             {INTERN_SCHEDULE_DAYS.map((day) => (
               <button
                 key={day}
                 type="button"
                 onClick={() => setInternScheduleDayTab(day)}
-                className={`px-3 py-2 text-sm font-medium rounded-t-lg transition-colors ${internScheduleDayTab === day ? 'bg-white border border-b-0 border-gray-200 -mb-px text-gray-900' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                className={`px-3 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                  internScheduleDayTab === day
+                    ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                    : 'bg-gray-100 dark:bg-gray-950/40 text-gray-600 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
+                }`}
                 style={internScheduleDayTab === day ? { borderTopColor: PRIMARY, borderTopWidth: 2 } : {}}
               >
                 {day}
@@ -498,11 +508,11 @@ export default function ScheduleTab() {
           </div>
           <div className="p-4 overflow-x-auto">
             {internSchedules.length === 0 ? (
-              <div className="py-12 text-center text-sm text-gray-500">No intern schedules yet.</div>
+              <div className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">No intern schedules yet.</div>
             ) : (
               <>
-                <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
-                  <thead className="bg-gray-50">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+                  <thead className="bg-gray-50 dark:bg-gray-950/40">
                     <tr>
                       <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36 sticky left-0 bg-gray-50 z-10">Name</th>
                       {INTERN_SCHEDULE_HOURS.map((hour) => (
@@ -511,20 +521,33 @@ export default function ScheduleTab() {
                       <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28 min-w-[7rem]">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
                     {internSchedules.map((row) => {
                       const grid = row.schedule && typeof row.schedule === 'object' ? row.schedule : createEmptyInternScheduleGrid();
                       const daySchedule = grid[internScheduleDayTab] || {};
                       return (
-                        <tr key={row.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 text-sm text-gray-900 font-medium sticky left-0 bg-white z-10">{row.name}</td>
+                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                          <td className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100 font-medium sticky left-0 bg-white dark:bg-gray-900 z-10">
+                            {row.name}
+                          </td>
                           {INTERN_SCHEDULE_HOURS.map((hour) => {
                             const v = daySchedule[String(hour)] ?? 'unavailable';
                             const label = v === 'available' ? 'Available' : v === 'lunch' ? 'Lunch' : 'Unavailable';
-                            const bg = v === 'available' ? 'bg-emerald-50 text-emerald-700' : v === 'lunch' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600';
-                            return <td key={hour} className={`px-2 py-1.5 text-xs text-center ${bg} rounded`}>{label}</td>;
+                            const bg =
+                              v === 'available'
+                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
+                                : v === 'lunch'
+                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200'
+                                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-200';
+                            return (
+                              <td key={hour} className="px-2 py-1.5 text-xs text-center">
+                                <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full ${bg}`}>
+                                  {label}
+                                </span>
+                              </td>
+                            );
                           })}
-                          <td className="px-3 py-2 text-sm text-gray-600 align-middle">
+                          <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 align-middle">
                             <div className="flex items-center gap-2 flex-nowrap">
                               <button
                                 type="button"
@@ -535,8 +558,7 @@ export default function ScheduleTab() {
                                   setSelectedInternOnboardingId('');
                                   setShowInternScheduleModal(true);
                                 }}
-                                className="px-2 py-1 rounded text-xs font-medium text-white shrink-0"
-                                style={{ backgroundColor: PRIMARY }}
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0"
                               >
                                 Edit
                               </button>
@@ -552,7 +574,7 @@ export default function ScheduleTab() {
                                     toast.error(err?.message || 'Failed to delete');
                                   }
                                 }}
-                                className="px-2 py-1 rounded text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 shrink-0"
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-600 dark:text-red-300 border border-red-200 dark:border-red-900/60 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/40 shrink-0"
                               >
                                 Delete
                               </button>
@@ -562,17 +584,19 @@ export default function ScheduleTab() {
                       );
                     })}
                   </tbody>
-                  <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                  <tfoot className="bg-gray-50 dark:bg-gray-950/40 border-t-2 border-gray-200 dark:border-gray-800">
                     <tr>
-                      <td className="px-3 py-2 text-xs font-semibold text-gray-700 sticky left-0 bg-gray-50 z-10">Availability</td>
+                        <td className="px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-200 sticky left-0 bg-gray-50 dark:bg-gray-950/40 z-10">
+                          Availability
+                        </td>
                       {INTERN_SCHEDULE_HOURS.map((hour) => {
                         const aggregate = getAggregateScheduleCounts(internSchedules);
                         const cell = aggregate[internScheduleDayTab]?.[String(hour)] || { available: 0, unavailable: 0 };
                         return (
-                          <td key={hour} className="px-2 py-2 text-xs text-gray-700 text-center">
-                            <span className="text-emerald-600 font-medium">{cell.available} available</span>
-                            <span className="text-gray-400 mx-1">/</span>
-                            <span className="text-gray-500">{cell.unavailable} unavailable</span>
+                          <td key={hour} className="px-2 py-2 text-xs text-gray-700 dark:text-gray-200 text-center">
+                            <span className="text-emerald-600 dark:text-emerald-300 font-medium">{cell.available} available</span>
+                            <span className="text-gray-400 dark:text-gray-500 mx-1">/</span>
+                            <span className="text-gray-500 dark:text-gray-300">{cell.unavailable} unavailable</span>
                           </td>
                         );
                       })}
@@ -588,20 +612,20 @@ export default function ScheduleTab() {
 
       {showInternScheduleModal && internScheduleDraft && (
         <Modal open={showInternScheduleModal} onClose={() => !savingInternSchedule && setShowInternScheduleModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-100">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-100 dark:border-gray-800">
             <div className="p-6 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>{editingInternSchedule ? 'Edit intern schedule' : 'Add intern schedule'}</h2>
-                  <p className="mt-1 text-sm text-gray-600">Set availability for each hour (Available / Unavailable / Lunch).</p>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>{editingInternSchedule ? 'Edit intern schedule' : 'Add intern schedule'}</h2>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Set availability for each hour (Available / Unavailable / Lunch).</p>
                 </div>
-                <button type="button" onClick={() => !savingInternSchedule && setShowInternScheduleModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+                <button type="button" onClick={() => !savingInternSchedule && setShowInternScheduleModal(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">✕</button>
               </div>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Intern name</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Intern name</label>
                   {editingInternSchedule || availableInternOnboardingOptions.length === 0 ? (
-                    <input type="text" value={internScheduleDraft.name} onChange={(e) => setInternScheduleDraft((draft) => ({ ...draft, name: e.target.value }))} placeholder={availableInternOnboardingOptions.length === 0 ? 'Enter your name' : 'Intern name'} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                    <input type="text" value={internScheduleDraft.name} onChange={(e) => setInternScheduleDraft((draft) => ({ ...draft, name: e.target.value }))} placeholder={availableInternOnboardingOptions.length === 0 ? 'Enter your name' : 'Intern name'} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm" />
                   ) : (
                     <select
                       value={selectedInternOnboardingId}
@@ -611,7 +635,7 @@ export default function ScheduleTab() {
                         const selected = availableInternOnboardingOptions.find((opt) => String(opt.id) === id);
                         setInternScheduleDraft((draft) => ({ ...draft, name: selected?.name || '' }));
                       }}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                     >
                       <option value="">Select intern</option>
                       {availableInternOnboardingOptions.map((opt) => (
@@ -620,9 +644,9 @@ export default function ScheduleTab() {
                     </select>
                   )}
                 </div>
-                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <div className="overflow-x-auto border border-gray-200 dark:border-gray-800 rounded-lg">
                   <table className="min-w-full text-xs">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 dark:bg-gray-950/40">
                       <tr>
                         <th className="px-2 py-2 text-left font-medium text-gray-500 uppercase tracking-wider w-24">Time</th>
                         {INTERN_SCHEDULE_DAYS.map((day) => (
@@ -630,12 +654,12 @@ export default function ScheduleTab() {
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-100">
+                    <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                       {INTERN_SCHEDULE_HOURS.map((hour) => {
                         const label = formatHourLabel(hour);
                         return (
                           <tr key={hour}>
-                            <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap font-medium">{label}</td>
+                            <td className="px-2 py-1.5 text-gray-700 dark:text-gray-200 whitespace-nowrap font-medium">{label}</td>
                             {INTERN_SCHEDULE_DAYS.map((day) => (
                               <td key={day} className="px-2 py-1.5">
                                 <select
@@ -652,7 +676,7 @@ export default function ScheduleTab() {
                                       return next;
                                     });
                                   }}
-                                  className="w-full rounded border border-gray-300 px-1 py-1 text-xs focus:ring-1 focus:ring-[#6795BE] focus:border-[#6795BE]"
+                                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1 py-1 text-xs text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-[#6795BE] focus:border-[#6795BE]"
                                 >
                                   <option value="available">Available</option>
                                   <option value="unavailable">Unavailable</option>
@@ -668,7 +692,7 @@ export default function ScheduleTab() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => !savingInternSchedule && setShowInternScheduleModal(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200">Close</button>
+                <button type="button" onClick={() => !savingInternSchedule && setShowInternScheduleModal(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700">Close</button>
                 <button
                   type="button"
                   disabled={savingInternSchedule || !internScheduleDraft.name.trim()}

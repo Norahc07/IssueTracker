@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
@@ -9,6 +9,17 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { supabase } = useSupabase();
   const navigate = useNavigate();
+
+  // Keep /login in light mode even if the app was previously in dark mode.
+  // This avoids broken contrast when logging out while dark mode is enabled.
+  useEffect(() => {
+    const root = document.documentElement;
+    const hadDark = root.classList.contains('dark');
+    root.classList.remove('dark');
+    return () => {
+      if (hadDark) root.classList.add('dark');
+    };
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();

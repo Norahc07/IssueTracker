@@ -158,7 +158,7 @@ export default function CentralizedRepository() {
   if (loading) {
     return (
       <div className="w-full flex items-center justify-center py-12">
-        <div className="text-gray-600">Loading repository…</div>
+        <div className="text-gray-600 dark:text-gray-400">Loading repository…</div>
       </div>
     );
   }
@@ -167,10 +167,10 @@ export default function CentralizedRepository() {
     <div className="w-full space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
             Repository
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
             Official company resources, SOPs, and guides
           </p>
         </div>
@@ -189,22 +189,26 @@ export default function CentralizedRepository() {
         )}
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Search</label>
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search by title, description, or tags..."
-          className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-4 py-2.5 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
         />
         <div className="mt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Filter</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Filter</label>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => setTagFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tagFilter === 'all' ? 'text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                tagFilter === 'all'
+                  ? 'text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
               style={tagFilter === 'all' ? { backgroundColor: PRIMARY } : {}}
             >
               All
@@ -214,7 +218,11 @@ export default function CentralizedRepository() {
                 key={tag}
                 type="button"
                 onClick={() => setTagFilter(tag)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tagFilter === tag ? 'text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  tagFilter === tag
+                    ? 'text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
                 style={tagFilter === tag ? { backgroundColor: PRIMARY } : {}}
               >
                 {MAIN_TAG_LABELS[tag] ?? tag}
@@ -223,7 +231,11 @@ export default function CentralizedRepository() {
             <button
               type="button"
               onClick={() => setTagFilter('others')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tagFilter === 'others' ? 'text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                tagFilter === 'others'
+                  ? 'text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
               style={tagFilter === 'others' ? { backgroundColor: PRIMARY } : {}}
             >
               Others
@@ -237,14 +249,14 @@ export default function CentralizedRepository() {
           filteredItems.map((item) => (
             <div
               key={item.id}
-              className="bg-white rounded-lg border border-gray-200 p-5 sm:p-6 hover:shadow-md transition-shadow flex flex-col relative"
+              className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-5 sm:p-6 hover:shadow-md transition-shadow flex flex-col relative"
             >
               {canManage && (
                 <div className="absolute top-3 right-3">
                   <button
                     type="button"
                     onClick={() => setMenuOpenId(menuOpenId === item.id ? null : item.id)}
-                    className="p-1.5 rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                    className="p-1.5 rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200"
                     aria-label="Options"
                   >
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -254,7 +266,7 @@ export default function CentralizedRepository() {
                   {menuOpenId === item.id && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} aria-hidden="true" />
-                      <div className="absolute right-0 top-full mt-1 py-1 w-36 bg-white rounded-lg border border-gray-200 shadow-lg z-20">
+                      <div className="absolute right-0 top-full mt-1 py-1 w-36 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-lg z-20">
                         <button
                           type="button"
                           onClick={() => {
@@ -279,14 +291,21 @@ export default function CentralizedRepository() {
                 </div>
               )}
               <div className="flex-1 pr-8">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">{item.title}</h3>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                  {item.title}
+                </h3>
                 {item.description && (
-                  <p className="text-sm text-gray-600 line-clamp-2 mb-4">{item.description}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 mb-4">
+                    {item.description}
+                  </p>
                 )}
                 {(item.tags || []).length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {item.tags.map((tag, index) => (
-                      <span key={index} className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
+                      <span
+                        key={index}
+                        className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                      >
                         {tag}
                       </span>
                     ))}
@@ -305,8 +324,10 @@ export default function CentralizedRepository() {
             </div>
           ))
         ) : (
-          <div className="col-span-full text-center py-12 bg-white rounded-lg border border-gray-200">
-            <p className="text-gray-500">No items match your filter or search.</p>
+          <div className="col-span-full text-center py-12 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800">
+            <p className="text-gray-500 dark:text-gray-400">
+              No items match your filter or search.
+            </p>
           </div>
         )}
       </div>

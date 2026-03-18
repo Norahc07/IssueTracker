@@ -122,10 +122,10 @@ export default function SuperAdminOverview() {
   if (!isSuperAdmin) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
           Super Admin Overview
         </h1>
-        <p className="text-sm text-gray-600">Access denied. Only Super Admin can view this page.</p>
+        <p className="text-sm text-gray-600 dark:text-gray-300">Access denied. Only Super Admin can view this page.</p>
       </div>
     );
   }
@@ -133,51 +133,51 @@ export default function SuperAdminOverview() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
           Interns / TL / VTL OJT overview
         </h1>
-        <p className="mt-1 text-sm text-gray-600">
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
           Summary of rendered OJT hours based on attendance logs and imported minutes.
         </p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 sm:px-6 py-3 border-b border-gray-200 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-900">OJT progress</span>
-          {loading && <span className="text-xs text-gray-500">Loading…</span>}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+        <div className="px-4 sm:px-6 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">OJT progress</span>
+          {loading && <span className="text-xs text-gray-500 dark:text-gray-400">Loading…</span>}
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-950/40">
               <tr>
-                <th className="px-4 py-2 text-left font-semibold text-gray-700">Name</th>
-                <th className="px-4 py-2 text-left font-semibold text-gray-700">Email</th>
-                <th className="px-4 py-2 text-left font-semibold text-gray-700">Role</th>
-                <th className="px-4 py-2 text-left font-semibold text-gray-700">Team</th>
-                <th className="px-4 py-2 text-right font-semibold text-gray-700">Total rendered hours</th>
-                <th className="px-4 py-2 text-right font-semibold text-gray-700">Remaining hours</th>
+                <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Name</th>
+                <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Email</th>
+                <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Role</th>
+                <th className="px-4 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Team</th>
+                <th className="px-4 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Total rendered hours</th>
+                <th className="px-4 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Remaining hours</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
+            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
               {rows.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-4 text-center text-gray-500 text-sm">
+                  <td colSpan={6} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
                     No interns / TL / VTL found.
                   </td>
                 </tr>
               ) : (
                 rows.map((r) => (
-                  <tr key={r.id}>
-                    <td className="px-4 py-2 text-gray-900">{r.name}</td>
-                    <td className="px-4 py-2 text-gray-700">{r.email}</td>
-                    <td className="px-4 py-2 text-gray-700">{getRoleDisplayName(r.role)}</td>
-                    <td className="px-4 py-2 text-gray-700">
+                  <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                    <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{r.name}</td>
+                    <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{r.email}</td>
+                    <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{getRoleDisplayName(r.role)}</td>
+                    <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
                       {r.team ? teamDisplayLabel(r.team) : '—'}
                     </td>
-                    <td className="px-4 py-2 text-right text-gray-900">
+                    <td className="px-4 py-2 text-right text-gray-900 dark:text-gray-100">
                       {r.totalHours.toFixed(2)}
                     </td>
-                    <td className="px-4 py-2 text-right text-gray-900">
+                    <td className="px-4 py-2 text-right text-gray-900 dark:text-gray-100">
                       {r.remainingHours.toFixed(2)}
                     </td>
                   </tr>

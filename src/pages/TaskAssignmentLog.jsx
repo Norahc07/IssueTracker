@@ -1203,30 +1203,30 @@ export default function TaskAssignmentLog() {
   const getStatusColor = (status) => {
     switch (status) {
       case 'to-do':
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
       case 'in-progress':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200';
       case 'review':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200';
       case 'done':
-        return 'bg-green-100 text-green-800';
+        return 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200';
       case 'cancelled':
-        return 'bg-red-100 text-red-800';
+        return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
     }
   };
 
   const getPriorityColor = (priority) => {
     switch (priority) {
       case 'high':
-        return 'bg-red-100 text-red-800';
+        return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200';
       case 'medium':
-        return 'bg-amber-100 text-amber-800';
+        return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200';
       case 'low':
-        return 'bg-gray-100 text-gray-700';
+        return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200';
       default:
-        return 'bg-gray-100 text-gray-700';
+        return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200';
     }
   };
 
@@ -1519,7 +1519,11 @@ export default function TaskAssignmentLog() {
                                 ))}
                               </select>
                             ) : (
-                              <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-lg ${getPriorityColor(task.priority || 'medium')}`}>
+                              <span
+                                className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${getPriorityColor(
+                                  task.priority || 'medium'
+                                )}`}
+                              >
                                 {TASK_PRIORITIES[task.priority] || 'Medium'}
                               </span>
                             )}
@@ -1529,7 +1533,9 @@ export default function TaskAssignmentLog() {
                               <select
                                 value={draft.status}
                                 onChange={(e) => updateTaskDraft(task.id, 'status', e.target.value)}
-                                className={`min-w-[7rem] rounded border border-gray-300 px-2 py-1.5 text-sm ${getStatusColor(draft.status)}`}
+                                className={`min-w-[7rem] rounded border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-sm ${getStatusColor(
+                                  draft.status
+                                )}`}
                               >
                                 {Object.entries(TASK_STATUSES).map(([key, label]) => (
                                   <option key={key} value={key}>{label}</option>
@@ -1539,14 +1545,20 @@ export default function TaskAssignmentLog() {
                               <select
                                 value={task.status || 'to-do'}
                                 onChange={(e) => handleStatusChange(task, e.target.value)}
-                                className={`min-w-[7rem] px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 ${getStatusColor(task.status || 'to-do')} cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:ring-offset-0`}
+                                className={`min-w-[7rem] px-2.5 py-1.5 text-xs font-medium rounded-full border border-gray-200 dark:border-gray-700 ${getStatusColor(
+                                  task.status || 'to-do'
+                                )} cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] focus:ring-offset-0`}
                               >
                                 {Object.entries(TASK_STATUSES).map(([key, label]) => (
                                   <option key={key} value={key}>{label}</option>
                                 ))}
                               </select>
                             ) : (
-                              <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-lg ${getStatusColor(task.status || 'to-do')}`}>
+                              <span
+                                className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(
+                                  task.status || 'to-do'
+                                )}`}
+                              >
                                 {TASK_STATUSES[task.status] || 'Not Started'}
                               </span>
                             )}
@@ -1559,15 +1571,14 @@ export default function TaskAssignmentLog() {
                                   setSelectedTask(task);
                                   if (isWpPluginTask(task)) fetchWpPluginRows(task.id);
                                 }}
-                                className="text-xs font-medium min-w-[4rem] px-2 py-1 rounded text-white hover:opacity-90 transition-opacity"
-                                style={{ backgroundColor: PRIMARY }}
+                                className="text-xs font-medium min-w-[4rem] px-2.5 py-1.5 rounded-lg text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                               >
                                 View
                               </button>
                               {canClaimTask(userRole, userTeam) && (
                                 task.assigned_to ? (
                                   String(task.assigned_to) === String(user?.id) ? (
-                                    <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
+                                    <span className="inline-block text-xs font-medium min-w-[4rem] px-2.5 py-1.5 rounded-full bg-green-600 text-white text-center">
                                       Claimed
                                     </span>
                                   ) : null
@@ -1576,7 +1587,7 @@ export default function TaskAssignmentLog() {
                                     type="button"
                                     onClick={() => handleClaimTask(task)}
                                     disabled={claimingTaskId === task.id}
-                                    className="text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-gray-600 text-white hover:bg-gray-700 disabled:opacity-60 transition-opacity"
+                                    className="text-xs font-medium min-w-[4rem] px-2.5 py-1.5 rounded-full bg-gray-600 text-white hover:bg-gray-700 disabled:opacity-60 transition-opacity"
                                   >
                                     {claimingTaskId === task.id ? '...' : 'Claim'}
                                   </button>
@@ -1815,14 +1826,14 @@ export default function TaskAssignmentLog() {
                                       inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
                                       ${
                                         !row.status
-                                          ? 'bg-gray-100 text-gray-500'
+                                          ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300'
                                           : row.status === 'done'
-                                          ? 'bg-emerald-100 text-emerald-700'
+                                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                                           : row.status === 'has_issue'
-                                          ? 'bg-red-100 text-red-700'
+                                          ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
                                           : row.status === 'different_title'
-                                          ? 'bg-violet-100 text-violet-700'
-                                          : 'bg-amber-100 text-amber-700'
+                                          ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+                                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
                                       }
                                     `}
                                   >
@@ -1886,7 +1897,7 @@ export default function TaskAssignmentLog() {
                                           });
                                           fetchCourseListItems(courseListDomainId);
                                         }}
-                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
                                       >
                                         Cancel
                                       </button>
@@ -1907,7 +1918,7 @@ export default function TaskAssignmentLog() {
                                             status: row.status || '',
                                           });
                                         }}
-                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
                                       >
                                         Edit
                                       </button>
@@ -1930,7 +1941,7 @@ export default function TaskAssignmentLog() {
                                               toast.error(err?.message || 'Failed to delete course');
                                             }
                                           }}
-                                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-200 bg-white hover:bg-red-50"
+                                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 dark:text-red-300 border border-red-200 dark:border-red-900/60 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/40"
                                         >
                                           Delete
                                         </button>
@@ -1945,7 +1956,7 @@ export default function TaskAssignmentLog() {
                       </tbody>
                     </table>
                     {courseListItems.length > 10 && (
-                      <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 border-t border-gray-100">
+                      <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800">
                         <span>
                           Page {courseListPage} of {Math.ceil(courseListItems.length / 10)}
                         </span>
@@ -1953,7 +1964,7 @@ export default function TaskAssignmentLog() {
                           type="button"
                           onClick={() => setCourseListPage((p) => Math.max(1, p - 1))}
                           disabled={courseListPage === 1}
-                          className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                          className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 disabled:opacity-50"
                         >
                           Prev
                         </button>
@@ -1965,7 +1976,7 @@ export default function TaskAssignmentLog() {
                             )
                           }
                           disabled={courseListPage >= Math.ceil(courseListItems.length / 10)}
-                          className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                          className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 disabled:opacity-50"
                         >
                           Next
                         </button>
@@ -1978,7 +1989,7 @@ export default function TaskAssignmentLog() {
 
               {/* Corporate courses */}
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-gray-900">Corporate Courses</h3>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Corporate Courses</h3>
                 {CORPORATE_COURSE_CATEGORIES.map((category) => {
                   const rows = corporateCourseItems.filter((r) => r.category === category);
                   const page = corporateCoursePages[category] || 1;
@@ -1986,7 +1997,7 @@ export default function TaskAssignmentLog() {
                   return (
                     <div key={category} className="space-y-0">
                       <div className="flex items-center justify-between gap-3 px-4 py-3">
-                        <h4 className="text-sm font-semibold text-gray-900">{category}</h4>
+                        <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{category}</h4>
                         {canEditCourseList(userRole, userTeam) && (
                           <button
                             type="button"
@@ -2143,14 +2154,14 @@ export default function TaskAssignmentLog() {
                                             inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
                                             ${
                                               !row.status
-                                                ? 'bg-gray-100 text-gray-500'
+                                                ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300'
                                                 : row.status === 'done'
-                                                ? 'bg-emerald-100 text-emerald-700'
+                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                                                 : row.status === 'has_issue'
-                                                ? 'bg-red-100 text-red-700'
+                                                ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
                                                 : row.status === 'different_title'
-                                                ? 'bg-violet-100 text-violet-700'
-                                                : 'bg-amber-100 text-amber-700'
+                                                ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+                                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
                                             }
                                           `}
                                         >
@@ -2214,7 +2225,7 @@ export default function TaskAssignmentLog() {
                                                 });
                                                 fetchCorporateCourseItems(courseListDomainId);
                                               }}
-                                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
+                                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
                                             >
                                               Cancel
                                             </button>
@@ -2234,8 +2245,8 @@ export default function TaskAssignmentLog() {
                                                   course_type: courseTypeToUi(row.course_type) || '',
                                                   status: row.status || '',
                                                 });
-                                              }}
-                                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
+                                                }}
+                                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
                                             >
                                               Edit
                                             </button>
@@ -2266,7 +2277,7 @@ export default function TaskAssignmentLog() {
                                                     toast.error(err?.message || 'Failed to delete course');
                                                   }
                                                 }}
-                                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-200 bg-white hover:bg-red-50"
+                                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 dark:text-red-300 border border-red-200 dark:border-red-900/60 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/40"
                                               >
                                                 Delete
                                               </button>
@@ -2710,7 +2721,7 @@ export default function TaskAssignmentLog() {
                 type="button"
                 onClick={() => setDomainTypeFilter('old')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                  domainTypeFilter === 'old' ? 'text-white' : 'bg-gray-100 text-gray-700'
+                  domainTypeFilter === 'old' ? 'text-white' : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
                 }`}
                 style={domainTypeFilter === 'old' ? { backgroundColor: PRIMARY } : {}}
               >
@@ -2720,7 +2731,7 @@ export default function TaskAssignmentLog() {
                 type="button"
                 onClick={() => setDomainTypeFilter('new')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                  domainTypeFilter === 'new' ? 'text-white' : 'bg-gray-100 text-gray-700'
+                  domainTypeFilter === 'new' ? 'text-white' : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
                 }`}
                 style={domainTypeFilter === 'new' ? { backgroundColor: PRIMARY } : {}}
               >
@@ -2733,7 +2744,7 @@ export default function TaskAssignmentLog() {
                   <button
                     type="button"
                     onClick={() => setIsEditingDomainsTable(true)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -2758,7 +2769,7 @@ export default function TaskAssignmentLog() {
                       type="button"
                       onClick={handleCancelDomainsEdit}
                       disabled={savingDomains}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                     >
                       Cancel
                     </button>
@@ -2781,16 +2792,16 @@ export default function TaskAssignmentLog() {
 
           {/* Note for Old Domains only: default accounts (editable) used for WordPress plugin updates */}
           {domainTypeFilter === 'old' && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50/80 p-4 text-sm text-gray-800">
-              <p className="font-semibold text-gray-900 mb-2">Default accounts for old domains (Intern Account WordPress &amp; SG Domain WordPress)</p>
-              <p className="mb-3 text-gray-700">These two accounts are the default credentials used for WordPress plugin updates on old domains. You can view and update the values below.</p>
+            <div className="rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50/80 dark:bg-blue-950/30 p-4 text-sm text-gray-800 dark:text-gray-200">
+              <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Default accounts for old domains (Intern Account WordPress &amp; SG Domain WordPress)</p>
+              <p className="mb-3 text-gray-700 dark:text-gray-300">These two accounts are the default credentials used for WordPress plugin updates on old domains. You can view and update the values below.</p>
               <p className="mb-3 font-semibold text-orange-600">
                 Take Note: WordPress Plugin Updates are scheduled to be finished every week. This means all plugins for all domains must be updated until Friday each week. When Monday comes, we will begin updating all domain plugins again for the new week.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
-                <div className="bg-white/70 rounded-lg p-3 border border-blue-100 relative">
-                  <p className="font-medium text-gray-900 mb-2">Intern Account WordPress</p>
-                  <p className="text-gray-800 flex items-center gap-1 flex-wrap">
+                <div className="bg-white/70 dark:bg-gray-900/50 rounded-lg p-3 border border-blue-100 dark:border-blue-900/40 relative">
+                  <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">Intern Account WordPress</p>
+                  <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
                     <span>Admin Username:</span>
                     {defaultAccounts.intern?.username ? (
                       <>
@@ -2798,7 +2809,7 @@ export default function TaskAssignmentLog() {
                         <button
                           type="button"
                           onClick={() => copyUsernameToClipboard(defaultAccounts.intern?.username, 'Username')}
-                          className="p-1 rounded text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                          className="p-1 rounded text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200"
                           title="Copy username"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -2808,7 +2819,7 @@ export default function TaskAssignmentLog() {
                       </>
                     ) : '—'}
                   </p>
-                  <p className="text-gray-800 flex items-center gap-1 flex-wrap">
+                  <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
                     <span>Admin Password:</span>
                     {defaultAccounts.intern?.password ? (
                       <>
@@ -2869,9 +2880,9 @@ export default function TaskAssignmentLog() {
                     </button>
                   )}
                 </div>
-                <div className="bg-white/70 rounded-lg p-3 border border-amber-100 relative">
-                  <p className="font-medium text-gray-900 mb-2">SG Domain WordPress</p>
-                  <p className="text-gray-800 flex items-center gap-1 flex-wrap">
+                <div className="bg-white/70 dark:bg-gray-900/50 rounded-lg p-3 border border-amber-100 dark:border-amber-900/40 relative">
+                  <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">SG Domain WordPress</p>
+                  <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
                     <span>Admin username:</span>
                     {defaultAccounts.sg?.username ? (
                       <>
@@ -2879,7 +2890,7 @@ export default function TaskAssignmentLog() {
                         <button
                           type="button"
                           onClick={() => copyUsernameToClipboard(defaultAccounts.sg?.username, 'Username')}
-                          className="p-1 rounded text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                          className="p-1 rounded text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200"
                           title="Copy username"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -2889,7 +2900,7 @@ export default function TaskAssignmentLog() {
                       </>
                     ) : '—'}
                   </p>
-                  <p className="text-gray-800 flex items-center gap-1 flex-wrap">
+                  <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
                     <span>Admin Password:</span>
                     {defaultAccounts.sg?.password ? (
                       <>
@@ -2954,29 +2965,29 @@ export default function TaskAssignmentLog() {
             </div>
           )}
 
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm overflow-x-auto">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm overflow-x-auto">
             {domainTypeFilter === 'new' && (
               <p className="px-4 pt-4 pb-1 text-xs sm:text-sm font-semibold text-orange-600">
                 Take Note: WordPress Plugin Updates are scheduled to be finished every week. This means all plugins for all domains must be updated until Friday each week. When Monday comes, we will begin updating all domain plugins again for the new week.
               </p>
             )}
             {domainTypeFilter === 'old' ? (
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Country</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scanning</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">2FA</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Claim</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Country</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">URL</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Scanning</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Plugin</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">2FA</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">reCAPTCHA</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Backup</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Claim</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
                   {filteredDomains.length > 0 ? (
                     filteredDomains.map((domain) => {
                       const claim = domainClaims.find((c) => c.domain_id === domain.id);
@@ -2985,9 +2996,9 @@ export default function TaskAssignmentLog() {
                       return (
                       <tr
                         key={domain.id}
-                        className={`hover:bg-gray-50 ${isClaimed ? 'bg-green-50/70' : ''}`}
+                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/60 ${isClaimed ? 'bg-green-50/70 dark:bg-green-900/30' : ''}`}
                       >
-                        <td className="px-4 py-3 text-sm text-gray-900">
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                           {isEditingDomainsTable ? (
                             <input
                               type="text"
@@ -3000,14 +3011,14 @@ export default function TaskAssignmentLog() {
                             domain.country || '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                           {!isEditingDomainsTable && (() => {
                             const summary = getDomainPluginSummary(domain);
                             return summary === 'OK / Updated' || summary === 'OK' ? 'Updated' : 'Not updated';
                           })()}
                           {isEditingDomainsTable && <span className="text-gray-400">—</span>}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 break-all">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 break-all">
                           {isEditingDomainsTable ? (
                             <input
                               type="url"
@@ -3024,7 +3035,7 @@ export default function TaskAssignmentLog() {
                             '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
                           {isEditingDomainsTable ? (
                             <select
                               value={domain.scanning_date || 'ok'}
@@ -3039,7 +3050,7 @@ export default function TaskAssignmentLog() {
                             domain.scanning_date || 'ok'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
                           {isEditingDomainsTable ? (
                             <PrettyDatePicker
                               value={domain.scanning_done_date ? domain.scanning_done_date.slice(0, 10) : ''}
@@ -3051,7 +3062,7 @@ export default function TaskAssignmentLog() {
                             domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
                           {isEditingDomainsTable ? (
                             <select
                               value={domain.scanning_plugin || 'ok'}
@@ -3066,7 +3077,7 @@ export default function TaskAssignmentLog() {
                             domain.scanning_plugin || 'ok'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
                           {isEditingDomainsTable ? (
                             <select
                               value={domain.scanning_2fa || 'ok'}
@@ -3081,7 +3092,7 @@ export default function TaskAssignmentLog() {
                             domain.scanning_2fa || 'ok'
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 text-center">
                           <input
                             type="checkbox"
                             checked={!!domain.recaptcha}
@@ -3090,7 +3101,7 @@ export default function TaskAssignmentLog() {
                             className="rounded"
                           />
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 text-center">
                           <input
                             type="checkbox"
                             checked={!!domain.backup}
@@ -3099,7 +3110,7 @@ export default function TaskAssignmentLog() {
                             className="rounded"
                           />
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-4 py-3 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
                           {!isEditingDomainsTable && (
                             isClaimed ? (
                               <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
@@ -3115,7 +3126,7 @@ export default function TaskAssignmentLog() {
                                 {claimingDomainId === domain.id ? '...' : 'Claim'}
                               </button>
                             ) : (
-                              <span className="inline-block text-xs text-gray-400 min-w-[4rem] text-center">—</span>
+                              <span className="inline-block text-xs text-gray-400 dark:text-gray-500 min-w-[4rem] text-center">—</span>
                             )
                           )}
                         </td>
@@ -3124,7 +3135,7 @@ export default function TaskAssignmentLog() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={10} className="px-4 py-12 text-center text-sm text-gray-500">
+                      <td colSpan={10} className="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
                         No old domains. Add one with &quot;Add Domain&quot;.
                       </td>
                     </tr>
@@ -3132,24 +3143,24 @@ export default function TaskAssignmentLog() {
                 </tbody>
               </table>
             ) : (
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Country</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scanning</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">2FA</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">WP Username</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">New Password</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">reCAPTCHA</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backup</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Claim</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Country</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">URL</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Scanning</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Plugin</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">2FA</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">WP Username</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">New Password</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">reCAPTCHA</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Backup</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Claim</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
                   {filteredDomains.length > 0 ? (
                     filteredDomains.map((domain) => {
                       const claim = domainClaims.find((c) => c.domain_id === domain.id);
@@ -3158,10 +3169,10 @@ export default function TaskAssignmentLog() {
                       return (
                       <tr
                         key={domain.id}
-                        className={`hover:bg-gray-50 ${!isEditingDomainsTable ? 'cursor-pointer' : ''} ${isClaimed ? 'bg-green-50/70' : ''}`}
+                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/60 ${!isEditingDomainsTable ? 'cursor-pointer' : ''} ${isClaimed ? 'bg-green-50/70 dark:bg-green-900/30' : ''}`}
                         onClick={!isEditingDomainsTable ? () => setSelectedNewDomainDetails(domain) : undefined}
                       >
-                        <td className="px-4 py-3 text-sm text-gray-900" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           {isEditingDomainsTable ? (
                             <input
                               type="text"
@@ -3174,7 +3185,7 @@ export default function TaskAssignmentLog() {
                             domain.country || '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 break-all" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 break-all" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           {isEditingDomainsTable ? (
                             <input
                               type="url"
@@ -3191,7 +3202,7 @@ export default function TaskAssignmentLog() {
                             '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           {isEditingDomainsTable ? (
                             <input
                               type="text"
@@ -3204,7 +3215,7 @@ export default function TaskAssignmentLog() {
                             domain.status || '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           {isEditingDomainsTable ? (
                             <PrettyDatePicker
                               value={domain.scanning_done_date ? domain.scanning_done_date.slice(0, 10) : ''}
@@ -3216,7 +3227,7 @@ export default function TaskAssignmentLog() {
                             domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           {isEditingDomainsTable ? (
                             <select
                               value={domain.scanning_date || ''}
@@ -3232,7 +3243,7 @@ export default function TaskAssignmentLog() {
                             domain.scanning_date || '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           {isEditingDomainsTable ? (
                             <select
                               value={domain.scanning_plugin || ''}
@@ -3248,7 +3259,7 @@ export default function TaskAssignmentLog() {
                             domain.scanning_plugin || '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           {isEditingDomainsTable ? (
                             <select
                               value={domain.scanning_2fa || ''}
@@ -3264,7 +3275,7 @@ export default function TaskAssignmentLog() {
                             domain.scanning_2fa || '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           {isEditingDomainsTable ? (
                             <input
                               type="text"
@@ -3332,7 +3343,7 @@ export default function TaskAssignmentLog() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                        <td className="px-4 py-3 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={!!domain.recaptcha}
@@ -3341,7 +3352,7 @@ export default function TaskAssignmentLog() {
                             className="rounded"
                           />
                         </td>
-                        <td className="px-4 py-3" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
+                        <td className="px-4 py-3 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={!!domain.backup}
@@ -3551,56 +3562,107 @@ export default function TaskAssignmentLog() {
 
           {/* Edit Default Account modal (Intern or SG) */}
           {editDefaultAccount && (
-            <Modal open={!!editDefaultAccount} onClose={() => { setEditDefaultAccount(null); setDefaultAccountEditForm({ username: '', password: '' }); setShowEditModalPassword(false); }}>
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md border border-gray-200">
+            <Modal
+              open={!!editDefaultAccount}
+              onClose={() => {
+                setEditDefaultAccount(null);
+                setDefaultAccountEditForm({ username: '', password: '' });
+                setShowEditModalPassword(false);
+              }}
+            >
+              <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700">
                 <div className="p-5">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
                       Edit {editDefaultAccount === 'intern' ? 'Intern Account WordPress' : 'SG Domain WordPress'}
                     </h3>
-                    <button type="button" onClick={() => { setEditDefaultAccount(null); setDefaultAccountEditForm({ username: '', password: '' }); setShowEditModalPassword(false); }} className="text-gray-400 hover:text-gray-600">✕</button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditDefaultAccount(null);
+                        setDefaultAccountEditForm({ username: '', password: '' });
+                        setShowEditModalPassword(false);
+                      }}
+                      className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                    >
+                      ✕
+                    </button>
                   </div>
                   <form onSubmit={handleSaveDefaultAccount} className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Admin Username</label>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                        Admin Username
+                      </label>
                       <input
                         type="text"
                         value={defaultAccountEditForm.username}
-                        onChange={(e) => setDefaultAccountEditForm((f) => ({ ...f, username: e.target.value }))}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                        onChange={(e) =>
+                          setDefaultAccountEditForm((f) => ({ ...f, username: e.target.value }))
+                        }
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE]"
                         placeholder="Username"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Admin Password</label>
-                      <div className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white focus-within:ring-2 focus-within:ring-[#6795BE] focus-within:border-transparent">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                        Admin Password
+                      </label>
+                      <div className="flex items-center gap-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 focus-within:ring-2 focus-within:ring-[#6795BE] focus-within:border-transparent">
                         <input
                           type={showEditModalPassword ? 'text' : 'password'}
                           value={defaultAccountEditForm.password}
-                          onChange={(e) => setDefaultAccountEditForm((f) => ({ ...f, password: e.target.value }))}
-                          className="flex-1 min-w-0 rounded-lg border-0 px-3 py-2 text-sm focus:ring-0 focus:outline-none"
+                          onChange={(e) =>
+                            setDefaultAccountEditForm((f) => ({ ...f, password: e.target.value }))
+                          }
+                          className="flex-1 min-w-0 rounded-lg border-0 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-transparent focus:ring-0 focus:outline-none"
                           placeholder="Password"
                         />
                         <button
                           type="button"
                           onClick={() => setShowEditModalPassword((v) => !v)}
-                          className="p-2 rounded text-gray-500 hover:bg-gray-100 hover:text-gray-700 shrink-0"
+                          className="p-2 rounded text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 shrink-0"
                           title={showEditModalPassword ? 'Hide password' : 'Show password'}
                         >
                           {showEditModalPassword ? (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                              />
                             </svg>
                           ) : (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                              />
                             </svg>
                           )}
                         </button>
                       </div>
                       {editDefaultAccount === 'sg' && (
-                        <p className="mt-1 text-xs text-amber-700">For SG Domain DO NOT CHANGE the password unless required.</p>
+                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                          For SG Domain DO NOT CHANGE the password unless required.
+                        </p>
                       )}
                     </div>
                     <div className="flex gap-2 pt-2">
@@ -3614,8 +3676,12 @@ export default function TaskAssignmentLog() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setEditDefaultAccount(null); setDefaultAccountEditForm({ username: '', password: '' }); setShowEditModalPassword(false); }}
-                        className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                        onClick={() => {
+                          setEditDefaultAccount(null);
+                          setDefaultAccountEditForm({ username: '', password: '' });
+                          setShowEditModalPassword(false);
+                        }}
+                        className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
                       >
                         Cancel
                       </button>
@@ -3634,12 +3700,12 @@ export default function TaskAssignmentLog() {
           userRole === 'tl' ||
           userRole === 'vtl' ||
           (userRole === 'intern' && String(userTeam || '').toLowerCase() === 'tla')) && (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
                 Domain Updates
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
                 View plugin update history for all old and new domains.
               </p>
             </div>
@@ -3649,22 +3715,22 @@ export default function TaskAssignmentLog() {
         )}
 
       {activeMainTab === 'domain-claims' && (userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl' || (userRole === 'intern' && String(userTeam || '').toLowerCase() === 'tla')) && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-          <div className="p-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+        <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
               Domain Claims
             </h2>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
               Domains claimed by TLA interns from the Domains tab — country, intern name, date, and update status.
             </p>
           </div>
 
-          <div className="px-4 pt-3 border-b border-gray-100 flex gap-2">
+          <div className="px-4 pt-3 border-b border-gray-100 dark:border-gray-800 flex gap-2">
             <button
               type="button"
               onClick={() => setDomainClaimsTab('old')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
-                domainClaimsTab === 'old' ? 'text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                domainClaimsTab === 'old' ? 'text-white' : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
               }`}
               style={domainClaimsTab === 'old' ? { backgroundColor: PRIMARY } : {}}
             >
@@ -3674,7 +3740,7 @@ export default function TaskAssignmentLog() {
               type="button"
               onClick={() => setDomainClaimsTab('new')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
-                domainClaimsTab === 'new' ? 'text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                domainClaimsTab === 'new' ? 'text-white' : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
               }`}
               style={domainClaimsTab === 'new' ? { backgroundColor: PRIMARY } : {}}
             >
@@ -3684,22 +3750,22 @@ export default function TaskAssignmentLog() {
 
           <div className="overflow-x-auto">
             {domainClaims.length === 0 ? (
-              <div className="py-12 text-center text-sm text-gray-500">No domain claims yet. Claim domains from the Domains tab.</div>
+              <div className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">No domain claims yet. Claim domains from the Domains tab.</div>
             ) : (
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Country</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Intern Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Update Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Post Update Check</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Country</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Intern Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Update Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Post Update Check</th>
                     {userRole === 'admin' && (
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                     )}
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
                   {[...domainClaims]
                     .filter((row) => {
                       const domain = domains.find((d) => d.id === row.domain_id);
@@ -3715,20 +3781,20 @@ export default function TaskAssignmentLog() {
                       const domain = domains.find((d) => d.id === row.domain_id);
                       const country = domain?.country || '—';
                       return (
-                        <tr key={row.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-900">{country}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{row.claimed_by_name || '—'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{country}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.claimed_by_name || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
                             {row.claimed_at ? new Date(row.claimed_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{row.update_status || '—'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{row.post_update_check || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.update_status || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.post_update_check || '—'}</td>
                           {userRole === 'admin' && (
                             <td className="px-4 py-3 text-sm">
                               <button
                                 type="button"
                                 onClick={() => handleRemoveDomainClaim(row)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-200 bg-white hover:bg-red-50"
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/50 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/30"
                               >
                                 Remove claim
                               </button>
@@ -4021,16 +4087,16 @@ export default function TaskAssignmentLog() {
       {/* Task Detail Modal (generic or WordPress Updates task) */}
       {selectedTask && (
         <Modal open={!!selectedTask} onClose={() => setSelectedTask(null)} zIndexClassName="z-[10000]">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto border border-gray-100 flex flex-col">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto border border-gray-100 dark:border-gray-800 flex flex-col">
             <div className="p-6">
               <div className="flex justify-between items-start mb-4">
-                <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
                   {selectedTask.name}
                 </h2>
                 <button
                   type="button"
                   onClick={() => setSelectedTask(null)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                 >
                   ✕
                 </button>
@@ -4039,42 +4105,42 @@ export default function TaskAssignmentLog() {
               {isWpPluginTask(selectedTask) ? (
                 <>
                   {/* Top section: Date, Assigned To, Updated By, Status, Priority, Domain Type */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4 p-4 bg-gray-50 dark:bg-gray-950/40 rounded-lg">
                     <div>
-                      <span className="text-xs font-medium text-gray-500">Date</span>
-                      <p className="text-sm text-gray-900">
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Date</span>
+                      <p className="text-sm text-gray-900 dark:text-gray-100">
                         {selectedTask.created_at
                           ? new Date(selectedTask.created_at).toLocaleString()
                           : '—'}
                       </p>
                     </div>
                     <div>
-                      <span className="text-xs font-medium text-gray-500">Assigned To</span>
-                      <p className="text-sm text-gray-900">{getAssignedToDisplay(selectedTask)}</p>
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Assigned To</span>
+                      <p className="text-sm text-gray-900 dark:text-gray-100">{getAssignedToDisplay(selectedTask)}</p>
                     </div>
                     <div>
-                      <span className="text-xs font-medium text-gray-500">Updated By</span>
-                      <p className="text-sm text-gray-900">{selectedTask.updated_by_name || '—'}</p>
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Updated By</span>
+                      <p className="text-sm text-gray-900 dark:text-gray-100">{selectedTask.updated_by_name || '—'}</p>
                     </div>
                     <div>
-                      <span className="text-xs font-medium text-gray-500">Status</span>
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Status</span>
                       <p className="text-sm">
-                        <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${getStatusColor(selectedTask.status || 'to-do')}`}>
+                        <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(selectedTask.status || 'to-do')}`}>
                           {TASK_STATUSES[selectedTask.status] || 'Not Started'}
                         </span>
                       </p>
                     </div>
                     <div>
-                      <span className="text-xs font-medium text-gray-500">Priority</span>
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Priority</span>
                       <p className="text-sm">
-                        <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${getPriorityColor(selectedTask.priority || 'medium')}`}>
+                        <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${getPriorityColor(selectedTask.priority || 'medium')}`}>
                           {TASK_PRIORITIES[selectedTask.priority] || 'Medium'}
                         </span>
                       </p>
                     </div>
                     <div>
-                      <span className="text-xs font-medium text-gray-500">Domain Type</span>
-                      <p className="text-sm text-gray-900">
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Domain Type</span>
+                      <p className="text-sm text-gray-900 dark:text-gray-100">
                         {selectedTask.domain_migration === 'new'
                           ? 'New Domain'
                           : selectedTask.domain_migration === 'old'
@@ -4084,23 +4150,27 @@ export default function TaskAssignmentLog() {
                     </div>
                   </div>
                   {(selectedTask.description != null && selectedTask.description !== '') && (
-                    <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                      <span className="text-xs font-medium text-gray-500">Description</span>
-                      <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{selectedTask.description}</p>
+                    <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-950/40 rounded-lg">
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Description</span>
+                      <p className="text-sm text-gray-700 dark:text-gray-200 mt-1 whitespace-pre-wrap">
+                        {selectedTask.description}
+                      </p>
                     </div>
                   )}
                   {(selectedTask.notes != null && selectedTask.notes !== '') && (
-                    <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                      <span className="text-xs font-medium text-gray-500">Notes</span>
-                      <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{selectedTask.notes}</p>
+                    <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-950/40 rounded-lg">
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Notes</span>
+                      <p className="text-sm text-gray-700 dark:text-gray-200 mt-1 whitespace-pre-wrap">
+                        {selectedTask.notes}
+                      </p>
                     </div>
                   )}
                   <div className="mb-4 flex flex-wrap items-center gap-2">
                     {permissions.canManageDomains(userRole) && (
                       <>
-                        <span className="text-sm font-medium text-gray-700">Add domain from list:</span>
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Add domain from list:</span>
                         <select
-                          className="rounded border border-gray-300 px-3 py-1.5 text-sm"
+                          className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
                           onChange={(e) => {
                             const id = e.target.value;
                             e.target.value = '';
@@ -4152,26 +4222,26 @@ export default function TaskAssignmentLog() {
                   </div>
                   {/* Table: Domain (Country), Admin URL, Admin Username and Password, Status, Plugin Names, Version Before/After, Update Status, Post-Update Check, Notes, Save */}
                   <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                      <thead className="bg-gray-50 dark:bg-gray-950/40">
                         <tr>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Domain (Country)</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Admin URL</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Admin Username</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Password</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Status</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Plugin Names</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Version Before</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Version After</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Update Status</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Post-Update Check</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Notes</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Action</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Domain (Country)</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Admin URL</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Admin Username</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Password</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Status</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Plugin Names</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Version Before</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Version After</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Update Status</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Post-Update Check</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Notes</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Action</th>
                         </tr>
                       </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
+                      <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
                         {wpPluginRows.map((row, idx) => (
-                          <tr key={row.id || `new-${idx}`} className="hover:bg-gray-50">
+                          <tr key={row.id || `new-${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
                             <td className="px-3 py-2">
                               <input
                                 type="text"
@@ -4183,7 +4253,7 @@ export default function TaskAssignmentLog() {
                                     )
                                   )
                                 }
-                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                                className="w-24 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100 px-2 py-1"
                                 placeholder="Country"
                               />
                             </td>
@@ -4198,7 +4268,7 @@ export default function TaskAssignmentLog() {
                                     )
                                   )
                                 }
-                                className="w-32 rounded border border-gray-300 px-2 py-1 text-xs"
+                                className="w-32 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100 px-2 py-1"
                                 placeholder="URL"
                               />
                             </td>
@@ -4213,7 +4283,7 @@ export default function TaskAssignmentLog() {
                                     )
                                   )
                                 }
-                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                                className="w-24 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100 px-2 py-1"
                               />
                             </td>
                             <td className="px-3 py-2">
@@ -4227,7 +4297,7 @@ export default function TaskAssignmentLog() {
                                     )
                                   )
                                 }
-                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                                className="w-24 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100 px-2 py-1"
                               />
                             </td>
                             <td className="px-3 py-2">
@@ -4240,7 +4310,7 @@ export default function TaskAssignmentLog() {
                                     )
                                   )
                                 }
-                                className="w-28 rounded border border-gray-300 px-2 py-1 text-xs"
+                                className="w-28 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
                               >
                                 <option value="">—</option>
                                 {DOMAIN_ROW_STATUS_OPTIONS.map((o) => (
@@ -4259,7 +4329,7 @@ export default function TaskAssignmentLog() {
                                     )
                                   )
                                 }
-                                className="w-32 rounded border border-gray-300 px-2 py-1 text-xs"
+                                className="w-32 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100 px-2 py-1"
                                 placeholder="Plugin names"
                               />
                             </td>
@@ -4274,7 +4344,7 @@ export default function TaskAssignmentLog() {
                                     )
                                   )
                                 }
-                                className="w-20 rounded border border-gray-300 px-2 py-1 text-xs"
+                                className="w-20 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100 px-2 py-1"
                               />
                             </td>
                             <td className="px-3 py-2">
@@ -4288,7 +4358,7 @@ export default function TaskAssignmentLog() {
                                     )
                                   )
                                 }
-                                className="w-20 rounded border border-gray-300 px-2 py-1 text-xs"
+                                className="w-20 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100 px-2 py-1"
                               />
                             </td>
                             <td className="px-3 py-2">
@@ -4301,7 +4371,7 @@ export default function TaskAssignmentLog() {
                                     )
                                   )
                                 }
-                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                                className="w-24 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
                               >
                                 <option value="">—</option>
                                 {UPDATE_STATUS_OPTIONS.map((o) => (
@@ -4319,7 +4389,7 @@ export default function TaskAssignmentLog() {
                                     )
                                   )
                                 }
-                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                                className="w-24 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
                               >
                                 <option value="">—</option>
                                 {POST_UPDATE_CHECK_OPTIONS.map((o) => (
@@ -4338,7 +4408,7 @@ export default function TaskAssignmentLog() {
                                     )
                                   )
                                 }
-                                className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                                className="w-24 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-gray-100 px-2 py-1"
                                 placeholder="Notes"
                               />
                             </td>
@@ -4346,7 +4416,7 @@ export default function TaskAssignmentLog() {
                               <button
                                 type="button"
                                 onClick={() => handleSaveWpPluginRow(row)}
-                                className="text-xs font-medium text-white px-2 py-1 rounded"
+                                className="text-xs font-medium text-white px-2.5 py-1.5 rounded-lg disabled:opacity-60"
                                 style={{ backgroundColor: PRIMARY }}
                               >
                                 Save
@@ -4365,39 +4435,43 @@ export default function TaskAssignmentLog() {
                 </>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
                     <span className="font-medium">Priority:</span>{' '}
-                    <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${getPriorityColor(selectedTask.priority || 'medium')}`}>
+                    <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${getPriorityColor(selectedTask.priority || 'medium')}`}>
                       {TASK_PRIORITIES[selectedTask.priority] || 'Medium'}
                     </span>
                   </p>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
                     <span className="font-medium">Status:</span>{' '}
-                    <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${getStatusColor(selectedTask.status || 'to-do')}`}>
+                    <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-full ${getStatusColor(selectedTask.status || 'to-do')}`}>
                       {TASK_STATUSES[selectedTask.status] || 'Not Started'}
                     </span>
                   </p>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
                     <span className="font-medium">Assigned To:</span>{' '}
                     {getAssignedToDisplay(selectedTask)}
                   </p>
                   {(selectedTask.description != null && selectedTask.description !== '') && (
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-gray-600 dark:text-gray-300">
                       <span className="font-medium">Description:</span>
-                      <p className="mt-1 text-gray-700 whitespace-pre-wrap">{selectedTask.description}</p>
+                      <p className="mt-1 text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
+                        {selectedTask.description}
+                      </p>
                     </div>
                   )}
                   {(selectedTask.notes != null && selectedTask.notes !== '') && (
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-gray-600 dark:text-gray-300">
                       <span className="font-medium">Notes:</span>
-                      <p className="mt-1 text-gray-700 whitespace-pre-wrap">{selectedTask.notes}</p>
+                      <p className="mt-1 text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
+                        {selectedTask.notes}
+                      </p>
                     </div>
                   )}
                   {permissions.canDeleteTasks(userRole) && (
                     <button
                       type="button"
                       onClick={() => handleDeleteTask(selectedTask)}
-                      className="mt-2 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100"
+                      className="mt-2 px-3 py-1.5 text-sm font-medium text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40"
                     >
                       Delete Task
                     </button>

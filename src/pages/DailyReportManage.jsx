@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { permissions } from '../utils/rolePermissions.js';
@@ -431,21 +432,25 @@ export default function DailyReportManage() {
     <div className="w-full space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
             Daily Report Management
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
             Track who submitted, view intern responses, and manage the Daily Report Template.
           </p>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-4 items-center border-b border-gray-200 mb-6 mt-2">
+      <div className="flex flex-wrap gap-4 items-center border-b border-gray-200 dark:border-gray-800 mb-6 mt-2">
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => setActiveTab('status')}
-            className={`px-4 py-2 rounded-t-lg text-sm font-medium ${activeTab === 'status' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'text-gray-600 hover:bg-gray-100'}`}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === 'status'
+                ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                : 'text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
             style={activeTab === 'status' ? { borderTopColor: PRIMARY } : {}}
           >
             Submission status
@@ -453,7 +458,11 @@ export default function DailyReportManage() {
           <button
             type="button"
             onClick={() => setActiveTab('questions')}
-            className={`px-4 py-2 rounded-t-lg text-sm font-medium ${activeTab === 'questions' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'text-gray-600 hover:bg-gray-100'}`}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              activeTab === 'questions'
+                ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                : 'text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
             style={activeTab === 'questions' ? { borderTopColor: PRIMARY } : {}}
           >
             Daily Report Template
@@ -462,7 +471,11 @@ export default function DailyReportManage() {
             <button
               type="button"
               onClick={() => setActiveTab('my')}
-              className={`px-4 py-2 rounded-t-lg text-sm font-medium ${activeTab === 'my' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                activeTab === 'my'
+                  ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                  : 'text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
               style={activeTab === 'my' ? { borderTopColor: PRIMARY } : {}}
             >
               My Daily Report
@@ -472,7 +485,11 @@ export default function DailyReportManage() {
             <button
               type="button"
               onClick={() => setActiveTab('team')}
-              className={`px-4 py-2 rounded-t-lg text-sm font-medium ${activeTab === 'team' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                activeTab === 'team'
+                  ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                  : 'text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
               style={activeTab === 'team' ? { borderTopColor: PRIMARY } : {}}
             >
               Team Daily Report
@@ -482,7 +499,11 @@ export default function DailyReportManage() {
             <button
               type="button"
               onClick={() => setActiveTab('attendanceReports')}
-              className={`px-4 py-2 rounded-t-lg text-sm font-medium ${activeTab === 'attendanceReports' ? 'bg-white border border-b-0 border-gray-200 -mb-px' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                activeTab === 'attendanceReports'
+                  ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                  : 'text-gray-600 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
               style={activeTab === 'attendanceReports' ? { borderTopColor: PRIMARY } : {}}
             >
               Attendance Reports
@@ -518,7 +539,7 @@ export default function DailyReportManage() {
         {activeTab === 'attendanceReports' && (
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700">Range:</span>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Range:</span>
               <select
                 value={attendanceReportRange}
                 onChange={(e) => {
@@ -530,14 +551,14 @@ export default function DailyReportManage() {
                   next.set('range', v);
                   setSearchParams(next, { replace: true });
                 }}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+                className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
               >
                 <option value="30">Last 30 days</option>
                 <option value="90">Last 90 days</option>
                 <option value="all">All time</option>
               </select>
             </div>
-            <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1">
+            <div className="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1">
               {[
                 { id: 'late', label: 'Lates' },
                 { id: 'leave', label: 'Leaves' },
@@ -555,7 +576,9 @@ export default function DailyReportManage() {
                     setSearchParams(next, { replace: true });
                   }}
                   className={`px-3 py-1.5 rounded-md text-sm font-semibold transition ${
-                    attendanceReportTab === t.id ? 'text-white' : 'text-gray-700 hover:bg-gray-50'
+                    attendanceReportTab === t.id
+                      ? 'text-white'
+                      : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800'
                   }`}
                   style={attendanceReportTab === t.id ? { backgroundColor: PRIMARY } : {}}
                 >
@@ -569,33 +592,33 @@ export default function DailyReportManage() {
 
       {activeTab === 'status' && (
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-3" style={{ color: PRIMARY }}>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3" style={{ color: PRIMARY }}>
             Submission status for {prettyDateOrFallback(selectedDate)}
           </h2>
-          <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-            <table className="w-full text-sm min-w-[640px]">
-              <thead className="bg-gray-50">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px] divide-y divide-gray-200 dark:divide-gray-800">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Date</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Name</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Department</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Role</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Time in</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Time out</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Submitted</th>
-                  <th className="text-right px-4 py-3 font-semibold text-gray-900">Action</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Date</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Name</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Department</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Role</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Time in</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Time out</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Submitted</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
                       Loading…
                     </td>
                   </tr>
                 ) : interns.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
                       No interns in the system.
                     </td>
                   </tr>
@@ -608,27 +631,37 @@ export default function DailyReportManage() {
                     const department = (ob?.department || '').trim() || '—';
                     const displayName = (u.full_name || ob?.name || u.email || '—').trim() || '—';
                     return (
-                      <tr key={u.id} className="border-t border-gray-100 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-700">{prettyDateOrFallback(selectedDate)}</td>
-                        <td className="px-4 py-3 font-medium text-gray-900">{displayName}</td>
-                        <td className="px-4 py-3 text-gray-600">{department}</td>
-                        <td className="px-4 py-3 text-gray-600">{getRoleDisplayName(u.role)}</td>
-                        <td className="px-4 py-3 text-gray-700">{submitted ? formatTime(sub.time_in) : '—'}</td>
-                        <td className="px-4 py-3 text-gray-700">{submitted ? formatTime(sub.time_out) : '—'}</td>
+                      <tr key={u.id} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                          {prettyDateOrFallback(selectedDate)}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                          {displayName}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{department}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                          {getRoleDisplayName(u.role)}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                          {submitted ? formatTime(sub.time_in) : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                          {submitted ? formatTime(sub.time_out) : '—'}
+                        </td>
                         <td className="px-4 py-3">
                           {submitted ? (
-                            <span className="inline-flex items-center gap-1.5 text-green-700 font-medium">
-                              <span className="w-2 h-2 rounded-full bg-green-500" />
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-800 dark:text-green-300 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded-full">
+                              <span className="w-2 h-2 rounded-full bg-green-500 dark:bg-green-400" />
                               Yes
                               {sub.submitted_at && (
-                                <span className="text-gray-500 font-normal text-xs">
+                                <span className="text-gray-500 dark:text-gray-400 font-normal text-[11px]">
                                   {new Date(sub.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                               )}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 text-amber-700">
-                              <span className="w-2 h-2 rounded-full bg-amber-500" />
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-full">
+                              <span className="w-2 h-2 rounded-full bg-amber-500 dark:bg-amber-400" />
                               No
                             </span>
                           )}
@@ -638,7 +671,7 @@ export default function DailyReportManage() {
                             type="button"
                             onClick={() => openResponse(u.id)}
                             disabled={!submitted}
-                            className="px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                            className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium text-white disabled:opacity-50 shadow-sm"
                             style={{ backgroundColor: PRIMARY }}
                           >
                             View
@@ -663,17 +696,22 @@ export default function DailyReportManage() {
               value={newQuestionText}
               onChange={(e) => setNewQuestionText(e.target.value)}
               placeholder="New question text"
-              className="flex-1 min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+              className="flex-1 min-w-[200px] h-10 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
             />
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input type="checkbox" checked={newQuestionRequired} onChange={(e) => setNewQuestionRequired(e.target.checked)} />
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+              <input
+                type="checkbox"
+                checked={newQuestionRequired}
+                onChange={(e) => setNewQuestionRequired(e.target.checked)}
+                className="rounded border-gray-300 dark:border-gray-700 text-[#6795BE] focus:ring-[#6795BE]"
+              />
               Required
             </label>
             <button
               type="button"
               onClick={addQuestion}
               disabled={savingQuestion || !newQuestionText.trim()}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+              className="h-10 px-4 rounded-lg text-sm font-medium text-white disabled:opacity-50 shadow-sm"
               style={{ backgroundColor: PRIMARY }}
             >
               Add question
@@ -681,7 +719,10 @@ export default function DailyReportManage() {
           </div>
           <ul className="space-y-3">
             {questions.map((q, index) => (
-              <li key={q.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white">
+              <li
+                key={q.id}
+                className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+              >
                 {editingId === q.id ? (
                   <>
                     <input
@@ -689,24 +730,39 @@ export default function DailyReportManage() {
                       defaultValue={q.question_text}
                       onBlur={(e) => updateQuestion(q.id, 'question_text', e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && (e.target.blur(), setEditingId(null))}
-                      className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
+                      className="flex-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                       autoFocus
                     />
-                    <button type="button" onClick={() => setEditingId(null)} className="text-sm text-gray-600">
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(null)}
+                      className="text-sm text-gray-600 dark:text-gray-200 hover:underline"
+                    >
                       Done
                     </button>
                   </>
                 ) : (
                   <>
-                    <span className="flex-1 text-gray-900">
+                    <span className="flex-1 text-gray-900 dark:text-gray-100">
                       <span className="font-semibold mr-2">{index + 1}.</span>
                       {q.question_text}
                     </span>
-                    <span className="text-xs text-gray-500">{q.required ? 'Required' : 'Optional'}</span>
-                    <button type="button" onClick={() => setEditingId(q.id)} className="text-sm hover:underline" style={{ color: PRIMARY }}>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {q.required ? 'Required' : 'Optional'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(q.id)}
+                      className="text-sm hover:underline"
+                      style={{ color: PRIMARY }}
+                    >
                       Edit
                     </button>
-                    <button type="button" onClick={() => deleteQuestion(q.id)} className="text-sm text-red-600 hover:underline">
+                    <button
+                      type="button"
+                      onClick={() => deleteQuestion(q.id)}
+                      className="text-sm text-red-600 dark:text-red-300 hover:underline"
+                    >
                       Remove
                     </button>
                   </>
@@ -717,15 +773,18 @@ export default function DailyReportManage() {
         </div>
       )}
 
-      {responseOpen && selectedIntern && selectedSubmission && (
-        <div className="fixed inset-0 z-[10002] bg-black/60 backdrop-blur-sm p-4 flex items-center justify-center">
-          <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+      {responseOpen &&
+        selectedIntern &&
+        selectedSubmission &&
+        createPortal(
+          <div className="fixed inset-0 z-[10000] bg-black/20 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="bg-white dark:bg-gray-900 w-full max-w-3xl rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="text-lg font-semibold text-gray-900 truncate" style={{ color: PRIMARY }}>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate" style={{ color: PRIMARY }}>
                   {selectedIntern.full_name || selectedIntern.email || selectedIntern.id}
                 </h3>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
                   Report date: <span className="font-medium">{prettyDateOrFallback(selectedDate)}</span>
                   {selectedSubmission.submitted_at ? (
                     <>
@@ -740,7 +799,7 @@ export default function DailyReportManage() {
               <button
                 type="button"
                 onClick={closeResponse}
-                className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
               >
                 Close
               </button>
@@ -749,23 +808,31 @@ export default function DailyReportManage() {
             <div className="p-5 space-y-6 max-h-[75vh] overflow-y-auto">
               {/* 1. Attendance */}
               <div className="space-y-2">
-                <h4 className="text-base font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
                   1. {SECTION_HEADINGS[0]}
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Time IN</p>
-                    <p className="mt-1 text-sm text-gray-900">{formatTime(selectedSubmission.time_in)}</p>
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                      Time IN
+                    </p>
+                    <p className="mt-1 text-sm text-gray-900 dark:text-gray-100">
+                      {formatTime(selectedSubmission.time_in)}
+                    </p>
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Time OUT</p>
-                    <p className="mt-1 text-sm text-gray-900">{formatTime(selectedSubmission.time_out)}</p>
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                      Time OUT
+                    </p>
+                    <p className="mt-1 text-sm text-gray-900 dark:text-gray-100">
+                      {formatTime(selectedSubmission.time_out)}
+                    </p>
                   </div>
                 </div>
                 {questions[0] ? (
-                  <div className="rounded-lg border border-gray-200 bg-white p-3">
-                    <p className="text-sm font-medium text-gray-900 mb-1">Notes</p>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">Notes</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
                       {(selectedSubmission.answers || {})[questions[0].id] || '—'}
                     </p>
                   </div>
@@ -775,12 +842,12 @@ export default function DailyReportManage() {
               {/* 2.–7 */}
               {questions.slice(1, 7).map((q, idx) => (
                 <div key={q.id} className="space-y-2">
-                  <h4 className="text-base font-semibold text-gray-900" style={{ color: PRIMARY }}>
+                  <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
                     {idx + 2}. {SECTION_HEADINGS[idx + 1] || 'Section'}
                   </h4>
-                  <p className="text-xs text-gray-500">{q.question_text}</p>
-                  <div className="rounded-lg border border-gray-200 bg-white p-3">
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{q.question_text}</p>
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+                    <p className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
                       {(selectedSubmission.answers || {})[q.id] || '—'}
                     </p>
                   </div>
@@ -788,8 +855,8 @@ export default function DailyReportManage() {
               ))}
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+        document.body)}
 
       {activeTab === 'my' && showMyFormTab && user && (
         <div className="mt-4">
@@ -800,7 +867,7 @@ export default function DailyReportManage() {
       {activeTab === 'team' && showTeamReportTab && teamReport && (
         <div className="space-y-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
               IT TEAM LEAD ASSISTANT DAILY REPORT
             </h2>
             {isEditingTeamReport ? (
@@ -808,7 +875,7 @@ export default function DailyReportManage() {
                 type="button"
                 onClick={saveTeamReport}
                 disabled={savingTeamReport}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50 shadow-sm"
                 style={{ backgroundColor: PRIMARY }}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -820,7 +887,7 @@ export default function DailyReportManage() {
               <button
                 type="button"
                 onClick={() => setIsEditingTeamReport(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white shadow-sm"
                 style={{ backgroundColor: PRIMARY }}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -832,10 +899,12 @@ export default function DailyReportManage() {
           </div>
 
           {/* Header: Prepared By */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
             <div className="grid grid-cols-1 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Prepared by</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                  Prepared by
+                </label>
                 {isEditingTeamReport ? (
                   <input
                     type="text"
@@ -843,30 +912,38 @@ export default function DailyReportManage() {
                     onChange={(e) =>
                       setTeamReport((prev) => ({ ...prev, prepared_by: e.target.value }))
                     }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                     placeholder="Enter name"
                   />
                 ) : (
-                  <p className="text-sm text-gray-900 py-2">{teamReport.prepared_by || '—'}</p>
+                  <p className="text-sm text-gray-900 dark:text-gray-100 py-2">
+                    {teamReport.prepared_by || '—'}
+                  </p>
                 )}
               </div>
             </div>
           </div>
 
           {/* Tasks Table */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-3">Tasks</h3>
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">Tasks</h3>
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Onboarding and Offboarding Interns</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Google Search Console (GSC) Crawling</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">WordPress Plugins Updates</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">
+                    Onboarding and Offboarding Interns
+                  </th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">
+                    Google Search Console (GSC) Crawling
+                  </th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">
+                    WordPress Plugins Updates
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td className="px-4 py-2 border-t border-gray-200">
+                  <td className="px-4 py-2 border-t border-gray-200 dark:border-gray-800">
                     {isEditingTeamReport ? (
                       <input
                         type="text"
@@ -877,14 +954,16 @@ export default function DailyReportManage() {
                             tasks: { ...prev.tasks, onboarding_offboarding: e.target.value },
                           }))
                         }
-                        className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                        className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                         placeholder="Enter name"
                       />
                     ) : (
-                      <p className="text-sm text-gray-900 py-1">{teamReport.tasks?.onboarding_offboarding || '—'}</p>
+                      <p className="text-sm text-gray-900 dark:text-gray-100 py-1">
+                        {teamReport.tasks?.onboarding_offboarding || '—'}
+                      </p>
                     )}
                   </td>
-                  <td className="px-4 py-2 border-t border-gray-200">
+                  <td className="px-4 py-2 border-t border-gray-200 dark:border-gray-800">
                     {isEditingTeamReport ? (
                       <input
                         type="text"
@@ -895,14 +974,16 @@ export default function DailyReportManage() {
                             tasks: { ...prev.tasks, gsc_crawling: e.target.value },
                           }))
                         }
-                        className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                        className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                         placeholder="Enter name"
                       />
                     ) : (
-                      <p className="text-sm text-gray-900 py-1">{teamReport.tasks?.gsc_crawling || '—'}</p>
+                      <p className="text-sm text-gray-900 dark:text-gray-100 py-1">
+                        {teamReport.tasks?.gsc_crawling || '—'}
+                      </p>
                     )}
                   </td>
-                  <td className="px-4 py-2 border-t border-gray-200">
+                  <td className="px-4 py-2 border-t border-gray-200 dark:border-gray-800">
                     {isEditingTeamReport ? (
                       <input
                         type="text"
@@ -913,11 +994,13 @@ export default function DailyReportManage() {
                             tasks: { ...prev.tasks, wp_plugins_updates: e.target.value },
                           }))
                         }
-                        className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                        className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                         placeholder="Enter name"
                       />
                     ) : (
-                      <p className="text-sm text-gray-900 py-1">{teamReport.tasks?.wp_plugins_updates || '—'}</p>
+                      <p className="text-sm text-gray-900 dark:text-gray-100 py-1">
+                        {teamReport.tasks?.wp_plugins_updates || '—'}
+                      </p>
                     )}
                   </td>
                 </tr>
@@ -926,11 +1009,11 @@ export default function DailyReportManage() {
           </div>
 
           {/* Old Domains Plugins Table */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 1. List of Updated Plugins for migrated old domains as of{' '}
-                <span className="font-normal text-gray-700">{formatDateLong(teamReportDate)}</span>
+                <span className="font-normal text-gray-700 dark:text-gray-300">{formatDateLong(teamReportDate)}</span>
               </h3>
               {isEditingTeamReport && (
                 <button
@@ -939,7 +1022,7 @@ export default function DailyReportManage() {
                     const updated = [...(teamReport.old_domains_plugins || []), { country: '', country_status: '', country_reason: '', plugins_updated: '', plugin_status: '', notes: '' }];
                     setTeamReport((prev) => ({ ...prev, old_domains_plugins: updated }));
                   }}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium text-white"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium text-white shadow-sm"
                   style={{ backgroundColor: PRIMARY }}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -950,27 +1033,29 @@ export default function DailyReportManage() {
               )}
             </div>
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Country</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Status</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Reason</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Plugins Updated</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Plugin Status</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Notes/Reason</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Country</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Status</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Reason</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Plugins Updated</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Plugin Status</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Notes/Reason</th>
                   {isEditingTeamReport && (
-                    <th className="px-4 py-2 text-left font-semibold text-gray-900 w-20">Action</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 w-20">Action</th>
                   )}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                 {(() => {
                   const plugins = teamReport.old_domains_plugins || [];
                   const colSpan = isEditingTeamReport ? 7 : 6;
                   if (plugins.length === 0 && !isEditingTeamReport) {
                     return (
                       <tr>
-                        <td colSpan={colSpan} className="px-4 py-4 text-center text-gray-500 text-sm">No data</td>
+                        <td colSpan={colSpan} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                          No data
+                        </td>
                       </tr>
                     );
                   }
@@ -986,11 +1071,11 @@ export default function DailyReportManage() {
                       const idx = plugin.originalIndex;
                       
                       return (
-                        <tr key={`old-${idx}`} className="border-t border-gray-200">
+                        <tr key={`old-${idx}`} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50 font-medium text-gray-900"
+                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40 font-medium text-gray-900 dark:text-gray-100"
                               style={{ verticalAlign: 'top' }}
                             >
                               <div className="flex items-start gap-2">
@@ -1006,7 +1091,7 @@ export default function DailyReportManage() {
                                         });
                                         setTeamReport((prev) => ({ ...prev, old_domains_plugins: updated }));
                                       }}
-                                      className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm font-medium"
+                                      className="flex-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm font-medium"
                                       placeholder="Enter country"
                                     />
                                     {countryPlugins.length > 0 && (
@@ -1027,7 +1112,9 @@ export default function DailyReportManage() {
                                     )}
                                   </>
                                 ) : (
-                                  <p className="text-sm font-medium py-1">{country === 'Unspecified' ? '—' : country}</p>
+                                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 py-1">
+                                    {country === 'Unspecified' ? '—' : country}
+                                  </p>
                                 )}
                               </div>
                             </td>
@@ -1035,7 +1122,7 @@ export default function DailyReportManage() {
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50"
+                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40"
                               style={{ verticalAlign: 'top' }}
                             >
                               {isEditingTeamReport ? (
@@ -1051,21 +1138,21 @@ export default function DailyReportManage() {
                                     });
                                     setTeamReport((prev) => ({ ...prev, old_domains_plugins: updated }));
                                   }}
-                                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                                  className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                                 >
                                   <option value="">Select status</option>
                                   <option value="working">Working</option>
                                   <option value="not working">Not Working</option>
                                 </select>
                               ) : (
-                                <p className="text-sm text-gray-900 py-1">{plugin.country_status || '—'}</p>
+                                <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{plugin.country_status || '—'}</p>
                               )}
                             </td>
                           )}
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50"
+                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40"
                               style={{ verticalAlign: 'top' }}
                             >
                               {isEditingTeamReport ? (
@@ -1080,14 +1167,14 @@ export default function DailyReportManage() {
                                       });
                                       setTeamReport((prev) => ({ ...prev, old_domains_plugins: updated }));
                                     }}
-                                    className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                                    className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                                     placeholder="Enter reason"
                                   />
                                 ) : (
-                                  <p className="text-sm text-gray-500 py-1">—</p>
+                                  <p className="text-sm text-gray-500 dark:text-gray-400 py-1">—</p>
                                 )
                               ) : (
-                                <p className="text-sm text-gray-900 py-1">{plugin.country_reason || '—'}</p>
+                                <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{plugin.country_reason || '—'}</p>
                               )}
                             </td>
                           )}
@@ -1101,11 +1188,11 @@ export default function DailyReportManage() {
                                   updated[idx] = { ...updated[idx], plugins_updated: e.target.value };
                                   setTeamReport((prev) => ({ ...prev, old_domains_plugins: updated }));
                                 }}
-                                className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                                className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                                 placeholder="Enter plugin name"
                               />
                             ) : (
-                              <p className="text-sm text-gray-900 py-1">{plugin.plugins_updated || '—'}</p>
+                              <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{plugin.plugins_updated || '—'}</p>
                             )}
                           </td>
                           <td className="px-4 py-2">
@@ -1117,14 +1204,14 @@ export default function DailyReportManage() {
                                   updated[idx] = { ...updated[idx], plugin_status: e.target.value };
                                   setTeamReport((prev) => ({ ...prev, old_domains_plugins: updated }));
                                 }}
-                                className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                                className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                               >
                                 <option value="">Select status</option>
                                 <option value="Fail">Fail</option>
                                 <option value="Success">Success</option>
                               </select>
                             ) : (
-                              <p className="text-sm text-gray-900 py-1">{plugin.plugin_status || '—'}</p>
+                              <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{plugin.plugin_status || '—'}</p>
                             )}
                           </td>
                           <td className="px-4 py-2">
@@ -1137,11 +1224,11 @@ export default function DailyReportManage() {
                                   updated[idx] = { ...updated[idx], notes: e.target.value };
                                   setTeamReport((prev) => ({ ...prev, old_domains_plugins: updated }));
                                 }}
-                                className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                                className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                                 placeholder="Enter notes"
                               />
                             ) : (
-                              <p className="text-sm text-gray-900 py-1">{plugin.notes || '—'}</p>
+                              <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{plugin.notes || '—'}</p>
                             )}
                           </td>
                           {isEditingTeamReport && (
@@ -1152,7 +1239,7 @@ export default function DailyReportManage() {
                                   const updated = plugins.filter((_, i) => i !== idx);
                                   setTeamReport((prev) => ({ ...prev, old_domains_plugins: updated }));
                                 }}
-                                className="text-red-600 hover:text-red-800 text-sm"
+                                className="text-red-600 dark:text-red-300 hover:underline text-sm"
                               >
                                 Remove
                               </button>
@@ -1168,11 +1255,11 @@ export default function DailyReportManage() {
           </div>
 
           {/* New Domains Plugins Table */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 2. List of Updated Plugins for migrated new domains as of{' '}
-                <span className="font-normal text-gray-700">{formatDateLong(teamReportDate)}</span>
+                <span className="font-normal text-gray-700 dark:text-gray-300">{formatDateLong(teamReportDate)}</span>
               </h3>
               {isEditingTeamReport && (
                 <button
@@ -1181,7 +1268,7 @@ export default function DailyReportManage() {
                     const updated = [...(teamReport.new_domains_plugins || []), { country: '', country_status: '', country_reason: '', plugins_updated: '', plugin_status: '', notes: '' }];
                     setTeamReport((prev) => ({ ...prev, new_domains_plugins: updated }));
                   }}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium text-white"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium text-white shadow-sm"
                   style={{ backgroundColor: PRIMARY }}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1192,27 +1279,29 @@ export default function DailyReportManage() {
               )}
             </div>
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Country</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Status</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Reason</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Plugins Updated</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Plugin Status</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Notes/Reason</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Country</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Status</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Reason</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Plugins Updated</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Plugin Status</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Notes/Reason</th>
                   {isEditingTeamReport && (
-                    <th className="px-4 py-2 text-left font-semibold text-gray-900 w-20">Action</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 w-20">Action</th>
                   )}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                 {(() => {
                   const plugins = teamReport.new_domains_plugins || [];
                   const colSpan = isEditingTeamReport ? 7 : 6;
                   if (plugins.length === 0 && !isEditingTeamReport) {
                     return (
                       <tr>
-                        <td colSpan={colSpan} className="px-4 py-4 text-center text-gray-500 text-sm">No data</td>
+                        <td colSpan={colSpan} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                          No data
+                        </td>
                       </tr>
                     );
                   }
@@ -1228,11 +1317,11 @@ export default function DailyReportManage() {
                       const idx = plugin.originalIndex;
                       
                       return (
-                        <tr key={`new-${idx}`} className="border-t border-gray-200">
+                        <tr key={`new-${idx}`} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50 font-medium text-gray-900"
+                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40 font-medium text-gray-900 dark:text-gray-100"
                               style={{ verticalAlign: 'top' }}
                             >
                               <div className="flex items-start gap-2">
@@ -1248,7 +1337,7 @@ export default function DailyReportManage() {
                                         });
                                         setTeamReport((prev) => ({ ...prev, new_domains_plugins: updated }));
                                       }}
-                                      className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm font-medium"
+                                      className="flex-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm font-medium"
                                       placeholder="Enter country"
                                     />
                                     {countryPlugins.length > 0 && (
@@ -1269,7 +1358,9 @@ export default function DailyReportManage() {
                                     )}
                                   </>
                                 ) : (
-                                  <p className="text-sm font-medium py-1">{country === 'Unspecified' ? '—' : country}</p>
+                                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 py-1">
+                                    {country === 'Unspecified' ? '—' : country}
+                                  </p>
                                 )}
                               </div>
                             </td>
@@ -1277,7 +1368,7 @@ export default function DailyReportManage() {
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50"
+                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40"
                               style={{ verticalAlign: 'top' }}
                             >
                               {isEditingTeamReport ? (
@@ -1293,21 +1384,21 @@ export default function DailyReportManage() {
                                     });
                                     setTeamReport((prev) => ({ ...prev, new_domains_plugins: updated }));
                                   }}
-                                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                                  className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                                 >
                                   <option value="">Select status</option>
                                   <option value="working">Working</option>
                                   <option value="not working">Not Working</option>
                                 </select>
                               ) : (
-                                <p className="text-sm text-gray-900 py-1">{plugin.country_status || '—'}</p>
+                                <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{plugin.country_status || '—'}</p>
                               )}
                             </td>
                           )}
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50"
+                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40"
                               style={{ verticalAlign: 'top' }}
                             >
                               {isEditingTeamReport ? (
@@ -1322,14 +1413,14 @@ export default function DailyReportManage() {
                                       });
                                       setTeamReport((prev) => ({ ...prev, new_domains_plugins: updated }));
                                     }}
-                                    className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                                    className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                                     placeholder="Enter reason"
                                   />
                                 ) : (
-                                  <p className="text-sm text-gray-500 py-1">—</p>
+                                  <p className="text-sm text-gray-500 dark:text-gray-400 py-1">—</p>
                                 )
                               ) : (
-                                <p className="text-sm text-gray-900 py-1">{plugin.country_reason || '—'}</p>
+                                <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{plugin.country_reason || '—'}</p>
                               )}
                             </td>
                           )}
@@ -1343,11 +1434,11 @@ export default function DailyReportManage() {
                                   updated[idx] = { ...updated[idx], plugins_updated: e.target.value };
                                   setTeamReport((prev) => ({ ...prev, new_domains_plugins: updated }));
                                 }}
-                                className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                                className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                                 placeholder="Enter plugin name"
                               />
                             ) : (
-                              <p className="text-sm text-gray-900 py-1">{plugin.plugins_updated || '—'}</p>
+                              <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{plugin.plugins_updated || '—'}</p>
                             )}
                           </td>
                           <td className="px-4 py-2">
@@ -1359,14 +1450,14 @@ export default function DailyReportManage() {
                                   updated[idx] = { ...updated[idx], plugin_status: e.target.value };
                                   setTeamReport((prev) => ({ ...prev, new_domains_plugins: updated }));
                                 }}
-                                className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                                className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                               >
                                 <option value="">Select status</option>
                                 <option value="Fail">Fail</option>
                                 <option value="Success">Success</option>
                               </select>
                             ) : (
-                              <p className="text-sm text-gray-900 py-1">{plugin.plugin_status || '—'}</p>
+                              <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{plugin.plugin_status || '—'}</p>
                             )}
                           </td>
                           <td className="px-4 py-2">
@@ -1379,11 +1470,11 @@ export default function DailyReportManage() {
                                   updated[idx] = { ...updated[idx], notes: e.target.value };
                                   setTeamReport((prev) => ({ ...prev, new_domains_plugins: updated }));
                                 }}
-                                className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                                className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                                 placeholder="Enter notes"
                               />
                             ) : (
-                              <p className="text-sm text-gray-900 py-1">{plugin.notes || '—'}</p>
+                              <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{plugin.notes || '—'}</p>
                             )}
                           </td>
                           <td className="px-4 py-2">
@@ -1394,7 +1485,7 @@ export default function DailyReportManage() {
                                   const updated = plugins.filter((_, i) => i !== idx);
                                   setTeamReport((prev) => ({ ...prev, new_domains_plugins: updated }));
                                 }}
-                                className="text-red-600 hover:text-red-800 text-sm"
+                                className="text-red-600 dark:text-red-300 hover:underline text-sm"
                               >
                                 Remove
                               </button>
@@ -1410,27 +1501,29 @@ export default function DailyReportManage() {
           </div>
 
           {/* Course Price Edits Progress */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-3">Course List Price Edits Progress</h3>
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">Course List Price Edits Progress</h3>
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Country Name</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Status</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Notes</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Country Name</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Status</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Notes</th>
                   {isEditingTeamReport && (
-                    <th className="px-4 py-2 text-left font-semibold text-gray-900 w-20">Action</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 w-20">Action</th>
                   )}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                 {(teamReport.course_price_edits || []).length === 0 && !isEditingTeamReport ? (
                   <tr>
-                    <td colSpan={isEditingTeamReport ? 4 : 3} className="px-4 py-4 text-center text-gray-500 text-sm">No data</td>
+                    <td colSpan={isEditingTeamReport ? 4 : 3} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                      No data
+                    </td>
                   </tr>
                 ) : (
                   (teamReport.course_price_edits || []).map((row, idx) => (
-                    <tr key={idx} className="border-t border-gray-200">
+                    <tr key={idx} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
                       <td className="px-4 py-2">
                         {isEditingTeamReport ? (
                           <input
@@ -1441,10 +1534,10 @@ export default function DailyReportManage() {
                               updated[idx] = { ...updated[idx], country_name: e.target.value };
                               setTeamReport((prev) => ({ ...prev, course_price_edits: updated }));
                             }}
-                            className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                           />
                         ) : (
-                          <p className="text-sm text-gray-900 py-1">{row.country_name || '—'}</p>
+                          <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.country_name || '—'}</p>
                         )}
                       </td>
                       <td className="px-4 py-2">
@@ -1457,10 +1550,10 @@ export default function DailyReportManage() {
                               updated[idx] = { ...updated[idx], status: e.target.value };
                               setTeamReport((prev) => ({ ...prev, course_price_edits: updated }));
                             }}
-                            className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                           />
                         ) : (
-                          <p className="text-sm text-gray-900 py-1">{row.status || '—'}</p>
+                          <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.status || '—'}</p>
                         )}
                       </td>
                       <td className="px-4 py-2">
@@ -1473,10 +1566,10 @@ export default function DailyReportManage() {
                               updated[idx] = { ...updated[idx], notes: e.target.value };
                               setTeamReport((prev) => ({ ...prev, course_price_edits: updated }));
                             }}
-                            className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                           />
                         ) : (
-                          <p className="text-sm text-gray-900 py-1">{row.notes || '—'}</p>
+                          <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.notes || '—'}</p>
                         )}
                       </td>
                       <td className="px-4 py-2">
@@ -1487,7 +1580,7 @@ export default function DailyReportManage() {
                               const updated = (teamReport.course_price_edits || []).filter((_, i) => i !== idx);
                               setTeamReport((prev) => ({ ...prev, course_price_edits: updated }));
                             }}
-                            className="text-red-600 hover:text-red-800 text-sm"
+                            className="text-red-600 dark:text-red-300 hover:underline text-sm"
                           >
                             Remove
                           </button>
@@ -1517,26 +1610,30 @@ export default function DailyReportManage() {
           </div>
 
           {/* Notable Tasks/Contributions */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-3">IT Team Leads Assistants Notable Tasks/Contribution</h3>
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              IT Team Leads Assistants Notable Tasks/Contribution
+            </h3>
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Member</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900">Task/Contribution</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Member</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Task/Contribution</th>
                   {isEditingTeamReport && (
-                    <th className="px-4 py-2 text-left font-semibold text-gray-900 w-20">Action</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 w-20">Action</th>
                   )}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                 {(teamReport.notable_tasks || []).length === 0 && !isEditingTeamReport ? (
                   <tr>
-                    <td colSpan={isEditingTeamReport ? 3 : 2} className="px-4 py-4 text-center text-gray-500 text-sm">No data</td>
+                    <td colSpan={isEditingTeamReport ? 3 : 2} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                      No data
+                    </td>
                   </tr>
                 ) : (
                   (teamReport.notable_tasks || []).map((row, idx) => (
-                    <tr key={idx} className="border-t border-gray-200">
+                    <tr key={idx} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
                       <td className="px-4 py-2">
                         {isEditingTeamReport ? (
                           <input
@@ -1547,10 +1644,10 @@ export default function DailyReportManage() {
                               updated[idx] = { ...updated[idx], member: e.target.value };
                               setTeamReport((prev) => ({ ...prev, notable_tasks: updated }));
                             }}
-                            className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                           />
                         ) : (
-                          <p className="text-sm text-gray-900 py-1">{row.member || '—'}</p>
+                          <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.member || '—'}</p>
                         )}
                       </td>
                       <td className="px-4 py-2">
@@ -1563,10 +1660,10 @@ export default function DailyReportManage() {
                               updated[idx] = { ...updated[idx], task_contribution: e.target.value };
                               setTeamReport((prev) => ({ ...prev, notable_tasks: updated }));
                             }}
-                            className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                           />
                         ) : (
-                          <p className="text-sm text-gray-900 py-1">{row.task_contribution || '—'}</p>
+                          <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.task_contribution || '—'}</p>
                         )}
                       </td>
                       <td className="px-4 py-2">
@@ -1577,7 +1674,7 @@ export default function DailyReportManage() {
                               const updated = (teamReport.notable_tasks || []).filter((_, i) => i !== idx);
                               setTeamReport((prev) => ({ ...prev, notable_tasks: updated }));
                             }}
-                            className="text-red-600 hover:text-red-800 text-sm"
+                            className="text-red-600 dark:text-red-300 hover:underline text-sm"
                           >
                             Remove
                           </button>
@@ -1606,23 +1703,23 @@ export default function DailyReportManage() {
             </table>
           </div>
 
-          <hr className="my-6 border-gray-300" />
+          <hr className="my-6 border-gray-300 dark:border-gray-800" />
 
           {/* Monitoring Team Updates */}
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-gray-900">Monitoring Team Updates</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Monitoring Team Updates</h3>
 
             {/* Today's Attendance */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <h4 className="text-base font-semibold text-gray-900 mb-3">Today's Attendance</h4>
+            <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
+              <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">Today's Attendance</h4>
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-900">Counts</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-900">Status</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Counts</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Status</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                   {[
                     { key: 'late', label: 'Late' },
                     { key: 'notable_late', label: 'Notable Late' },
@@ -1630,7 +1727,7 @@ export default function DailyReportManage() {
                     { key: 'half_day', label: 'Half Day' },
                     { key: 'absent', label: 'Absent' },
                   ].map(({ key, label }) => (
-                    <tr key={key} className="border-t border-gray-200">
+                    <tr key={key} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
                       <td className="px-4 py-2">
                         {isEditingTeamReport ? (
                           <input
@@ -1646,13 +1743,13 @@ export default function DailyReportManage() {
                                 },
                               }))
                             }
-                            className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                           />
                         ) : (
-                          <p className="text-sm text-gray-900 py-1">{teamReport.attendance_counts?.[key] || 0}</p>
+                          <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{teamReport.attendance_counts?.[key] || 0}</p>
                         )}
                       </td>
-                      <td className="px-4 py-2 text-gray-700">{label}</td>
+                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{label}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1660,11 +1757,11 @@ export default function DailyReportManage() {
             </div>
 
             {/* Reviews */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <h4 className="text-base font-semibold text-gray-900 mb-3">Knowles Training Institute Reviews</h4>
+            <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
+              <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">Knowles Training Institute Reviews</h4>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <label className="text-sm text-gray-700 w-32">Google:</label>
+                  <label className="text-sm text-gray-700 dark:text-gray-300 w-32">Google:</label>
                   {isEditingTeamReport ? (
                     <>
                       <input
@@ -1677,16 +1774,18 @@ export default function DailyReportManage() {
                             reviews: { ...prev.reviews, google: parseInt(e.target.value) || 0 },
                           }))
                         }
-                        className="rounded border border-gray-300 px-2 py-1 text-sm"
+                        className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                       />
-                      <span className="text-sm text-gray-600">reviews</span>
+                      <span className="text-sm text-gray-600 dark:text-gray-300">reviews</span>
                     </>
                   ) : (
-                    <span className="text-sm text-gray-900">There are now {teamReport.reviews?.google || 0} Google reviews.</span>
+                    <span className="text-sm text-gray-900 dark:text-gray-100">
+                      There are now {teamReport.reviews?.google || 0} Google reviews.
+                    </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-sm text-gray-700 w-32">Glassdoor:</label>
+                  <label className="text-sm text-gray-700 dark:text-gray-300 w-32">Glassdoor:</label>
                   {isEditingTeamReport ? (
                     <>
                       <input
@@ -1699,16 +1798,18 @@ export default function DailyReportManage() {
                             reviews: { ...prev.reviews, glassdoor: parseInt(e.target.value) || 0 },
                           }))
                         }
-                        className="rounded border border-gray-300 px-2 py-1 text-sm"
+                        className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                       />
-                      <span className="text-sm text-gray-600">reviews</span>
+                      <span className="text-sm text-gray-600 dark:text-gray-300">reviews</span>
                     </>
                   ) : (
-                    <span className="text-sm text-gray-900">There are now {teamReport.reviews?.glassdoor || 0} Glassdoor reviews.</span>
+                    <span className="text-sm text-gray-900 dark:text-gray-100">
+                      There are now {teamReport.reviews?.glassdoor || 0} Glassdoor reviews.
+                    </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-sm text-gray-700 w-32">Trustpilot:</label>
+                  <label className="text-sm text-gray-700 dark:text-gray-300 w-32">Trustpilot:</label>
                   {isEditingTeamReport ? (
                     <>
                       <input
@@ -1721,44 +1822,48 @@ export default function DailyReportManage() {
                             reviews: { ...prev.reviews, trustpilot: parseInt(e.target.value) || 0 },
                           }))
                         }
-                        className="rounded border border-gray-300 px-2 py-1 text-sm"
+                        className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                       />
-                      <span className="text-sm text-gray-600">reviews</span>
+                      <span className="text-sm text-gray-600 dark:text-gray-300">reviews</span>
                     </>
                   ) : (
-                    <span className="text-sm text-gray-900">There are now {teamReport.reviews?.trustpilot || 0} Trustpilot reviews.</span>
+                    <span className="text-sm text-gray-900 dark:text-gray-100">
+                      There are now {teamReport.reviews?.trustpilot || 0} Trustpilot reviews.
+                    </span>
                   )}
                 </div>
               </div>
             </div>
 
             {/* Interns Remaining Hours */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
               <div className="mb-3">
-                <h4 className="text-base font-semibold text-gray-900">
+                <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                   List of Interns' Remaining Hours (Less than 100){' '}
-                  <span className="font-normal text-gray-700">({formatDateLong(teamReportDate)})</span>
+                  <span className="font-normal text-gray-700 dark:text-gray-300">({formatDateLong(teamReportDate)})</span>
                 </h4>
               </div>
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-900">List Of Interns</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-900">Hours Remaining</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-900">Designation</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">List Of Interns</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Hours Remaining</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Designation</th>
                     {isEditingTeamReport && (
-                      <th className="px-4 py-2 text-left font-semibold text-gray-900 w-20">Action</th>
+                      <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 w-20">Action</th>
                     )}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                   {(teamReport.interns_remaining_hours || []).length === 0 && !isEditingTeamReport ? (
                     <tr>
-                      <td colSpan={isEditingTeamReport ? 4 : 3} className="px-4 py-4 text-center text-gray-500 text-sm">No data</td>
+                      <td colSpan={isEditingTeamReport ? 4 : 3} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                        No data
+                      </td>
                     </tr>
                   ) : (
                     (teamReport.interns_remaining_hours || []).map((row, idx) => (
-                      <tr key={idx} className="border-t border-gray-200">
+                      <tr key={idx} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
                         <td className="px-4 py-2">
                           {isEditingTeamReport ? (
                             <input
@@ -1769,10 +1874,10 @@ export default function DailyReportManage() {
                                 updated[idx] = { ...updated[idx], intern_name: e.target.value };
                                 setTeamReport((prev) => ({ ...prev, interns_remaining_hours: updated }));
                               }}
-                              className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                              className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                             />
                           ) : (
-                            <p className="text-sm text-gray-900 py-1">{row.intern_name || '—'}</p>
+                            <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.intern_name || '—'}</p>
                           )}
                         </td>
                         <td className="px-4 py-2">
@@ -1787,10 +1892,10 @@ export default function DailyReportManage() {
                                 updated[idx] = { ...updated[idx], hours_remaining: parseFloat(e.target.value) || 0 };
                                 setTeamReport((prev) => ({ ...prev, interns_remaining_hours: updated }));
                               }}
-                              className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                              className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                             />
                           ) : (
-                            <p className="text-sm text-gray-900 py-1">{row.hours_remaining || '—'}</p>
+                            <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.hours_remaining || '—'}</p>
                           )}
                         </td>
                         <td className="px-4 py-2">
@@ -1803,10 +1908,10 @@ export default function DailyReportManage() {
                                 updated[idx] = { ...updated[idx], designation: e.target.value };
                                 setTeamReport((prev) => ({ ...prev, interns_remaining_hours: updated }));
                               }}
-                              className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                              className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                             />
                           ) : (
-                            <p className="text-sm text-gray-900 py-1">{row.designation || '—'}</p>
+                            <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.designation || '—'}</p>
                           )}
                         </td>
                         <td className="px-4 py-2">
@@ -1817,7 +1922,7 @@ export default function DailyReportManage() {
                                 const updated = (teamReport.interns_remaining_hours || []).filter((_, i) => i !== idx);
                                 setTeamReport((prev) => ({ ...prev, interns_remaining_hours: updated }));
                               }}
-                              className="text-red-600 hover:text-red-800 text-sm"
+                              className="text-red-600 dark:text-red-300 hover:underline text-sm"
                             >
                               Remove
                             </button>
@@ -1852,48 +1957,54 @@ export default function DailyReportManage() {
       {activeTab === 'attendanceReports' && showTeamReportTab && (
         <div>
           <div className="flex items-baseline justify-between mb-3">
-            <h2 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
               Attendance Reports
             </h2>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
               Click a date row to open that day’s Team Daily Report.
             </p>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-            <table className="w-full text-sm min-w-[720px]">
-              <thead className="bg-gray-50">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-x-auto">
+            <table className="w-full text-sm min-w-[720px] divide-y divide-gray-200 dark:divide-gray-800">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Date</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Date</th>
                   {attendanceReportTab === 'late' && (
                     <>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-900">Late</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-900">Notable late</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Late</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Notable late</th>
                     </>
                   )}
                   {attendanceReportTab === 'leave' && (
-                    <th className="text-left px-4 py-3 font-semibold text-gray-900">On leave</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">On leave</th>
                   )}
                   {attendanceReportTab === 'absent' && (
                     <>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-900">Absent</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-900">Half-day</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Absent</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Half-day</th>
                     </>
                   )}
-                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Prepared by</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-900">Updated</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Prepared by</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">Updated</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                 {attendanceReportsLoading ? (
                   <tr>
-                    <td colSpan={attendanceReportTab === 'leave' ? 4 : 5} className="px-4 py-8 text-center text-gray-500">
+                    <td
+                      colSpan={attendanceReportTab === 'leave' ? 4 : 5}
+                      className="px-4 py-8 text-center text-gray-500 dark:text-gray-400"
+                    >
                       Loading…
                     </td>
                   </tr>
                 ) : attendanceReportRows.length === 0 ? (
                   <tr>
-                    <td colSpan={attendanceReportTab === 'leave' ? 4 : 5} className="px-4 py-8 text-center text-gray-500">
+                    <td
+                      colSpan={attendanceReportTab === 'leave' ? 4 : 5}
+                      className="px-4 py-8 text-center text-gray-500 dark:text-gray-400"
+                    >
                       No team daily reports found for the selected range.
                     </td>
                   </tr>
@@ -1907,30 +2018,30 @@ export default function DailyReportManage() {
                     return (
                       <tr
                         key={row.report_date}
-                        className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer"
+                        className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60 cursor-pointer"
                         onClick={onClick}
                         title="Open Team Daily Report"
                       >
-                        <td className="px-4 py-3 font-medium text-gray-900">
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                           {prettyDateOrFallback(row.report_date)}
                         </td>
                         {attendanceReportTab === 'late' && (
                           <>
-                            <td className="px-4 py-3 text-gray-700">{Number(counts.late) || 0}</td>
-                            <td className="px-4 py-3 text-gray-700">{Number(counts.notable_late) || 0}</td>
+                            <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{Number(counts.late) || 0}</td>
+                            <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{Number(counts.notable_late) || 0}</td>
                           </>
                         )}
                         {attendanceReportTab === 'leave' && (
-                          <td className="px-4 py-3 text-gray-700">{Number(counts.on_leave) || 0}</td>
+                          <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{Number(counts.on_leave) || 0}</td>
                         )}
                         {attendanceReportTab === 'absent' && (
                           <>
-                            <td className="px-4 py-3 text-gray-700">{Number(counts.absent) || 0}</td>
-                            <td className="px-4 py-3 text-gray-700">{Number(counts.half_day) || 0}</td>
+                            <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{Number(counts.absent) || 0}</td>
+                            <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{Number(counts.half_day) || 0}</td>
                           </>
                         )}
-                        <td className="px-4 py-3 text-gray-600">{row.prepared_by || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600">
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{row.prepared_by || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                           {row.updated_at ? new Date(row.updated_at).toLocaleString() : '—'}
                         </td>
                       </tr>

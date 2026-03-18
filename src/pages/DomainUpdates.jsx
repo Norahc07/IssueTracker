@@ -252,7 +252,7 @@ export default function DomainUpdates() {
 
   return (
     <div className="w-full">
-      <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
+      <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -260,7 +260,7 @@ export default function DomainUpdates() {
               setDomainTypeFilter('old');
             }}
             className={`px-4 py-2 rounded-lg text-sm font-medium ${
-              domainTypeFilter === 'old' ? 'text-white' : 'bg-gray-100 text-gray-700'
+              domainTypeFilter === 'old' ? 'text-white' : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
             }`}
             style={domainTypeFilter === 'old' ? { backgroundColor: PRIMARY } : {}}
           >
@@ -272,7 +272,7 @@ export default function DomainUpdates() {
               setDomainTypeFilter('new');
             }}
             className={`px-4 py-2 rounded-lg text-sm font-medium ${
-              domainTypeFilter === 'new' ? 'text-white' : 'bg-gray-100 text-gray-700'
+              domainTypeFilter === 'new' ? 'text-white' : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
             }`}
             style={domainTypeFilter === 'new' ? { backgroundColor: PRIMARY } : {}}
           >
@@ -302,9 +302,9 @@ export default function DomainUpdates() {
           }}
         >
           <div className="min-h-[100dvh] w-full p-4 flex items-center justify-center">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg border border-gray-200 max-h-[90vh] overflow-y-auto">
-              <div className="p-5 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg border border-gray-200 dark:border-gray-800 max-h-[90vh] overflow-y-auto">
+              <div className="p-5 border-b border-gray-200 dark:border-gray-800">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
                   Add domain update
                 </h3>
               </div>
@@ -313,11 +313,11 @@ export default function DomainUpdates() {
                 className="p-5 space-y-4"
               >
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Domain (no update yet)</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Domain (no update yet)</label>
               <select
                 value={createUpdateForm.domain_id}
                 onChange={(e) => setCreateUpdateForm((f) => ({ ...f, domain_id: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
               >
                 <option value="">Select domain…</option>
                 {filteredDomains.map((d) => (
@@ -328,44 +328,44 @@ export default function DomainUpdates() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Plugins updated</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Plugins updated</label>
               <input
                 type="text"
                 value={createUpdateForm.plugin_names}
                 onChange={(e) => setCreateUpdateForm((f) => ({ ...f, plugin_names: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400"
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm placeholder-gray-400 dark:placeholder-gray-500"
                 placeholder="e.g. Yoast SEO, WPForms"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Version before</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Version before</label>
                 <input
                   type="text"
                   value={createUpdateForm.version_before}
                   onChange={(e) => setCreateUpdateForm((f) => ({ ...f, version_before: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm placeholder-gray-400 dark:placeholder-gray-500"
                   placeholder="e.g. 6.4.2"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Version after</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Version after</label>
                 <input
                   type="text"
                   value={createUpdateForm.version_after}
                   onChange={(e) => setCreateUpdateForm((f) => ({ ...f, version_after: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm placeholder-gray-400 dark:placeholder-gray-500"
                   placeholder="e.g. 6.4.3"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Update status</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Update status</label>
                 <select
                   value={createUpdateForm.update_status}
                   onChange={(e) => setCreateUpdateForm((f) => ({ ...f, update_status: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
                 >
                   {UPDATE_STATUS_OPTIONS.map((s) => (
                     <option key={s} value={s}>
@@ -375,11 +375,11 @@ export default function DomainUpdates() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Post-update check</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Post-update check</label>
                 <select
                   value={createUpdateForm.post_update_check}
                   onChange={(e) => setCreateUpdateForm((f) => ({ ...f, post_update_check: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
                 >
                   {POST_UPDATE_CHECK_OPTIONS.map((s) => (
                     <option key={s} value={s}>
@@ -391,11 +391,11 @@ export default function DomainUpdates() {
             </div>
             {domainTypeFilter === 'new' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Row Status</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Row Status</label>
                 <select
                   value={createUpdateForm.status}
                   onChange={(e) => setCreateUpdateForm((f) => ({ ...f, status: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
                 >
                   <option value="">—</option>
                   {DOMAIN_ROW_STATUS_OPTIONS.map((s) => (
@@ -407,21 +407,21 @@ export default function DomainUpdates() {
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Notes (optional)</label>
               <input
                 type="text"
                 value={createUpdateForm.notes}
                 onChange={(e) => setCreateUpdateForm((f) => ({ ...f, notes: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400"
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm placeholder-gray-400 dark:placeholder-gray-500"
                 placeholder="Remarks, issues, etc."
               />
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
               <button
                 type="button"
                 onClick={closeAddUpdateModal}
                 disabled={savingUpdate}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -442,32 +442,32 @@ export default function DomainUpdates() {
 
       <div className="overflow-x-auto">
           {updatesLoading ? (
-            <div className="py-8 text-center text-sm text-gray-500">Loading domain updates…</div>
+            <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading domain updates…</div>
           ) : updatesForView.length === 0 ? (
-            <div className="py-8 text-center text-sm text-gray-500">
+            <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
               No plugin update rows yet for these {domainTypeFilter} domains.
             </div>
           ) : (
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+              <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Domain</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugins</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Version Before</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Version After</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Update Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Post-Update Check</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Domain</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Plugins</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Version Before</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Version After</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Update Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Post-Update Check</th>
                   {domainTypeFilter === 'new' && (
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Row Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Row Status</th>
                   )}
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Updated At</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Notes</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Updated At</th>
                   {isAdmin && (
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
                   )}
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
                 {(() => {
                   // Group updates by domain so each country/domain has a header row
                   const groups = new Map();
@@ -492,12 +492,12 @@ export default function DomainUpdates() {
                   return flatRows.map((item) => {
                     if (item.kind === 'header') {
                       return (
-                        <tr key={item.key} className="bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-semibold text-gray-900 uppercase tracking-wide">
+                        <tr key={item.key} className="bg-gray-50 dark:bg-gray-950/40">
+                          <td className="px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wide">
                             {item.label}
                           </td>
                           <td
-                            className="px-4 py-3 text-xs text-gray-500"
+                            className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400"
                             colSpan={(domainTypeFilter === 'new' ? 8 : 7) + (isAdmin ? 1 : 0)}
                           >
                             <div className="flex items-center justify-between gap-3">
@@ -507,14 +507,14 @@ export default function DomainUpdates() {
                                   <button
                                     type="button"
                                     onClick={() => handleQuickAddForDomain(item.domainId)}
-                                    className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                                    className="inline-flex items-center rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800"
                                   >
                                     Add plugin
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => handleRemoveAllUpdatesForDomain(item.domainId)}
-                                    className="inline-flex items-center rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm hover:bg-red-50"
+                                    className="inline-flex items-center rounded-md border border-red-200 dark:border-red-900/50 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-300 shadow-sm hover:bg-red-50 dark:hover:bg-red-950/30"
                                   >
                                     Remove updates
                                   </button>
@@ -528,19 +528,19 @@ export default function DomainUpdates() {
 
                     const row = item.row;
                     return (
-                      <tr key={item.key} className="hover:bg-gray-50">
+                      <tr key={item.key} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
                         <td className="px-4 py-3 text-sm text-gray-900" />
-                        <td className="px-4 py-3 text-sm text-gray-600 break-words">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 break-words">
                           {row.plugin_names || '—'}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.version_before || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.version_after || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.update_status || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.post_update_check || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.version_before || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.version_after || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.update_status || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.post_update_check || '—'}</td>
                         {domainTypeFilter === 'new' && (
-                          <td className="px-4 py-3 text-sm text-gray-600">{row.status || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.status || '—'}</td>
                         )}
-                        <td className="px-4 py-3 text-sm text-gray-600 max-w-xs">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-xs">
                           {row.notes ? (
                             <span className="line-clamp-2" title={row.notes}>
                               {row.notes}
@@ -549,7 +549,7 @@ export default function DomainUpdates() {
                             '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                           {row.updated_at
                             ? new Date(row.updated_at).toLocaleString()
                             : row.created_at

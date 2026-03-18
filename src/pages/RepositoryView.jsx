@@ -234,7 +234,7 @@ export default function RepositoryView() {
   if (loading) {
     return (
       <div className="w-full flex items-center justify-center py-12">
-        <div className="text-gray-600">Loading…</div>
+        <div className="text-gray-600 dark:text-gray-400">Loading…</div>
       </div>
     );
   }
@@ -245,14 +245,14 @@ export default function RepositoryView() {
         <button
           type="button"
           onClick={() => navigate('/repository')}
-          className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+          className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
           Back
         </button>
-        <p className="text-gray-500">Repository item not found.</p>
+        <p className="text-gray-500 dark:text-gray-400">Repository item not found.</p>
       </div>
     );
   }
@@ -263,7 +263,7 @@ export default function RepositoryView() {
         <button
           type="button"
           onClick={() => navigate('/repository')}
-          className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 focus:outline-none"
+          className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 focus:outline-none"
           aria-label="Back to repository"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -271,20 +271,20 @@ export default function RepositoryView() {
           </svg>
           <span>Back</span>
         </button>
-        <span className="text-gray-400">/</span>
-        <span className="text-gray-500">repository</span>
-        <span className="text-gray-400">/</span>
-        <span className="font-medium text-gray-900" style={{ color: PRIMARY }}>
+        <span className="text-gray-400 dark:text-gray-500">/</span>
+        <span className="text-gray-500 dark:text-gray-400">repository</span>
+        <span className="text-gray-400 dark:text-gray-500">/</span>
+        <span className="font-medium text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
           {item.title}
         </span>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden max-w-full">
+      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden max-w-full">
         <div className="p-6 sm:p-8 overflow-hidden max-w-full">
           {isEditing ? (
             <form onSubmit={handleSave} className="space-y-6">
               {error && (
-                <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm">
+                <div className="p-3 rounded-lg bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-200 text-sm">
                   {error}
                 </div>
               )}
@@ -292,31 +292,31 @@ export default function RepositoryView() {
               <div className="flex justify-between items-start gap-4">
                 <div className="flex-1 min-w-0 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Title</label>
                     <input
                       type="text"
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       placeholder="e.g. Daily Tasks"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Description</label>
                     <textarea
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       placeholder="Short description"
                       rows={2}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none"
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Type</label>
                     <select
                       value={type}
                       onChange={(e) => setType(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                     >
                       {TYPE_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value}>
@@ -326,13 +326,13 @@ export default function RepositoryView() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Tags</label>
                     <input
                       type="text"
                       value={tagsInput}
                       onChange={(e) => setTagsInput(e.target.value)}
                       placeholder="Comma-separated, e.g. sop, tasks, daily"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                     />
                   </div>
                 </div>
@@ -340,7 +340,7 @@ export default function RepositoryView() {
                   <button
                     type="button"
                     onClick={handleCancelEdit}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
                   >
                     Cancel
                   </button>
@@ -432,18 +432,20 @@ export default function RepositoryView() {
             <>
               <div className="flex justify-between items-start gap-4">
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
                     {item.title}
                   </h1>
                   {item.description && (
-                    <p className="mt-2 text-base text-gray-600">{item.description}</p>
+                    <p className="mt-2 text-base text-gray-600 dark:text-gray-300">
+                      {item.description}
+                    </p>
                   )}
                   {item.tags && item.tags.length > 0 && (
                     <div className="mt-4 flex flex-wrap gap-2">
                       {item.tags.map((tag, index) => (
                         <span
                           key={index}
-                          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700"
+                          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
                         >
                           {tag}
                         </span>
@@ -462,14 +464,14 @@ export default function RepositoryView() {
                   </button>
                 )}
               </div>
-              <hr className="my-6 border-gray-200" />
+              <hr className="my-6 border-gray-200 dark:border-gray-800" />
               {HIDE_REPOSITORY_CONTENT_FOR_PRESENTATION ? (
-                <div className="py-8 text-center text-gray-400 text-sm border border-dashed border-gray-200 rounded-lg bg-gray-50/50">
+                <div className="py-8 text-center text-gray-400 dark:text-gray-500 text-sm border border-dashed border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50/50 dark:bg-gray-900/40">
                   Content is displayed here.
                 </div>
               ) : (
                 <div
-                  className="prose prose-sm max-w-full w-full text-gray-700 repository-content repository-content-view-only break-words"
+                  className="prose prose-sm max-w-full w-full text-gray-800 dark:text-gray-100 repository-content repository-content-view-only break-words"
                   dangerouslySetInnerHTML={{ __html: item.content || '' }}
                   style={{ overflowX: 'hidden', overflowWrap: 'anywhere', wordBreak: 'break-word' }}
                 />

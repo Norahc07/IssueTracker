@@ -228,15 +228,15 @@ export const getAllRoles = () => {
 // Get role color for badges
 export const getRoleColor = (role) => {
   const colors = {
-    [ROLES.SUPERADMIN]: 'bg-red-100 text-red-800',
-    [ROLES.ADMIN]: 'bg-purple-100 text-purple-800',
-    [ROLES.TLA]: 'bg-blue-100 text-blue-800',
-    [ROLES.MONITORING_TEAM]: 'bg-green-100 text-green-800',
-    [ROLES.PAT1]: 'bg-indigo-100 text-indigo-800',
-    [ROLES.TL]: 'bg-yellow-100 text-yellow-800',
-    [ROLES.VTL]: 'bg-orange-100 text-orange-800',
-    [ROLES.INTERN]: 'bg-gray-100 text-gray-800',
-    lead: 'bg-cyan-100 text-cyan-800',
+    [ROLES.SUPERADMIN]: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
+    [ROLES.ADMIN]: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
+    [ROLES.TLA]: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
+    [ROLES.MONITORING_TEAM]: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
+    [ROLES.PAT1]: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200',
+    [ROLES.TL]: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200',
+    [ROLES.VTL]: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200',
+    [ROLES.INTERN]: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
+    lead: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-200',
   };
-  return colors[role] || 'bg-gray-100 text-gray-800';
+  return colors[role] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
 };

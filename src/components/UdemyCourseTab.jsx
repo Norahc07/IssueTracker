@@ -260,6 +260,23 @@ export default function UdemyCourseTab() {
     return map;
   }, [rotationRows]);
 
+  const getReviewStatusPillClasses = (status) => {
+    const s = String(status || '').toLowerCase();
+    if (s === 'completed')
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
+    if (s === 'in progress')
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200';
+    return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200';
+  };
+
+  const getScreenshotStatusSelectClasses = (status) => {
+    const s = String(status || '').toLowerCase();
+    if (s === 'done')
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200';
+    // Pending / default
+    return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
+  };
+
   const handleAddBatch = async () => {
     if (!canManageUdemy) {
       toast.error('You do not have permission to manage Udemy batches.');
@@ -513,18 +530,18 @@ export default function UdemyCourseTab() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-900" style={{ color: PRIMARY }}>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
             Udemy Course
           </h2>
-          <p className="mt-1 text-sm text-gray-600">Track assignments and course review progress per batch.</p>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Track assignments and course review progress per batch.</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="min-w-[220px]">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Batch</label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Batch</label>
             <select
               value={selectedBatchId}
               onChange={(e) => setSelectedBatchId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
             >
               <option value="">Select batch…</option>
               {batches.map((b) => (
@@ -547,14 +564,14 @@ export default function UdemyCourseTab() {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-gray-200">
+      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
         <button
           type="button"
           onClick={() => setActiveSubTab('rotation')}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
             activeSubTab === 'rotation'
-              ? 'bg-white border border-b-0 border-gray-200 -mb-px'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
           }`}
           style={activeSubTab === 'rotation' ? { borderTopColor: PRIMARY } : {}}
         >
@@ -565,8 +582,8 @@ export default function UdemyCourseTab() {
           onClick={() => setActiveSubTab('intern')}
           className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
             activeSubTab === 'intern'
-              ? 'bg-white border border-b-0 border-gray-200 -mb-px'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
           }`}
           style={activeSubTab === 'intern' ? { borderTopColor: PRIMARY } : {}}
         >
@@ -577,7 +594,7 @@ export default function UdemyCourseTab() {
       {activeSubTab === 'rotation' && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
               Course Assignment
             </h3>
             {canManageUdemy && (
@@ -609,7 +626,7 @@ export default function UdemyCourseTab() {
           {showRotationModal &&
             createPortal(
               <div
-                className="fixed inset-0 z-[10000] bg-black/10 backdrop-blur-sm flex justify-end"
+                className="fixed inset-0 z-[10000] bg-black/20 backdrop-blur-sm flex justify-end"
                 onMouseDown={(e) => {
                   if (e.target === e.currentTarget) {
                     setShowRotationModal(false);
@@ -619,15 +636,15 @@ export default function UdemyCourseTab() {
               >
                 {/* Right slide-over panel (full viewport height) */}
                 <div
-                  className="h-screen w-full max-w-md bg-white shadow-2xl border-l border-gray-200 flex flex-col"
+                  className="h-screen w-full max-w-md bg-white dark:bg-gray-900 shadow-2xl border-l border-gray-200 dark:border-gray-800 flex flex-col"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <div className="px-4 py-3 border-b border-gray-200 flex items-start justify-between gap-3">
+                  <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between gap-3">
                     <div>
-                      <h4 className="text-lg font-semibold text-gray-900">
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                         {editingRotationRow ? 'Edit course assignment' : 'Add course assignment'}
                       </h4>
-                      <p className="mt-1 text-sm text-gray-600">
+                      <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
                         Batch: <span className="font-medium">{selectedBatch?.batch_no || '—'}</span>
                       </p>
                     </div>
@@ -637,7 +654,7 @@ export default function UdemyCourseTab() {
                         setShowRotationModal(false);
                         setEditingRotationRow(null);
                       }}
-                      className="px-3 py-1.5 rounded-lg text-xs bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      className="px-3 py-1.5 rounded-lg text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
                     >
                       Close
                     </button>
@@ -647,26 +664,26 @@ export default function UdemyCourseTab() {
                     <form onSubmit={handleSaveRotationForm} className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">
                             Course link <span className="text-red-500">*</span>
                           </label>
                           <input
                             type="url"
                             value={rotationCreate.course_link}
                             onChange={(e) => setRotationCreate((s) => ({ ...s, course_link: e.target.value }))}
-                            className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
                             placeholder="https://www.udemy.com/course/..."
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">
                             Course title <span className="text-red-500">*</span>
                           </label>
                           <input
                             type="text"
                             value={rotationCreate.course_title}
                             onChange={(e) => setRotationCreate((s) => ({ ...s, course_title: e.target.value }))}
-                            className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
                             placeholder="Course title"
                           />
                         </div>
@@ -674,7 +691,7 @@ export default function UdemyCourseTab() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Assigned intern</label>
+                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Assigned intern</label>
                           <select
                             value={rotationCreate.assigned_intern || ''}
                             onChange={(e) =>
@@ -683,7 +700,7 @@ export default function UdemyCourseTab() {
                                 assigned_intern: e.target.value || '',
                               }))
                             }
-                            className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100"
                           >
                             <option value="">Unassigned</option>
                             {tlaPeople.map((p) => {
@@ -705,7 +722,7 @@ export default function UdemyCourseTab() {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Day</label>
+                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Day</label>
                           <select
                             value={rotationCreate.day || ''}
                             onChange={(e) =>
@@ -714,7 +731,7 @@ export default function UdemyCourseTab() {
                                 day: e.target.value || '',
                               }))
                             }
-                            className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100"
                           >
                             <option value="">Select day</option>
                             <option value="1">1</option>
@@ -727,11 +744,13 @@ export default function UdemyCourseTab() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Screenshot status</label>
+                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Screenshot status</label>
                           <select
                             value={rotationCreate.screenshot_status}
                             onChange={(e) => setRotationCreate((s) => ({ ...s, screenshot_status: e.target.value }))}
-                            className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                            className={`w-full min-w-[8rem] px-2.5 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] ${getScreenshotStatusSelectClasses(
+                              rotationCreate.screenshot_status
+                            )}`}
                           >
                             {ROTATION_SCREENSHOT_STATUS.map((s) => (
                               <option key={s} value={s}>
@@ -744,14 +763,14 @@ export default function UdemyCourseTab() {
                     </form>
                   </div>
 
-                  <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
+                  <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-800 flex items-center justify-end gap-2">
                     <button
                       type="button"
                       onClick={() => {
                         setShowRotationModal(false);
                         setEditingRotationRow(null);
                       }}
-                      className="px-4 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      className="px-4 py-2 rounded-lg text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
                     >
                       Cancel
                     </button>
@@ -770,35 +789,35 @@ export default function UdemyCourseTab() {
               document.body
             )}
 
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               {rotationLoading ? (
-                <div className="py-8 text-center text-sm text-gray-500">Loading assignments…</div>
+                <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading assignments…</div>
               ) : rotationRows.length === 0 ? (
-                <div className="py-8 text-center text-sm text-gray-500">
+                <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                   {selectedBatch ? 'No assignments yet for this batch.' : 'Select a batch to view assignments.'}
                 </div>
               ) : (
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                  <thead className="bg-gray-50 dark:bg-gray-950/40">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch No.</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Course Link</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Intern</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Day</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Review Status</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Screenshot Status</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-28">Actions</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Batch No.</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Course Link</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Assigned Intern</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Day</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Review Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Screenshot Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-28">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
                     {rotationRows.map((row) => (
-                      <tr key={row.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">{selectedBatch?.batch_no || '—'}</td>
+                      <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{selectedBatch?.batch_no || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 max-w-xs">
                           {row.course_link ? (
                             <a
-                              className="text-blue-600 hover:underline inline-block max-w-xs truncate"
+                              className="text-blue-600 dark:text-blue-400 hover:underline inline-block max-w-xs truncate"
                               href={row.course_link}
                               target="_blank"
                               rel="noreferrer"
@@ -810,19 +829,34 @@ export default function UdemyCourseTab() {
                             '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.assigned_intern || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.day || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          <span className="font-medium">
-                            {courseAggregateReviewStatus[(row.course_title || '').trim()] || 'Not Started'}
-                          </span>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.assigned_intern || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.day || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                          {(() => {
+                            const label =
+                              courseAggregateReviewStatus[(row.course_title || '').trim()] ||
+                              'Not Started';
+                            return (
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getReviewStatusPillClasses(
+                                  label
+                                )}`}
+                              >
+                                {label}
+                              </span>
+                            );
+                          })()}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                           {canManageUdemy ? (
                             <select
                               value={row.screenshot_status || 'Pending'}
-                              onChange={(e) => handleUpdateRotationRow(row.id, { screenshot_status: e.target.value })}
-                              className="w-full min-w-[140px] rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                              onChange={(e) =>
+                                handleUpdateRotationRow(row.id, { screenshot_status: e.target.value })
+                              }
+                              className={`w-full min-w-[8rem] px-2.5 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] ${getScreenshotStatusSelectClasses(
+                                row.screenshot_status || 'Pending'
+                              )}`}
                             >
                               {ROTATION_SCREENSHOT_STATUS.map((s) => (
                                 <option key={s} value={s}>
@@ -831,12 +865,16 @@ export default function UdemyCourseTab() {
                               ))}
                             </select>
                           ) : (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getScreenshotStatusSelectClasses(
+                                row.screenshot_status || 'Pending'
+                              )}`}
+                            >
                               {row.screenshot_status || 'Pending'}
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 align-middle">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 align-middle">
                           {canManageUdemy ? (
                             <div className="flex items-center gap-2 flex-nowrap">
                               <button
@@ -853,21 +891,20 @@ export default function UdemyCourseTab() {
                                   });
                                   setShowRotationModal(true);
                                 }}
-                                className="px-2 py-1 rounded text-xs font-medium text-white shrink-0"
-                                style={{ backgroundColor: PRIMARY }}
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0"
                               >
                                 Edit
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteRotationRow(row)}
-                                className="px-2 py-1 rounded text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 shrink-0"
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/60 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/40 shrink-0"
                               >
                                 Delete
                               </button>
                             </div>
                           ) : (
-                            <span className="inline-block text-xs text-gray-400">View only</span>
+                            <span className="inline-block text-xs text-gray-400 dark:text-gray-500">View only</span>
                           )}
                         </td>
                       </tr>
@@ -883,46 +920,46 @@ export default function UdemyCourseTab() {
       {activeSubTab === 'intern' && (
         <div className="space-y-3">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900" style={{ color: PRIMARY }}>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
               Intern Tracker
             </h3>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
               Courses and intern names come from Course Assignment. Progress dropdown only appears when an intern is assigned to that course.
             </p>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               {rotationLoading ? (
-                <div className="py-8 text-center text-sm text-gray-500">Loading…</div>
+                <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</div>
               ) : !selectedBatchId ? (
-                <div className="py-8 text-center text-sm text-gray-500">Select a batch to view the tracker.</div>
+                <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Select a batch to view the tracker.</div>
               ) : internTrackerCourses.length === 0 || internTrackerNames.length === 0 ? (
-                <div className="py-8 text-center text-sm text-gray-500">
+                <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                   Add course assignments in the Rotation Tracker tab to see courses and assigned interns here.
                 </div>
               ) : (
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                  <thead className="bg-gray-50 dark:bg-gray-950/40">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Course</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Course</th>
                       {internTrackerNames.map((name) => (
-                        <th key={name} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        <th key={name} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
                           {name}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
                     {internTrackerCourses.map((course) => (
-                      <tr key={course.course_title} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900 min-w-[280px]">
+                      <tr key={course.course_title} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 min-w-[280px]">
                           {course.course_link ? (
                             <a
                               href={course.course_link}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-blue-600 hover:underline"
+                              className="text-blue-600 dark:text-blue-400 hover:underline"
                             >
                               {course.course_title || '—'}
                             </a>
@@ -937,7 +974,7 @@ export default function UdemyCourseTab() {
                             currentInternName &&
                             assignedName.trim().toLowerCase() === currentInternName.trim().toLowerCase();
                           return (
-                            <td key={assignedName} className="px-4 py-3 text-sm text-gray-600">
+                            <td key={assignedName} className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                               {row ? (
                                 isCurrentInternCell ? (
                                   <select
@@ -945,7 +982,7 @@ export default function UdemyCourseTab() {
                                     onChange={(e) =>
                                       handleUpdateRotationRow(row.id, { review_status: e.target.value })
                                     }
-                                    className="w-full min-w-[140px] rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                                    className="w-full min-w-[140px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
                                   >
                                     {ROTATION_REVIEW_STATUS.map((s) => (
                                       <option key={s} value={s}>
@@ -954,12 +991,16 @@ export default function UdemyCourseTab() {
                                     ))}
                                   </select>
                                 ) : (
-                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                  <span
+                                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getReviewStatusPillClasses(
+                                      row.review_status || 'Not Started'
+                                    )}`}
+                                  >
                                     {row.review_status || 'Not Started'}
                                   </span>
                                 )
                               ) : (
-                                <span className="text-gray-400">—</span>
+                                <span className="text-gray-400 dark:text-gray-500">—</span>
                               )}
                             </td>
                           );
