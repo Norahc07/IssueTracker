@@ -144,7 +144,7 @@ export default function OrganizedTickets() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-600">Loading tickets...</div>
+        <div className="text-gray-600 dark:text-gray-300">Loading tickets...</div>
       </div>
     );
   }
@@ -155,12 +155,12 @@ export default function OrganizedTickets() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1
-            className="text-2xl font-bold text-gray-900"
+            className="text-2xl font-bold text-gray-900 dark:text-gray-100"
             style={{ color: PRIMARY }}
           >
             Organized Tickets
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Browse tickets by year, month, and sort tickets the way you need.
           </p>
         </div>
@@ -268,11 +268,11 @@ export default function OrganizedTickets() {
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-medium text-gray-900 break-words">{ticket.title}</h3>
+                      <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 break-words">{ticket.title}</h3>
                     {ticket.description && (
-                      <p className="mt-1 text-sm text-gray-600 line-clamp-2 break-words">{ticket.description}</p>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-2 break-words">{ticket.description}</p>
                     )}
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
                       <span>
                         Created {new Date(ticket.created_at).toLocaleDateString()}
                       </span>
@@ -299,7 +299,7 @@ export default function OrganizedTickets() {
             ))
           ) : (
             <div className="px-4 sm:px-6 py-12 text-center">
-              <p className="text-gray-500">No tickets found for {MONTHS[selectedMonth - 1]} {selectedYear}</p>
+              <p className="text-gray-500 dark:text-gray-400">No tickets found for {MONTHS[selectedMonth - 1]} {selectedYear}</p>
             </div>
           )}
         </div>

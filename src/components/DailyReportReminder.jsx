@@ -90,26 +90,26 @@ export default function DailyReportReminder() {
   return (
     <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 text-center border-2 border-amber-200"
+        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg p-8 text-center border-2 border-amber-200 dark:border-amber-900"
         style={{ animation: 'dailyReportFadeIn 0.3s ease-out' }}
       >
-        <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-amber-100 flex items-center justify-center ring-4 ring-amber-200">
+        <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-amber-100 dark:bg-amber-950/50 flex items-center justify-center ring-4 ring-amber-200 dark:ring-amber-900">
           <svg className="w-10 h-10 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Daily Report Reminder</h2>
-        <p className="text-gray-600 mb-2 text-lg">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Daily Report Reminder</h2>
+        <p className="text-gray-600 dark:text-gray-300 mb-2 text-lg">
           It’s{' '}
           <strong>{timeLabel || '4:00 PM'}</strong>
           . Please submit your daily documentation report.
         </p>
-        <p className="text-gray-500 text-sm mb-8">You can fill it now or be reminded again in a bit.</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mb-8">You can fill it now or be reminded again in a bit.</p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <button
             type="button"
             onClick={handleRemindLater}
-            className="px-6 py-3.5 rounded-xl text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors border border-gray-200"
+            className="px-6 py-3.5 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors border border-gray-200 dark:border-gray-700"
           >
             Remind me later
           </button>

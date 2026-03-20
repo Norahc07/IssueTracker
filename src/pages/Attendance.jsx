@@ -8,6 +8,7 @@ import { queryCache } from '../utils/queryCache.js';
 import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 import { notifyUser } from '../utils/notifications.js';
 import { requestStatusPill } from '../utils/uiPills.js';
+import { getStoredTheme } from '../utils/theme.js';
 
 const PRIMARY = '#6795BE';
 const PAGE_SIZE = 10;
@@ -357,6 +358,19 @@ function Pagination({ total, page, setPage, pageSize }) {
 export default function Attendance() {
   const { supabase, session, user, userRole } = useSupabase();
   const [myTeam, setMyTeam] = useState(null);
+  // Tailwind `dark:` styles depend on a `dark` ancestor class.
+  // Modals render via `createPortal`, so we ensure the modal wrapper
+  // gets the `dark` class when the stored theme is dark.
+  const [isDarkMode] = useState(() => {
+    try {
+      if (typeof document !== 'undefined') {
+        return document.documentElement.classList.contains('dark');
+      }
+    } catch {
+      // ignore
+    }
+    return getStoredTheme() === 'dark';
+  });
   const [onboardingRecords, setOnboardingRecords] = useState([]);
   const canEditMySchedule = permissions.canEditOwnAttendanceSchedule(userRole, myTeam);
   const canManageSchedules = permissions.canManageAttendanceSchedules(userRole, myTeam);
@@ -917,7 +931,7 @@ export default function Attendance() {
       const isTodayRow = log.log_date === today && log.user_id === user?.id && isClockedIn(log);
       const dayTotalSec = getLogRenderedSeconds(log) + (isTodayRow ? currentSegmentSeconds : 0);
       const hasRendered = (log.total_rendered_seconds != null || log.rendered_seconds != null || log.rendered_minutes != null) || isTodayRow;
-      const u = forAll ? usersById[log.user_id] || {} : null;
+      const u = forAll ? getUserRecordById(log.user_id) : null;
       const row = {
         Date: formatDateMonthDayYear(log.log_date),
         'First in': firstInLog ? formatTimeHHMM(firstInLog) : '',
@@ -927,10 +941,10 @@ export default function Attendance() {
         Late: log.is_late ? 'Yes' : '',
         Reason: (log.late_reason || '').trim() || '',
       };
-      if (forAll && u) {
-        row.Name = u.full_name || '—';
-        row.Email = u.email || '—';
-        row.Role = getRoleDisplayName(u.role) || '—';
+      if (forAll) {
+        row.Name = getUserDisplayName(u) || '—';
+        row.Email = (u?.email || '—');
+        row.Role = getRoleDisplayName(u?.role) || '—';
         return { Name: row.Name, Email: row.Email, Role: row.Role, ...row };
       }
       return row;
@@ -1378,6 +1392,10 @@ export default function Attendance() {
         ]);
         const allList = Array.isArray(logsRes.data) ? logsRes.data : [];
         const usersList = Array.isArray(usersRes.data) ? usersRes.data : [];
+        if (usersRes.error) {
+          console.warn('Attendance: users fetch error:', usersRes.error);
+          toast.error('Attendance: failed to load users. Run onboarding->users sync if new interns are missing.');
+        }
         const byId = {};
         usersList.forEach((u) => { byId[u.id] = u; });
         setUsersById(byId);
@@ -1457,6 +1475,14 @@ export default function Attendance() {
     return map;
   }, [onboardingRecords]);
 
+  const managedUsersById = useMemo(() => {
+    const map = {};
+    (managedUsers || []).forEach((u) => {
+      if (u?.id) map[u.id] = u;
+    });
+    return map;
+  }, [managedUsers]);
+
   const getUserEffectiveTeam = (u) => {
     if (!u) return '';
     const emailKey = (u.email || '').trim().toLowerCase();
@@ -1479,6 +1505,8 @@ export default function Attendance() {
     const fromOnboarding = emailKey ? onboardingNameByEmail.get(emailKey) : '';
     return (fromOnboarding || '').trim() || (u.email || '—');
   };
+
+  const getUserRecordById = (userId) => usersById[userId] || managedUsersById[userId] || null;
 
   const getRenderedSecondsForUser = (userId) => {
     const source = allLogsWithUsers.length > 0 ? allLogsWithUsers : (allLogs || []);
@@ -1744,7 +1772,7 @@ export default function Attendance() {
       list = list.filter((log) => log.log_date === logSpecificDate);
     }
     if (allInternsRoleFilter) {
-      list = list.filter((log) => userMatchesRoleFilter(usersById[log.user_id], allInternsRoleFilter));
+      list = list.filter((log) => userMatchesRoleFilter(getUserRecordById(log.user_id), allInternsRoleFilter));
     }
     if (allInternsLateFilter === 'late') list = list.filter((log) => log.is_late === true);
     else if (allInternsLateFilter === 'on-time') list = list.filter((log) => !log.is_late);
@@ -2312,7 +2340,7 @@ export default function Attendance() {
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                           {paginatedAll.length > 0 ? paginatedAll.map((log) => {
-                            const u = usersById[log.user_id] || {};
+                            const u = getUserRecordById(log.user_id) || {};
                             const seg = getSegments(log);
                             const firstInLog = seg.length > 0 ? seg[0].time_in : log.time_in;
                             const latestInLog = seg.length > 0 ? seg[seg.length - 1].time_in : log.time_in;
@@ -2323,7 +2351,7 @@ export default function Attendance() {
                             const hasRendered = (log.total_rendered_seconds != null || log.rendered_seconds != null || log.rendered_minutes != null) || isTodayRow;
                             return (
                               <tr key={log.id ?? `${log.user_id}-${log.log_date}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                                <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{u.full_name || '—'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{getUserDisplayName(u)}</td>
                                 <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{u.email || '—'}</td>
                                 <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{getRoleDisplayName(u.role) || '—'}</td>
                                 <td className="px-4 py-3 text-sm text-center">
@@ -2684,19 +2712,19 @@ export default function Attendance() {
 
       {showDtrRequestModal &&
         createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60">
+            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl max-w-md w-full mx-4 border border-gray-200 dark:border-gray-800">
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-gray-900">Request Daily Time Record (DTR)</h2>
-                  <p className="mt-0.5 text-xs text-gray-500">
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Request Daily Time Record (DTR)</h2>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                     Interns and TL/VTL of any team (TLA, PAT1, Monitoring) can request. Monitoring TL/VTL and Admin will review and process your request.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => !submittingDtr && setShowDtrRequestModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                   aria-label="Close DTR request"
                 >
                   ✕
@@ -2705,7 +2733,7 @@ export default function Attendance() {
               <form onSubmit={handleSubmitDtrRequest} className="px-5 py-4 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">From date</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From date</label>
                     <PrettyDatePicker
                       value={dtrFromDate}
                       onChange={(e) => setDtrFromDate(e.target.value)}
@@ -2713,7 +2741,7 @@ export default function Attendance() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">To date</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To date</label>
                     <PrettyDatePicker
                       value={dtrToDate}
                       onChange={(e) => setDtrToDate(e.target.value)}
@@ -2722,22 +2750,22 @@ export default function Attendance() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Remarks (optional)
                   </label>
                   <textarea
                     rows={3}
                     value={dtrReason}
                     onChange={(e) => setDtrReason(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
                     placeholder="Example: DTR for visa requirements, internship completion, etc."
                   />
                 </div>
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 mt-2">
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800 mt-2">
                   <button
                     type="button"
                     onClick={() => !submittingDtr && setShowDtrRequestModal(false)}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                   >
                     Cancel
                   </button>
@@ -2833,12 +2861,12 @@ export default function Attendance() {
 
       {lateReasonModalLog &&
         createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60">
+            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl max-w-md w-full mx-4 border border-gray-200 dark:border-gray-800">
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-gray-900">Late attendance reason</h2>
-                  <p className="mt-0.5 text-xs text-gray-500">
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Late attendance reason</h2>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                     {formatDateMonthDayYear(lateReasonModalLog.log_date)}
                     {lateReasonModalLog.user_id !== user?.id && usersById[lateReasonModalLog.user_id] && (
                       <> • {usersById[lateReasonModalLog.user_id].full_name || usersById[lateReasonModalLog.user_id].email}</>
@@ -2848,7 +2876,7 @@ export default function Attendance() {
                 <button
                   type="button"
                   onClick={() => !savingLateReason && setLateReasonModalLog(null)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                   aria-label="Close"
                 >
                   ✕
@@ -2856,25 +2884,25 @@ export default function Attendance() {
               </div>
               <div className="px-5 py-4 space-y-4">
                 {lateReasonModalLog.fromClockIn && (
-                  <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <p className="text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-lg px-3 py-2">
                     You were marked late. Please provide a reason for your record. It will be saved to your attendance log and visible to your supervisor.
                   </p>
                 )}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reason</label>
                   <textarea
                     rows={3}
                     value={lateReasonText}
                     onChange={(e) => setLateReasonText(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
                     placeholder="e.g. Traffic, medical appointment, public transport delay"
                   />
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
                   <button
                     type="button"
                     onClick={() => !savingLateReason && setLateReasonModalLog(null)}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                   >
                     {lateReasonModalLog.fromClockIn ? 'Skip' : 'Cancel'}
                   </button>
@@ -2882,7 +2910,7 @@ export default function Attendance() {
                     type="button"
                     onClick={handleSaveLateReason}
                     disabled={savingLateReason}
-                    className="px-4 py-1.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                    className="px-4 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60"
                   >
                     {savingLateReason ? 'Saving…' : 'Save reason'}
                   </button>
@@ -2906,21 +2934,24 @@ export default function Attendance() {
 
       {myDtrSelected &&
         createPortal(
-          <div className="fixed inset-0 z-[105] flex items-center justify-center bg-black/50 p-4" onClick={() => setMyDtrSelected(null)}>
+          <div
+            className={`fixed inset-0 z-[105] flex items-center justify-center bg-black/50 p-4 ${isDarkMode ? 'bg-black/60 dark' : ''}`}
+            onClick={() => setMyDtrSelected(null)}
+          >
             <div
-              className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+              className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 max-w-3xl w-full max-h-[90vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-gray-900">
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                     My DTR – {user?.user_metadata?.full_name || user?.email || 'you'}
                   </h2>
-                  <p className="mt-0.5 text-xs text-gray-600">
+                  <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">
                     Range: {myDtrSelected.date_from} – {myDtrSelected.date_to} • Status: {myDtrSelected.status || 'pending'}
                   </p>
                   {myDtrSelected.reason && (
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       Remarks: {myDtrSelected.reason}
                     </p>
                   )}
@@ -2928,7 +2959,7 @@ export default function Attendance() {
                 <button
                   type="button"
                   onClick={() => setMyDtrSelected(null)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                   aria-label="Close my DTR viewer"
                 >
                   ✕
@@ -2936,40 +2967,40 @@ export default function Attendance() {
               </div>
               <div className="px-5 py-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
                     This is your DTR based on recorded attendance logs for the selected range.
                   </p>
                   <button
                     type="button"
                     onClick={handleDownloadMyDtrCsv}
                     disabled={myDtrLogsLoading || !myDtrLogs.length}
-                    className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                    className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60"
                   >
                     Download DTR (CSV)
                   </button>
                 </div>
-                <div className="rounded-lg border border-gray-200 overflow-hidden overflow-x-auto">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden overflow-x-auto">
                   {myDtrLogsLoading ? (
-                    <div className="px-4 py-6 text-center text-gray-500 text-sm">
+                    <div className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
                       Loading your DTR data…
                     </div>
                   ) : myDtrLogs.length === 0 ? (
-                    <div className="px-4 py-6 text-center text-gray-500 text-sm">
+                    <div className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
                       No attendance records found for this date range.
                     </div>
                   ) : (
-                    <table className="min-w-full divide-y divide-gray-200 text-sm">
-                      <thead className="bg-gray-50">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
+                      <thead className="bg-gray-50 dark:bg-gray-950/40">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Date</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">First in</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest in</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest out</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Rendered time</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Late</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Date</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">First in</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Latest in</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Latest out</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Rendered time</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Late</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-200">
+                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                         {myDtrLogs.map((log) => {
                           const seg = getSegments(log);
                           const firstInLog = seg.length > 0 ? seg[0].time_in : log.time_in;
@@ -2978,12 +3009,12 @@ export default function Attendance() {
                           const totalSec = getLogRenderedSeconds(log);
                           return (
                             <tr key={log.id ?? `${log.user_id}-${log.log_date}`}>
-                              <td className="px-4 py-3 text-sm text-gray-900">{log.log_date}</td>
-                              <td className="px-4 py-3 text-sm">{formatTimeHHMM(firstInLog)}</td>
-                              <td className="px-4 py-3 text-sm">{formatTimeHHMM(latestInLog)}</td>
-                              <td className="px-4 py-3 text-sm">{formatTimeHHMM(lastOutLog)}</td>
-                              <td className="px-4 py-3 text-sm">{formatHoursMinutesLabel(totalSec)}</td>
-                              <td className="px-4 py-3 text-sm">{log.is_late ? 'Yes' : '—'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{log.log_date}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(firstInLog)}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(latestInLog)}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(lastOutLog)}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatHoursMinutesLabel(totalSec)}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{log.is_late ? 'Yes' : '—'}</td>
                             </tr>
                           );
                         })}
@@ -3001,19 +3032,19 @@ export default function Attendance() {
         createPortal(
           <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4" onClick={() => setDtrSelected(null)}>
             <div
-              className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+              className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 max-w-3xl w-full max-h-[90vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-gray-900">
-                    DTR for {getUserDisplayName(usersById[dtrSelected.user_id])}
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                    DTR for {getUserDisplayName(getUserRecordById(dtrSelected.user_id))}
                   </h2>
-                  <p className="mt-0.5 text-xs text-gray-600">
+                  <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">
                     Range: {dtrSelected.date_from} – {dtrSelected.date_to} • Status: {dtrSelected.status || 'pending'}
                   </p>
                   {dtrSelected.reason && (
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       Remarks: {dtrSelected.reason}
                     </p>
                   )}
@@ -3021,7 +3052,7 @@ export default function Attendance() {
                 <button
                   type="button"
                   onClick={() => setDtrSelected(null)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                   aria-label="Close DTR viewer"
                 >
                   ✕
@@ -3029,40 +3060,40 @@ export default function Attendance() {
               </div>
               <div className="px-5 py-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
                     This view is only visible to Admin and Monitoring TL/VTL.
                   </p>
                   <button
                     type="button"
                     onClick={handleDownloadDtrCsv}
                     disabled={dtrLogsLoading || !dtrLogs.length}
-                    className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                    className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60"
                   >
                     Download DTR (CSV)
                   </button>
                 </div>
-                <div className="rounded-lg border border-gray-200 overflow-hidden overflow-x-auto">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden overflow-x-auto">
                   {dtrLogsLoading ? (
-                    <div className="px-4 py-6 text-center text-gray-500 text-sm">
+                    <div className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
                       Loading DTR logs…
                     </div>
                   ) : dtrLogs.length === 0 ? (
-                    <div className="px-4 py-6 text-center text-gray-500 text-sm">
+                    <div className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
                       No attendance logs found for this date range.
                     </div>
                   ) : (
-                    <table className="min-w-full divide-y divide-gray-200 text-sm">
-                      <thead className="bg-gray-50">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
+                      <thead className="bg-gray-50 dark:bg-gray-950/40">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Date</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">First in</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest in</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Latest out</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Rendered time</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase">Late</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Date</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">First in</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Latest in</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Latest out</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Rendered time</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">Late</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-200">
+                      <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                         {dtrLogs.map((log) => {
                           const seg = getSegments(log);
                           const firstInLog = seg.length > 0 ? seg[0].time_in : log.time_in;
@@ -3071,12 +3102,12 @@ export default function Attendance() {
                           const totalSec = getLogRenderedSeconds(log);
                           return (
                             <tr key={log.id ?? `${log.user_id}-${log.log_date}`}>
-                              <td className="px-4 py-3 text-sm text-gray-900">{log.log_date}</td>
-                              <td className="px-4 py-3 text-sm">{formatTimeHHMM(firstInLog)}</td>
-                              <td className="px-4 py-3 text-sm">{formatTimeHHMM(latestInLog)}</td>
-                              <td className="px-4 py-3 text-sm">{formatTimeHHMM(lastOutLog)}</td>
-                              <td className="px-4 py-3 text-sm">{formatHoursMinutesLabel(totalSec)}</td>
-                              <td className="px-4 py-3 text-sm">{log.is_late ? 'Yes' : '—'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{log.log_date}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(firstInLog)}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(latestInLog)}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(lastOutLog)}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatHoursMinutesLabel(totalSec)}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{log.is_late ? 'Yes' : '—'}</td>
                             </tr>
                           );
                         })}

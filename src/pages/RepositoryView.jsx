@@ -272,7 +272,7 @@ export default function RepositoryView() {
           <span>Back</span>
         </button>
         <span className="text-gray-400 dark:text-gray-500">/</span>
-        <span className="text-gray-500 dark:text-gray-400">repository</span>
+        <span className="text-gray-500 dark:text-gray-400">Repository</span>
         <span className="text-gray-400 dark:text-gray-500">/</span>
         <span className="font-medium text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
           {item.title}
@@ -355,66 +355,67 @@ export default function RepositoryView() {
                 </div>
               </div>
 
-              <hr className="border-gray-200" />
+              <hr className="border-gray-200 dark:border-gray-800" />
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Content</label>
                 {!isCoursePriceTable || tableRows.length === 0 ? (
-                  <div className="rounded-lg border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-[#6795BE] focus-within:border-transparent">
+                  <div className="rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900 focus-within:ring-2 focus-within:ring-[#6795BE] focus-within:border-transparent">
                     <ReactQuill
+                      key={isEditing ? `rq-${item?.id}-${item?.updated_at || 'na'}` : 'rq'}
                       theme="snow"
-                      value={content}
+                      value={content || ''}
                       onChange={setContent}
                       modules={QUILL_MODULES}
                       formats={QUILL_FORMATS}
                       placeholder="Rich text content..."
-                      className="bg-white"
+                      className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                       style={{ minHeight: 200 }}
                     />
                   </div>
                 ) : null}
                 {isCoursePriceTable && tableRows.length > 0 && (
                   <div className="mt-4">
-                    <div className="rounded-lg border border-gray-300 max-h-80 overflow-y-auto">
+                    <div className="rounded-lg border border-gray-300 dark:border-gray-700 max-h-80 overflow-y-auto bg-white dark:bg-gray-900">
                       <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed' }}>
                         <thead>
-                          <tr className="bg-gray-100 sticky top-0">
-                            <th className="border border-gray-200 px-2 py-1.5 text-left font-semibold">Domain</th>
-                            <th className="border border-gray-200 px-2 py-1.5 text-left font-semibold">Status</th>
-                            <th className="border border-gray-200 px-2 py-1.5 text-left font-semibold">Notes</th>
-                            <th className="border border-gray-200 px-2 py-1.5 text-left font-semibold">Checked By</th>
+                          <tr className="bg-gray-100 dark:bg-gray-800/60 sticky top-0">
+                            <th className="border border-gray-200 dark:border-gray-700 px-2 py-1.5 text-left font-semibold dark:text-gray-100">Domain</th>
+                            <th className="border border-gray-200 dark:border-gray-700 px-2 py-1.5 text-left font-semibold dark:text-gray-100">Status</th>
+                            <th className="border border-gray-200 dark:border-gray-700 px-2 py-1.5 text-left font-semibold dark:text-gray-100">Notes</th>
+                            <th className="border border-gray-200 dark:border-gray-700 px-2 py-1.5 text-left font-semibold dark:text-gray-100">Checked By</th>
                           </tr>
                         </thead>
                         <tbody>
                           {tableRows.map((row, index) => (
-                            <tr key={index} className="bg-white">
-                              <td className="border border-gray-200 px-2 py-1 text-gray-700">{row.domain}</td>
-                              <td className="border border-gray-200 p-0">
+                            <tr key={index} className="bg-white dark:bg-gray-900">
+                              <td className="border border-gray-200 dark:border-gray-700 px-2 py-1 text-gray-700 dark:text-gray-100">{row.domain}</td>
+                              <td className="border border-gray-200 dark:border-gray-700 p-0">
                                 <select
                                   value={row.status}
                                   onChange={(e) => handleTableRowChange(index, 'status', e.target.value)}
-                                  className="w-full border-0 rounded-none px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] bg-white"
+                                  className="w-full border-0 rounded-none px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] bg-white dark:bg-gray-900 dark:text-gray-100"
                                 >
                                   {COURSE_PRICE_STATUS_OPTIONS.map((o) => (
                                     <option key={o.value} value={o.value}>{o.label}</option>
                                   ))}
                                 </select>
                               </td>
-                              <td className="border border-gray-200 p-0">
+                              <td className="border border-gray-200 dark:border-gray-700 p-0">
                                 <input
                                   type="text"
                                   value={row.notes}
                                   onChange={(e) => handleTableRowChange(index, 'notes', e.target.value)}
-                                  className="w-full border-0 rounded-none px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                                  className="w-full border-0 rounded-none px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] text-gray-900 dark:text-gray-100 bg-transparent dark:bg-transparent placeholder:text-gray-500 dark:placeholder:text-gray-400"
                                   placeholder="Notes"
                                 />
                               </td>
-                              <td className="border border-gray-200 p-0">
+                              <td className="border border-gray-200 dark:border-gray-700 p-0">
                                 <input
                                   type="text"
                                   value={row.checkedBy}
                                   onChange={(e) => handleTableRowChange(index, 'checkedBy', e.target.value)}
-                                  className="w-full border-0 rounded-none px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                                  className="w-full border-0 rounded-none px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#6795BE] text-gray-900 dark:text-gray-100 bg-transparent dark:bg-transparent placeholder:text-gray-500 dark:placeholder:text-gray-400"
                                   placeholder="Checked by"
                                 />
                               </td>
@@ -423,7 +424,7 @@ export default function RepositoryView() {
                         </tbody>
                       </table>
                     </div>
-                    <p className="mt-1 text-xs text-gray-500">Table changes are saved when you click Update.</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Table changes are saved when you click Update.</p>
                   </div>
                 )}
               </div>
@@ -473,13 +474,43 @@ export default function RepositoryView() {
                 <div
                   className="prose prose-sm max-w-full w-full text-gray-800 dark:text-gray-100 repository-content repository-content-view-only break-words"
                   dangerouslySetInnerHTML={{ __html: item.content || '' }}
-                  style={{ overflowX: 'hidden', overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                  // Avoid breaking words mid-letter (e.g. "inpro-gress") while still preventing horizontal overflow.
+                  style={{ overflowX: 'hidden', overflowWrap: 'break-word', wordBreak: 'normal' }}
                 />
               )}
             </>
           )}
         </div>
       </div>
+
+      {/* ReactQuill dark-mode overrides */}
+      <style>{`
+        .dark .ql-toolbar.ql-snow {
+          background: #111827 !important;
+          border-color: #374151 !important;
+        }
+        .dark .ql-container.ql-snow {
+          background: #111827 !important;
+          border-color: #374151 !important;
+        }
+        .dark .ql-editor {
+          background: #111827 !important;
+          color: #e5e7eb !important;
+        }
+        .dark .ql-editor a {
+          color: #93c5fd !important;
+        }
+        .dark .ql-picker-label,
+        .dark .ql-picker-item {
+          color: #e5e7eb !important;
+        }
+        .dark .ql-stroke {
+          stroke: #e5e7eb !important;
+        }
+        .dark .ql-fill {
+          fill: #e5e7eb !important;
+        }
+      `}</style>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { toast } from 'react-hot-toast';
 import TicketDetailModal from '../components/TicketDetailModal.jsx';
 import { queryCache } from '../utils/queryCache.js';
 import { ticketPriorityPill, ticketStatusLabel, ticketStatusPill } from '../utils/uiPills.js';
+import { getStoredTheme } from '../utils/theme.js';
 
 const PRIMARY = '#6795BE';
 
@@ -48,7 +49,7 @@ function SortableItem({ id, ticket, onTicketClick }) {
           type="button"
           {...attributes}
           {...listeners}
-          className="shrink-0 mt-0.5 p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-900 cursor-grab active:cursor-grabbing"
+          className="shrink-0 mt-0.5 p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-900 cursor-grab active:cursor-grabbing"
           aria-label="Drag ticket"
           title="Drag"
           onClick={(e) => e.stopPropagation()}
@@ -57,7 +58,7 @@ function SortableItem({ id, ticket, onTicketClick }) {
             <path d="M7 4a1 1 0 11-2 0 1 1 0 012 0zm0 6a1 1 0 11-2 0 1 1 0 012 0zm0 6a1 1 0 11-2 0 1 1 0 012 0zm8-12a1 1 0 11-2 0 1 1 0 012 0zm0 6a1 1 0 11-2 0 1 1 0 012 0zm0 6a1 1 0 11-2 0 1 1 0 012 0z" />
           </svg>
         </button>
-        <h3 className="text-sm font-semibold text-gray-900 mb-1 flex-1 min-w-0">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1 flex-1 min-w-0">
           <span className="block truncate">{ticket.title}</span>
         </h3>
         <button
@@ -155,6 +156,16 @@ const Kanban = () => {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [pendingMove, setPendingMove] = useState(null); // { ticketId, fromStatus, toStatus }
   const [confirmMoving, setConfirmMoving] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    try {
+      if (typeof document !== 'undefined') {
+        return document.documentElement.classList.contains('dark');
+      }
+    } catch {
+      // ignore
+    }
+    return getStoredTheme() === 'dark';
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -162,6 +173,17 @@ const Kanban = () => {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Tailwind `dark:` utilities depend on a `dark` ancestor class.
+  // We sync with the current theme even if the user toggles it while on this page.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const sync = () => setIsDarkMode(document.documentElement.classList.contains('dark'));
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     fetchTickets();
@@ -278,7 +300,7 @@ const Kanban = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-600">Loading kanban board...</div>
+        <div className="text-gray-600 dark:text-gray-300">Loading kanban board...</div>
       </div>
     );
   }
@@ -323,7 +345,7 @@ const Kanban = () => {
         typeof document !== 'undefined' &&
         createPortal(
           <div
-            className="fixed inset-0 z-[2147483000] bg-black/60 backdrop-blur-sm"
+            className={`fixed inset-0 z-[2147483000] bg-black/60 backdrop-blur-sm ${isDarkMode ? 'dark' : ''}`}
             role="dialog"
             aria-modal="true"
             aria-label="Confirm move ticket"
@@ -331,13 +353,13 @@ const Kanban = () => {
           >
             <div className="min-h-screen w-full p-4 flex items-center justify-center">
               <div
-                className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
+                className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-2xl overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+                <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h2 className="text-base font-semibold text-gray-900">Confirm move</h2>
-                    <p className="mt-1 text-sm text-gray-600">
+                    <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Confirm move</h2>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
                       Move this ticket from{' '}
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ticketStatusPill(pendingMove.fromStatus)}`}>
                         {statusLabel(pendingMove.fromStatus)}
@@ -352,7 +374,7 @@ const Kanban = () => {
                   <button
                     type="button"
                     onClick={() => (confirmMoving ? null : setPendingMove(null))}
-                    className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-60"
+                    className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 dark:text-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-60"
                     disabled={confirmMoving}
                     aria-label="Close"
                   >
@@ -364,7 +386,7 @@ const Kanban = () => {
                     type="button"
                     onClick={() => setPendingMove(null)}
                     disabled={confirmMoving}
-                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-60"
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 dark:text-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-60"
                   >
                     Cancel
                   </button>

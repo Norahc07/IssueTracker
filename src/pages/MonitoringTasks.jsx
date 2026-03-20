@@ -7,6 +7,12 @@ import { taskStatusPill } from '../utils/uiPills.js';
 
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
+const formatMdy = (value) => {
+  if (!value) return '—';
+  const d = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+};
 
 const MONITORING_TASK_CATEGORIES = [
   {
@@ -111,7 +117,15 @@ export default function MonitoringTasks({ embedded = false }) {
   const isMonitoringTeam = String(userTeam || '').toLowerCase().includes('monitoring');
   const isAdmin = userRole === 'admin';
   const canAccess = isMonitoringTeam || isAdmin;
-  const canManageAllTeamsInternRecords = isAdmin;
+  // Intern records (team tab switch): Admin OR Monitoring staff leads/members (same as admin per request)
+  // - Admin: all
+  // - Monitoring Team role: all (TLA/Monitoring/PAT1)
+  // - Monitoring TL/VTL: all (TLA/Monitoring/PAT1)
+  // - Monitoring Intern: all (TLA/Monitoring/PAT1)
+  const isMonitoringLead = isMonitoringTeam && (userRole === 'tl' || userRole === 'vtl');
+  const isMonitoringStaff = userRole === 'monitoring_team' && isMonitoringTeam;
+  const isMonitoringIntern = userRole === 'intern' && isMonitoringTeam;
+  const canManageAllTeamsInternRecords = isAdmin || isMonitoringStaff || isMonitoringLead || isMonitoringIntern;
 
   useEffect(() => {
     if (!canAccess) return;
@@ -669,9 +683,9 @@ export default function MonitoringTasks({ embedded = false }) {
                       <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
                         {computeRemainingHours(rec)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{rec.start_date || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{rec.target_end_1 || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{rec.target_end_2 || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatMdy(rec.start_date)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatMdy(rec.target_end_1)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatMdy(rec.target_end_2)}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{computeDaysRemaining(rec)}</td>
                       <td className="px-4 py-3 text-sm text-right whitespace-nowrap space-x-2">
                         <button

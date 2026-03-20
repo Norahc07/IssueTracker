@@ -70,12 +70,12 @@
 .repository-content h3, .repository-content h4, .repository-content h5, .repository-content h6 { font-size: 1.125rem; font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.25rem; }
 .repository-content p, .repository-content li, .repository-content div { 
   margin-bottom: 0.75rem; 
-  word-break: break-word; 
-  overflow-wrap: anywhere; 
+  word-break: normal; 
+  overflow-wrap: break-word; 
 }
 .repository-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }
 .repository-content ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }
-.repository-content a { color: #6795BE; text-decoration: underline; word-break: break-all; overflow-wrap: anywhere; }
+.repository-content a { color: #6795BE; text-decoration: underline; word-break: normal; overflow-wrap: break-word; }
 .repository-content a:hover { opacity: 0.9; }
 .repository-content img { max-width: 100%; height: auto; }
 
