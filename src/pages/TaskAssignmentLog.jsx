@@ -327,6 +327,8 @@ export default function TaskAssignmentLog() {
   const [selectedDomainForAccounts, setSelectedDomainForAccounts] = useState(null);
   const [selectedNewDomainDetails, setSelectedNewDomainDetails] = useState(null);
   const [newDomainDrawerDomain, setNewDomainDrawerDomain] = useState(null);
+  /** 'old' | 'new' — which tab opened the slide-over */
+  const [domainDrawerKind, setDomainDrawerKind] = useState('new');
   const [isEditingNewDomainDrawer, setIsEditingNewDomainDrawer] = useState(false);
   const [savingNewDomainDrawer, setSavingNewDomainDrawer] = useState(false);
   const [newDomainDrawerDraft, setNewDomainDrawerDraft] = useState(null);
@@ -641,8 +643,9 @@ export default function TaskAssignmentLog() {
     if (error) throw error;
   };
 
-  const openNewDomainDrawer = (domain) => {
+  const openDomainDrawer = (domain, kind = 'new') => {
     if (!domain) return;
+    setDomainDrawerKind(kind === 'old' ? 'old' : 'new');
     setNewDomainDrawerDomain(domain);
     setIsEditingNewDomainDrawer(false);
     setSavingNewDomainDrawer(false);
@@ -663,6 +666,7 @@ export default function TaskAssignmentLog() {
 
   const closeNewDomainDrawer = () => {
     setNewDomainDrawerDomain(null);
+    setDomainDrawerKind('new');
     setIsEditingNewDomainDrawer(false);
     setSavingNewDomainDrawer(false);
     setNewDomainDrawerDraft(null);
@@ -675,7 +679,6 @@ export default function TaskAssignmentLog() {
       const payload = {
         wp_username: String(newDomainDrawerDraft.wp_username || '').trim() || null,
         new_password: String(newDomainDrawerDraft.new_password || '').trim() || null,
-        status: String(newDomainDrawerDraft.status || '').trim() || null,
         scanning_done_date: newDomainDrawerDraft.scanning_done_date ? newDomainDrawerDraft.scanning_done_date : null,
         scanning_date: String(newDomainDrawerDraft.scanning_date || '').trim() || null,
         scanning_plugin: String(newDomainDrawerDraft.scanning_plugin || '').trim() || null,
@@ -685,6 +688,9 @@ export default function TaskAssignmentLog() {
         url: String(newDomainDrawerDraft.url || '').trim() || null,
         country: String(newDomainDrawerDraft.country || '').trim() || null,
       };
+      if (domainDrawerKind === 'new') {
+        payload.status = String(newDomainDrawerDraft.status || '').trim() || null;
+      }
 
       const { error } = await supabase.from('domains').update(payload).eq('id', newDomainDrawerDomain.id);
       if (error) throw error;
@@ -1459,28 +1465,87 @@ export default function TaskAssignmentLog() {
     return u.update_status || 'Pending';
   };
 
-  /** Badge styles for old-domains “plugin update” status column (Updated vs Not updated) */
-  const oldDomainPluginUpdateBadgeClass = (isUpdated) =>
-    isUpdated
-      ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200/80 dark:bg-emerald-900/40 dark:text-emerald-200 dark:ring-emerald-800/60'
-      : 'bg-amber-100 text-amber-900 ring-1 ring-amber-200/80 dark:bg-amber-900/35 dark:text-amber-100 dark:ring-amber-800/50';
+  /**
+   * Domains table status column — shared 3-tier color system for scanability:
+   * - not_started: gray (not updated / no meaningful progress)
+   * - in_progress: orange (active work, blocked, failed, pending, etc.)
+   * - done: green (updated / complete)
+   */
+  const domainTableStatusBadgeClassByTier = (tier) => {
+    switch (tier) {
+      case 'done':
+        return 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200/90 dark:bg-emerald-900/45 dark:text-emerald-100 dark:ring-emerald-800/60';
+      case 'in_progress':
+        return 'bg-orange-100 text-orange-950 ring-1 ring-orange-200/90 dark:bg-orange-950/50 dark:text-orange-100 dark:ring-orange-800/55';
+      case 'not_started':
+      default:
+        return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200/90 dark:bg-gray-800 dark:text-gray-100 dark:ring-gray-600';
+    }
+  };
 
-  /** Badge styles for new-domains free-text row status */
-  const newDomainRowStatusBadgeClass = (status) => {
-    const s = String(status || '').trim().toLowerCase();
-    if (!s || s === '—') {
-      return 'bg-gray-100 text-gray-700 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-600';
+  /** Old domains: map plugin summary → display label + tier (not all rows are binary Updated/Not updated) */
+  const getOldDomainPluginTierAndLabel = (summary) => {
+    if (summary === 'OK / Updated' || summary === 'OK') {
+      return { tier: 'done', label: 'Updated' };
     }
-    if (s.includes('done') || s.includes('complete') || s === 'ok') {
-      return 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200/80 dark:bg-emerald-900/40 dark:text-emerald-200 dark:ring-emerald-800/60';
+    if (summary === 'Not updated') {
+      return { tier: 'not_started', label: 'Not updated' };
     }
-    if (s.includes('block') || s.includes('verify') || s.includes('issue')) {
-      return 'bg-amber-100 text-amber-900 ring-1 ring-amber-200/80 dark:bg-amber-900/35 dark:text-amber-100 dark:ring-amber-800/50';
+    const labelBySummary = {
+      Failed: 'Failed',
+      'Issue found': 'Issue found',
+      'Needs verification': 'Needs verification',
+      'Blocked access': 'Blocked access',
+      Skipped: 'Skipped',
+      Pending: 'Pending',
+    };
+    return {
+      tier: 'in_progress',
+      label: labelBySummary[summary] || summary,
+    };
+  };
+
+  /** Shown when new domain row has no status yet — matches old-domains “Not updated” label */
+  const NEW_DOMAIN_DEFAULT_STATUS_LABEL = 'Not updated';
+
+  /** New domains: free-text row status → tier */
+  const getNewDomainStatusTier = (status) => {
+    const raw = String(status || '').trim();
+    if (!raw || raw === '—') return 'not_started';
+    const s = raw.toLowerCase();
+    if (s === 'not updated' || s === 'n/a' || s === 'na' || s === 'none') return 'not_started';
+    if (
+      s.includes('done') ||
+      s.includes('complete') ||
+      s === 'ok' ||
+      (s.includes('updated') && !s.includes('not'))
+    ) {
+      return 'done';
     }
-    if (s.includes('progress') || s.includes('pending')) {
-      return 'bg-sky-100 text-sky-900 ring-1 ring-sky-200/80 dark:bg-sky-900/40 dark:text-sky-100 dark:ring-sky-800/50';
+    if (
+      s.includes('progress') ||
+      s.includes('pending') ||
+      s.includes('verify') ||
+      s.includes('block') ||
+      s.includes('issue') ||
+      s.includes('fail') ||
+      s.includes('wait') ||
+      s.includes('hold')
+    ) {
+      return 'in_progress';
     }
-    return 'bg-slate-100 text-slate-800 ring-1 ring-slate-200/80 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-600';
+    return 'in_progress';
+  };
+
+  /** Badge class for new-domain status cell from free text */
+  const newDomainRowStatusBadgeClass = (status) =>
+    domainTableStatusBadgeClassByTier(getNewDomainStatusTier(status));
+
+  /** View mode: empty / placeholder hyphen → same default label as old domains tab */
+  const getNewDomainStatusDisplayLabel = (status) => {
+    const raw = String(status || '').trim();
+    if (!raw || raw === '—') return NEW_DOMAIN_DEFAULT_STATUS_LABEL;
+    return raw;
   };
 
   if (loading && tasks.length === 0) {
@@ -3198,6 +3263,25 @@ export default function TaskAssignmentLog() {
                 className="mx-4 mt-4 mb-1"
               />
             )}
+            <div
+              className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-gray-100 bg-gray-50/70 px-4 py-2 text-[11px] text-gray-600 dark:border-gray-800 dark:bg-gray-950/35 dark:text-gray-400"
+              role="note"
+              aria-label="Status column uses gray for not updated, orange for in progress, green for updated or done"
+            >
+              <span className="font-semibold text-gray-700 dark:text-gray-300">Status colors</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-gray-400 dark:bg-gray-500" aria-hidden />
+                Not updated
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-orange-400 dark:bg-orange-500" aria-hidden />
+                In progress
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400" aria-hidden />
+                Updated / Done
+              </span>
+            </div>
             {domainTypeFilter === 'old' ? (
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                 <thead className="bg-gray-50 dark:bg-gray-950/40">
@@ -3205,12 +3289,6 @@ export default function TaskAssignmentLog() {
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Country</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">URL</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Scanning</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Plugin</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">2FA</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">reCAPTCHA</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Backup</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Claim</th>
                   </tr>
                 </thead>
@@ -3223,9 +3301,12 @@ export default function TaskAssignmentLog() {
                       return (
                       <tr
                         key={domain.id}
-                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/60 ${isClaimed ? 'bg-green-50/70 dark:bg-green-900/30' : ''}`}
+                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/60 ${isClaimed ? 'bg-green-50/70 dark:bg-green-900/30' : ''} ${!isEditingDomains ? 'cursor-pointer' : ''}`}
+                        onClick={() => {
+                          if (!isEditingDomains) openDomainDrawer(domain, 'old');
+                        }}
                       >
-                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100" onClick={(e) => isEditingDomains && e.stopPropagation()}>
                           {isEditingDomains ? (
                             <input
                               type="text"
@@ -3238,14 +3319,14 @@ export default function TaskAssignmentLog() {
                             <span className="font-semibold text-gray-900 dark:text-gray-100">{domain.country || '—'}</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300" onClick={(e) => isEditingDomains && e.stopPropagation()}>
                           {!isEditingDomains && (() => {
                             const summary = getDomainPluginSummary(domain);
-                            const isUpdated = summary === 'OK / Updated' || summary === 'OK';
-                            const label = isUpdated ? 'Updated' : 'Not updated';
+                            const { tier, label } = getOldDomainPluginTierAndLabel(summary);
                             return (
                               <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${oldDomainPluginUpdateBadgeClass(isUpdated)}`}
+                                title={summary}
+                                className={`inline-flex max-w-full items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${domainTableStatusBadgeClassByTier(tier)}`}
                               >
                                 {label}
                               </span>
@@ -3253,7 +3334,7 @@ export default function TaskAssignmentLog() {
                           })()}
                           {isEditingDomains && <span className="text-gray-400">—</span>}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 break-all">
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 break-all" onClick={(e) => isEditingDomains && e.stopPropagation()}>
                           {isEditingDomains ? (
                             <input
                               type="url"
@@ -3263,87 +3344,12 @@ export default function TaskAssignmentLog() {
                               placeholder="https://..."
                             />
                           ) : domain.url ? (
-                            <a href={domain.url} target="_blank" rel="noopener noreferrer" className="text-[#6795BE] hover:underline break-all">
+                            <a href={domain.url} target="_blank" rel="noopener noreferrer" className="text-[#6795BE] hover:underline break-all" onClick={(e) => e.stopPropagation()}>
                               {domain.url}
                             </a>
                           ) : (
                             '—'
                           )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
-                          {isEditingDomains ? (
-                            <select
-                              value={domain.scanning_date || 'ok'}
-                              onChange={(e) => updateDomainInState(domain.id, { scanning_date: e.target.value })}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                            >
-                              {SCANNING_OPTIONS.map((o) => (
-                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            scanningLabel(domain.scanning_date) || 'Ok'
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
-                          {isEditingDomains ? (
-                            <PrettyDatePicker
-                              value={domain.scanning_done_date ? domain.scanning_done_date.slice(0, 10) : ''}
-                              onChange={(e) => updateDomainInState(domain.id, { scanning_done_date: e.target.value || null })}
-                              ariaLabel="Select scanning done date"
-                              className="w-full"
-                            />
-                          ) : (
-                            domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
-                          {isEditingDomains ? (
-                            <select
-                              value={domain.scanning_plugin || 'ok'}
-                              onChange={(e) => updateDomainInState(domain.id, { scanning_plugin: e.target.value })}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                            >
-                              {SCANNING_OPTIONS.map((o) => (
-                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            scanningLabel(domain.scanning_plugin) || 'Ok'
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center">
-                          {isEditingDomains ? (
-                            <select
-                              value={domain.scanning_2fa || 'ok'}
-                              onChange={(e) => updateDomainInState(domain.id, { scanning_2fa: e.target.value })}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                            >
-                              {SCANNING_OPTIONS.map((o) => (
-                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            scanningLabel(domain.scanning_2fa) || 'Ok'
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={!!domain.recaptcha}
-                            readOnly={!isEditingDomains}
-                            onChange={isEditingDomains ? (e) => updateDomainInState(domain.id, { recaptcha: e.target.checked }) : undefined}
-                            className="rounded"
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={!!domain.backup}
-                            readOnly={!isEditingDomains}
-                            onChange={isEditingDomains ? (e) => updateDomainInState(domain.id, { backup: e.target.checked }) : undefined}
-                            className="rounded"
-                          />
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
                           {!isEditingDomainsTable && (
@@ -3370,7 +3376,7 @@ export default function TaskAssignmentLog() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={10} className="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+                      <td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
                         No old domains. Add one with &quot;Add Domain&quot;.
                       </td>
                     </tr>
@@ -3384,14 +3390,8 @@ export default function TaskAssignmentLog() {
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Country</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">URL</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Status</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Scanning</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Plugin</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">2FA</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">WP Username</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">New Password</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">reCAPTCHA</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Backup</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Claim</th>
                   </tr>
                 </thead>
@@ -3405,7 +3405,7 @@ export default function TaskAssignmentLog() {
                       <tr
                         key={domain.id}
                         className={`hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer ${isClaimed ? 'bg-green-50/70 dark:bg-green-900/30' : ''}`}
-                        onClick={() => openNewDomainDrawer(domain)}
+                        onClick={() => openDomainDrawer(domain, 'new')}
                       >
                         <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
                           {isEditingDomainsTable ? (
@@ -3444,74 +3444,19 @@ export default function TaskAssignmentLog() {
                               value={domain.status || ''}
                               onChange={(e) => updateDomainInState(domain.id, { status: e.target.value })}
                               className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                              placeholder="Status"
+                              placeholder={NEW_DOMAIN_DEFAULT_STATUS_LABEL}
                             />
                           ) : (
                             <span
-                              className={`inline-flex max-w-full items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${newDomainRowStatusBadgeClass(domain.status)}`}
+                              title={
+                                String(domain.status || '').trim()
+                                  ? String(domain.status).trim()
+                                  : NEW_DOMAIN_DEFAULT_STATUS_LABEL
+                              }
+                              className={`inline-flex max-w-full min-w-0 items-center truncate px-2.5 py-0.5 rounded-full text-xs font-semibold ${newDomainRowStatusBadgeClass(domain.status)}`}
                             >
-                              {domain.status || '—'}
+                              {getNewDomainStatusDisplayLabel(domain.status)}
                             </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
-                          {isEditingDomainsTable ? (
-                            <PrettyDatePicker
-                              value={domain.scanning_done_date ? domain.scanning_done_date.slice(0, 10) : ''}
-                              onChange={(e) => updateDomainInState(domain.id, { scanning_done_date: e.target.value || null })}
-                              ariaLabel="Select scanning done date"
-                              className="w-full"
-                            />
-                          ) : (
-                            domain.scanning_done_date ? new Date(domain.scanning_done_date).toLocaleDateString() : '—'
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
-                          {isEditingDomainsTable ? (
-                            <select
-                              value={domain.scanning_date || ''}
-                              onChange={(e) => updateDomainInState(domain.id, { scanning_date: e.target.value })}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                            >
-                              <option value="">—</option>
-                              {SCANNING_OPTIONS.map((o) => (
-                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            scanningLabel(domain.scanning_date) || '—'
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
-                          {isEditingDomainsTable ? (
-                            <select
-                              value={domain.scanning_plugin || ''}
-                              onChange={(e) => updateDomainInState(domain.id, { scanning_plugin: e.target.value })}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                            >
-                              <option value="">—</option>
-                              {SCANNING_OPTIONS.map((o) => (
-                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            scanningLabel(domain.scanning_plugin) || '—'
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
-                          {isEditingDomainsTable ? (
-                            <select
-                              value={domain.scanning_2fa || ''}
-                              onChange={(e) => updateDomainInState(domain.id, { scanning_2fa: e.target.value })}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                            >
-                              <option value="">—</option>
-                              {SCANNING_OPTIONS.map((o) => (
-                                <option key={o} value={o}>{SCANNING_LABELS[o] || o}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            scanningLabel(domain.scanning_2fa) || '—'
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
@@ -3582,24 +3527,6 @@ export default function TaskAssignmentLog() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={!!domain.recaptcha}
-                            readOnly={!isEditingDomainsTable}
-                            onChange={isEditingDomainsTable ? (e) => updateDomainInState(domain.id, { recaptcha: e.target.checked }) : undefined}
-                            className="rounded"
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={!!domain.backup}
-                            readOnly={!isEditingDomainsTable}
-                            onChange={isEditingDomainsTable ? (e) => updateDomainInState(domain.id, { backup: e.target.checked }) : undefined}
-                            className="rounded"
-                          />
-                        </td>
                         <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           {!isEditingDomainsTable && (
                             isClaimed ? (
@@ -3625,7 +3552,7 @@ export default function TaskAssignmentLog() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={12} className="px-4 py-12 text-center text-sm text-gray-500">
+                      <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500">
                         No new domains. Add one with &quot;Add Domain&quot;.
                       </td>
                     </tr>
@@ -3690,7 +3617,7 @@ export default function TaskAssignmentLog() {
             </Modal>
           )}
 
-          {/* New Domains – right-side slide-over details (admin can edit) */}
+          {/* Domains – right-side slide-over (old & new); scanning fields + plugin status */}
           {newDomainDrawerDomain && (
             <Modal open={!!newDomainDrawerDomain} onClose={closeNewDomainDrawer} zIndexClassName="z-[10000]">
               <div className="fixed inset-0" />
@@ -3705,6 +3632,11 @@ export default function TaskAssignmentLog() {
                   <div className="h-full flex flex-col">
                     <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between gap-3">
                       <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className="text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                            {domainDrawerKind === 'old' ? 'Old domain' : 'New domain'}
+                          </span>
+                        </div>
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate" style={{ color: PRIMARY }}>
                           {newDomainDrawerDomain.country || 'Domain'}
                         </h3>
@@ -3766,7 +3698,7 @@ export default function TaskAssignmentLog() {
                                   type="button"
                                   onClick={() => {
                                     setIsEditingNewDomainDrawer(false);
-                                    openNewDomainDrawer(newDomainDrawerDomain);
+                                    openDomainDrawer(newDomainDrawerDomain, domainDrawerKind);
                                   }}
                                   disabled={savingNewDomainDrawer}
                                   className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60"
@@ -3812,13 +3744,46 @@ export default function TaskAssignmentLog() {
                         </div>
                       </div>
 
+                      {domainDrawerKind === 'old' && newDomainDrawerDomain && (
+                        <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                          <div className="px-4 py-3 bg-gray-50 dark:bg-gray-950/40 border-b border-gray-200 dark:border-gray-800">
+                            <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Plugin update status</h4>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              Same summary as the Status column (from latest plugin update log).
+                            </p>
+                          </div>
+                          <div className="p-4 space-y-2">
+                            {(() => {
+                              const summary = getDomainPluginSummary(newDomainDrawerDomain);
+                              const { tier, label } = getOldDomainPluginTierAndLabel(summary);
+                              return (
+                                <>
+                                  <span
+                                    className={`inline-flex max-w-full items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${domainTableStatusBadgeClassByTier(tier)}`}
+                                  >
+                                    {label}
+                                  </span>
+                                  <p className="text-xs text-gray-600 dark:text-gray-300">
+                                    <span className="font-semibold">Details: </span>
+                                    {summary}
+                                  </p>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
                         <div className="px-4 py-3 bg-gray-50 dark:bg-gray-950/40 border-b border-gray-200 dark:border-gray-800">
-                          <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Scanning</h4>
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Scanning &amp; site checks</h4>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            Date (done), Scanning, Plugin, 2FA, reCAPTCHA, Backup
+                          </p>
                         </div>
                         <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1">
-                            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">Done date</label>
+                            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">Date</label>
                             {isEditingNewDomainDrawer && userRole === 'admin' ? (
                               <PrettyDatePicker
                                 value={newDomainDrawerDraft?.scanning_done_date || ''}
@@ -3836,12 +3801,20 @@ export default function TaskAssignmentLog() {
                               </div>
                             )}
                           </div>
-                          {[
-                            { key: 'scanning_date', label: 'Date status' },
-                            { key: 'scanning_plugin', label: 'Plugin' },
-                            { key: 'scanning_2fa', label: '2FA' },
-                            { key: 'status', label: 'Row status' },
-                          ].map((f) => (
+                          {(
+                            domainDrawerKind === 'old'
+                              ? [
+                                  { key: 'scanning_date', label: 'Scanning' },
+                                  { key: 'scanning_plugin', label: 'Plugin' },
+                                  { key: 'scanning_2fa', label: '2FA' },
+                                ]
+                              : [
+                                  { key: 'scanning_date', label: 'Date status' },
+                                  { key: 'scanning_plugin', label: 'Plugin' },
+                                  { key: 'scanning_2fa', label: '2FA' },
+                                  { key: 'status', label: 'Row status' },
+                                ]
+                          ).map((f) => (
                             <div key={f.key} className="space-y-1">
                               <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{f.label}</label>
                               {isEditingNewDomainDrawer && userRole === 'admin' ? (
@@ -3852,7 +3825,7 @@ export default function TaskAssignmentLog() {
                                   }
                                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
                                 >
-                                  <option value="">—</option>
+                                  <option value="">{f.key === 'status' ? NEW_DOMAIN_DEFAULT_STATUS_LABEL : '—'}</option>
                                   {(f.key === 'status' ? DOMAIN_ROW_STATUS_OPTIONS : SCANNING_OPTIONS).map((o) => (
                                     <option key={o} value={o}>
                                       {f.key === 'status' ? o : (SCANNING_LABELS[o] || o)}
@@ -3862,7 +3835,7 @@ export default function TaskAssignmentLog() {
                               ) : (
                                 <div className="text-sm text-gray-900 dark:text-gray-100">
                                   {f.key === 'status'
-                                    ? (newDomainDrawerDomain?.status || '—')
+                                    ? getNewDomainStatusDisplayLabel(newDomainDrawerDomain?.status)
                                     : (scanningLabel(newDomainDrawerDomain?.[f.key]) || '—')}
                                 </div>
                               )}
