@@ -1249,8 +1249,16 @@ export default function TaskAssignmentLog() {
   const canUpdateStatus = (task) =>
     permissions.canUpdateTaskStatus(userRole, task.assigned_to, user?.id);
 
+  const isTlaTeam = (teamValue) => {
+    const raw = String(teamValue || '').trim().toLowerCase();
+    if (!raw) return true; // tolerate missing team for intern accounts; default to TLA behavior
+    const compact = raw.replace(/[^a-z0-9]+/g, '');
+    if (compact === 'tla' || compact === 'teamleadassistant') return true;
+    return raw.includes('team lead assistant') || raw.includes('tla');
+  };
+
   const canClaimTask = (userRole, userTeam) =>
-    (userRole === 'intern' || userRole === 'tl' || userRole === 'vtl') && String(userTeam || '').toLowerCase() === 'tla';
+    (userRole === 'intern' || userRole === 'tl' || userRole === 'vtl') && isTlaTeam(userTeam);
 
   const handleClaimTask = async (task) => {
     if (!user?.id || task.assigned_to) return;
@@ -1291,9 +1299,9 @@ export default function TaskAssignmentLog() {
   };
 
   const canClaimDomain = (userRole, userTeam) => {
-    const team = String(userTeam || '').toLowerCase();
     if (userRole === 'admin' || userRole === 'tla') return true;
-    if ((userRole === 'intern' || userRole === 'tl' || userRole === 'vtl') && team === 'tla') return true;
+    if (userRole === 'intern' && isTlaTeam(userTeam)) return true;
+    if ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam(userTeam)) return true;
     return false;
   };
 
