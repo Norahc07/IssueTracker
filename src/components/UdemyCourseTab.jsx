@@ -85,7 +85,7 @@ export default function UdemyCourseTab() {
   const [nameDraft, setNameDraft] = useState('');
   const [internStatusMap, setInternStatusMap] = useState({}); // key: `${course}|${nameId}` -> status
   const [internLoading, setInternLoading] = useState(false);
-  const [tlaPeople, setTlaPeople] = useState([]); // onboarding interns/TL/VTL in TLA team
+  const [tlaPeople, setTlaPeople] = useState([]); // assignable interns sourced from onboarding records
   const [currentInternName, setCurrentInternName] = useState('');
 
   const fetchBatches = async () => {
@@ -163,8 +163,7 @@ export default function UdemyCourseTab() {
       try {
         const { data, error } = await supabase
           .from('onboarding_records')
-          .select('id, name, email, department, team')
-          .ilike('department', 'it%');
+          .select('id, name, email, department, team');
         if (error) {
           console.warn('TLA people fetch error', error);
           return;
@@ -174,9 +173,9 @@ export default function UdemyCourseTab() {
         rows.forEach((r) => {
           const name = (r.name || '').trim();
           const email = (r.email || '').trim();
-          const teamLower = (r.team || '').toLowerCase();
           if (!name) return;
-          if (!teamLower.includes('team lead assistant') && !teamLower.includes('tla')) return;
+          // Include all onboarded IT interns/people so "Assigned Intern" dropdown
+          // doesn't miss names due to inconsistent team values in onboarding records.
           const key = email || name;
           if (!map.has(key)) {
             map.set(key, { name, email });
