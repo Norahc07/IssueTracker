@@ -310,6 +310,10 @@ export default function TaskAssignmentLog() {
   ); // 'tasks' | 'udemy-course' | 'course-list' | 'domains' | 'domain-claims' | 'domain-updates'
   const [taskFilter, setTaskFilter] = useState('all'); // 'all' | 'my-tasks'
   const [domainTypeFilter, setDomainTypeFilter] = useState('old'); // 'old' | 'new'
+  /** Domains tab: search + filters */
+  const [domainSearchQuery, setDomainSearchQuery] = useState('');
+  const [domainClaimFilter, setDomainClaimFilter] = useState('all'); // 'all' | 'claimed' | 'unclaimed' | 'mine'
+  const [domainStatusFilter, setDomainStatusFilter] = useState('all'); // 'all' | 'updated' | 'not_updated' | 'in_progress'
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [showCreateDomainModal, setShowCreateDomainModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -1242,8 +1246,6 @@ export default function TaskAssignmentLog() {
     return list;
   };
 
-  const getFilteredDomains = () => domains.filter((d) => d.type === domainTypeFilter);
-
   const canUpdateStatus = (task) =>
     permissions.canUpdateTaskStatus(userRole, task.assigned_to, user?.id);
 
@@ -1548,6 +1550,76 @@ export default function TaskAssignmentLog() {
     return raw;
   };
 
+  const filteredDomains = useMemo(() => {
+    let list = domains.filter((d) => d.type === domainTypeFilter);
+
+    const q = String(domainSearchQuery || '').trim().toLowerCase();
+    if (q) {
+      list = list.filter((d) => {
+        const country = String(d.country || '').toLowerCase();
+        const url = String(d.url || '').toLowerCase();
+        return country.includes(q) || url.includes(q);
+      });
+    }
+
+    if (domainClaimFilter !== 'all') {
+      list = list.filter((d) => {
+        const claim = domainClaims.find((c) => c.domain_id === d.id);
+        const isClaimed = !!claim;
+        const mine = claim && String(claim.claimed_by) === String(user?.id);
+        if (domainClaimFilter === 'claimed') return isClaimed;
+        if (domainClaimFilter === 'unclaimed') return !isClaimed;
+        if (domainClaimFilter === 'mine') return mine;
+        return true;
+      });
+    }
+
+    if (domainStatusFilter !== 'all') {
+      list = list.filter((d) => {
+        if (domainTypeFilter === 'old') {
+          const summary = getDomainPluginSummary(d);
+          const { tier } = getOldDomainPluginTierAndLabel(summary);
+          if (domainStatusFilter === 'updated') return tier === 'done';
+          if (domainStatusFilter === 'not_updated') return tier === 'not_started';
+          if (domainStatusFilter === 'in_progress') return tier === 'in_progress';
+        } else {
+          const tier = getNewDomainStatusTier(d.status);
+          if (domainStatusFilter === 'updated') return tier === 'done';
+          if (domainStatusFilter === 'not_updated') return tier === 'not_started';
+          if (domainStatusFilter === 'in_progress') return tier === 'in_progress';
+        }
+        return true;
+      });
+    }
+
+    return list;
+  }, [
+    domains,
+    domainTypeFilter,
+    domainSearchQuery,
+    domainClaimFilter,
+    domainStatusFilter,
+    domainClaims,
+    user?.id,
+    domainUpdates,
+  ]);
+
+  const domainsTabBaseCount = useMemo(
+    () => domains.filter((d) => d.type === domainTypeFilter).length,
+    [domains, domainTypeFilter]
+  );
+
+  const clearDomainFilters = () => {
+    setDomainSearchQuery('');
+    setDomainClaimFilter('all');
+    setDomainStatusFilter('all');
+  };
+
+  const domainFiltersActive =
+    Boolean(String(domainSearchQuery || '').trim()) ||
+    domainClaimFilter !== 'all' ||
+    domainStatusFilter !== 'all';
+
   if (loading && tasks.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1557,7 +1629,6 @@ export default function TaskAssignmentLog() {
   }
 
   const filteredTasks = getFilteredTasks();
-  const filteredDomains = getFilteredDomains();
   const selectedCourseListDomain =
     domains.find((d) => d.id === courseListDomainId) || null;
   const isSingaporeCourseDomain =
@@ -1568,6 +1639,82 @@ export default function TaskAssignmentLog() {
 
   const canBulkEditDomains = domainTypeFilter === 'old';
   const isEditingDomains = isEditingDomainsTable && canBulkEditDomains;
+
+  const domainSearchToolbarEl = (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-950/40 p-3 sm:p-4">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-row flex-wrap md:flex-nowrap items-end gap-3">
+          <div className="relative min-w-0 w-full flex-1 md:w-auto md:min-w-[12rem] max-w-xl">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base opacity-70 pointer-events-none select-none" aria-hidden>
+              🔍
+            </span>
+            <label htmlFor="domain-search-input" className="sr-only">
+              Search by country or URL
+            </label>
+            <input
+              id="domain-search-input"
+              type="search"
+              value={domainSearchQuery}
+              onChange={(e) => setDomainSearchQuery(e.target.value)}
+              placeholder="Search by country or URL…"
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 pl-10 pr-3 py-2 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-500"
+              aria-label="Search domains by country or URL"
+            />
+          </div>
+          <div className="w-40 shrink-0">
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Claim</label>
+            <select
+              value={domainClaimFilter}
+              onChange={(e) => setDomainClaimFilter(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-sm"
+            >
+              <option value="all">All</option>
+              <option value="claimed">Claimed</option>
+              <option value="unclaimed">Unclaimed</option>
+              <option value="mine">Claimed by me</option>
+            </select>
+          </div>
+          <div className="w-44 shrink-0">
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+              {domainTypeFilter === 'old' ? 'Status (plugin update)' : 'Status (row)'}
+            </label>
+            <select
+              value={domainStatusFilter}
+              onChange={(e) => setDomainStatusFilter(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-sm"
+            >
+              <option value="all">All</option>
+              <option value="updated">{domainTypeFilter === 'old' ? 'Updated' : 'Done / Updated'}</option>
+              <option value="not_updated">Not updated</option>
+              <option value="in_progress">In progress</option>
+            </select>
+          </div>
+          {domainFiltersActive && (
+            <button
+              type="button"
+              onClick={clearDomainFilters}
+              className="text-sm font-medium text-[#6795BE] dark:text-sky-300 hover:underline shrink-0 pb-2"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {domainFiltersActive ? (
+            <>
+              Showing <span className="font-semibold text-gray-700 dark:text-gray-200">{filteredDomains.length}</span> of{' '}
+              <span className="font-semibold text-gray-700 dark:text-gray-200">{domainsTabBaseCount}</span> domain
+              {domainsTabBaseCount !== 1 ? 's' : ''} in this tab
+            </>
+          ) : (
+            <>
+              {domainsTabBaseCount} domain{domainsTabBaseCount !== 1 ? 's' : ''} in this tab — use search or filters to narrow the list
+            </>
+          )}
+        </p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="w-full space-y-4 sm:space-y-6">
@@ -3078,6 +3225,8 @@ export default function TaskAssignmentLog() {
             )}
           </div>
 
+          {domainTypeFilter === 'new' && domainSearchToolbarEl}
+
           {/* Note for Old Domains only: default accounts (editable) used for WordPress plugin updates */}
           {domainTypeFilter === 'old' && (
             <div className="rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50/80 dark:bg-blue-950/30 p-4 text-sm text-gray-800 dark:text-gray-200">
@@ -3249,11 +3398,13 @@ export default function TaskAssignmentLog() {
                       Edit
                     </button>
                   )}
-                  <p className="mt-2 text-xs font-medium text-amber-800">For SG Domain DO NOT CHANGE the password unless required.</p>
+                  <p className="mt-2 text-xs font-medium text-amber-800 dark:text-amber-200">For SG Domain DO NOT CHANGE the password unless required.</p>
                 </div>
               </div>
             </div>
           )}
+
+          {domainTypeFilter === 'old' && domainSearchToolbarEl}
 
           <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm overflow-x-auto">
             {domainTypeFilter === 'new' && (
@@ -3377,7 +3528,20 @@ export default function TaskAssignmentLog() {
                   ) : (
                     <tr>
                       <td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
-                        No old domains. Add one with &quot;Add Domain&quot;.
+                        {domainsTabBaseCount === 0 ? (
+                          <>No old domains. Add one with &quot;Add Domain&quot;.</>
+                        ) : (
+                          <span>
+                            No domains match your search or filters.{' '}
+                            <button
+                              type="button"
+                              onClick={clearDomainFilters}
+                              className="font-medium text-[#6795BE] dark:text-sky-300 hover:underline"
+                            >
+                              Clear filters
+                            </button>
+                          </span>
+                        )}
                       </td>
                     </tr>
                   )}
@@ -3552,8 +3716,21 @@ export default function TaskAssignmentLog() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500">
-                        No new domains. Add one with &quot;Add Domain&quot;.
+                      <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+                        {domainsTabBaseCount === 0 ? (
+                          <>No new domains. Add one with &quot;Add Domain&quot;.</>
+                        ) : (
+                          <span>
+                            No domains match your search or filters.{' '}
+                            <button
+                              type="button"
+                              onClick={clearDomainFilters}
+                              className="font-medium text-[#6795BE] dark:text-sky-300 hover:underline"
+                            >
+                              Clear filters
+                            </button>
+                          </span>
+                        )}
                       </td>
                     </tr>
                   )}
