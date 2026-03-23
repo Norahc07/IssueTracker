@@ -79,6 +79,18 @@
 .repository-content a:hover { opacity: 0.9; }
 .repository-content img { max-width: 100%; height: auto; }
 
+/* Defensive wrapping for long unbroken tokens (URLs, pasted text) in repository pages */
+.repository-content,
+.repository-content p,
+.repository-content li,
+.repository-content a,
+.repository-content span,
+.repository-content strong,
+.repository-content em {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* Repository tables (e.g. Course List Price Edit) */
 .repository-content table {
   width: 100%;

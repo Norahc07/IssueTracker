@@ -258,7 +258,7 @@ export default function RepositoryView() {
   }
 
   return (
-    <div className="w-full space-y-4 sm:space-y-6">
+    <div className="w-full max-w-full overflow-x-hidden space-y-4 sm:space-y-6">
       <div className="flex items-center gap-2 text-sm">
         <button
           type="button"

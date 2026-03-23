@@ -18,7 +18,7 @@ const navItems = [
   { to: '/organized-tickets', label: 'Organize Tickets', icon: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z' },
   { to: '/tasks', label: 'Tasks', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
   { to: '/tracker', label: 'Tracker', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7v3m0 0v3m0-3h3m-3 0H9m-2-5a4 4 0 11-8 0 4 4 0 018 0z' },
-  { to: '/repository', label: 'Repository', icon: 'M5 19a2 2 0 01-2 2H3a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H5z' },
+  { to: '/repository', label: 'Repository', icon: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7z' },
   { to: '/daily-report', label: 'Daily Report', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.5a2 2 0 012 2v5.5a2 2 0 01-2 2z' },
 ];
 
@@ -39,6 +39,8 @@ export default function SidebarLayout() {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [autoJobRunning, setAutoJobRunning] = useState(false);
   const [theme, setTheme] = useState(() => getStoredTheme());
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const canSendReminders = permissions.canManageAttendanceSchedules(userRole, userTeam); // Admin + Monitoring TL/VTL
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -75,6 +77,17 @@ export default function SidebarLayout() {
     applyTheme(t);
     setTheme(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-hide sidebar on smaller screens; keep desktop collapse as separate behavior.
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => {
+      if (media.matches) setIsMobileSidebarOpen(false);
+    };
+    onChange();
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
   }, []);
 
   const markAllAsRead = async () => {
@@ -282,11 +295,25 @@ export default function SidebarLayout() {
     supabase.auth.signOut().catch(() => {});
   };
 
+  const sidebarDesktopWidthClass = isSidebarCollapsed ? 'lg:w-20' : 'lg:w-72';
+  const sidebarDesktopOffsetClass = isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72';
+
   return (
     <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
+      {/* Mobile backdrop */}
+      {isMobileSidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar overlay"
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
       <aside
-        className="fixed left-0 top-0 z-40 w-64 lg:w-72 flex flex-col transition-transform duration-200 ease-out md:translate-x-0"
+        className={`fixed left-0 top-0 z-40 w-72 ${sidebarDesktopWidthClass} flex flex-col transition-all duration-200 ease-out
+          ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}
         style={{
           backgroundColor: PRIMARY,
           height: '100dvh',
@@ -294,9 +321,13 @@ export default function SidebarLayout() {
         }}
       >
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <div className="flex shrink-0 h-28 items-center justify-center border-b border-white/20 px-4">
-            <Link to={getDashboardPath()} className="flex items-center justify-center focus:outline-none">
-              <img src="/white-logo.png" alt="Knowles Training Institute" className="h-24 w-auto max-w-[280px] object-contain" />
+          <div className="relative flex shrink-0 h-28 items-center justify-center border-b border-white/20 px-4">
+            <Link to={getDashboardPath()} className="flex w-full items-center justify-center focus:outline-none">
+              <img
+                src="/white-logo.png"
+                alt="Knowles Training Institute"
+                className={`${isSidebarCollapsed ? 'h-10 w-10' : 'h-24 w-auto max-w-[280px]'} object-contain`}
+              />
             </Link>
           </div>
           <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-0.5" style={{ WebkitOverflowScrolling: 'touch' }}>
@@ -337,10 +368,10 @@ export default function SidebarLayout() {
                 title={item.label}
                 className={`flex min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   active ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-                }`}
+                } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
               >
                 <Icon path={item.icon} className="h-5 w-5 flex-shrink-0" />
-                <span className="truncate">{item.label}</span>
+                {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
               </Link>
             );
           })}
@@ -350,19 +381,19 @@ export default function SidebarLayout() {
                 to="/superadmin/overview"
                 className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   location.pathname === '/superadmin/overview' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-                }`}
+                } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
               >
                 <Icon path="M3 3h18M3 9h18M3 15h18M3 21h18" className="h-5 w-5 flex-shrink-0" />
-                <span>OJT Overview</span>
+                {!isSidebarCollapsed && <span>OJT Overview</span>}
               </Link>
               <Link
                 to="/user-management"
                 className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   location.pathname === '/user-management' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-                }`}
+                } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
               >
                 <Icon path="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" className="h-5 w-5 flex-shrink-0" />
-                <span>User Management</span>
+                {!isSidebarCollapsed && <span>User Management</span>}
               </Link>
             </>
           )}
@@ -371,10 +402,10 @@ export default function SidebarLayout() {
               to="/user-management"
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                 location.pathname === '/user-management' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-              }`}
+              } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
             >
               <Icon path="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" className="h-5 w-5 flex-shrink-0" />
-              <span>User Management</span>
+              {!isSidebarCollapsed && <span>User Management</span>}
             </Link>
           )}
           {(userRole === 'admin' || userRole === 'tla') && (
@@ -382,10 +413,10 @@ export default function SidebarLayout() {
               to="/role-permissions"
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                 location.pathname === '/role-permissions' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-              }`}
+              } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
             >
               <Icon path="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" className="h-5 w-5 flex-shrink-0" />
-              <span>Permissions</span>
+              {!isSidebarCollapsed && <span>Permissions</span>}
             </Link>
           )}
           {(userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl') && (
@@ -393,10 +424,10 @@ export default function SidebarLayout() {
               to="/daily-report/manage"
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                 location.pathname === '/daily-report/manage' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-              }`}
+              } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
             >
               <Icon path="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.5a2 2 0 012 2v5.5a2 2 0 01-2 2z" className="h-5 w-5 flex-shrink-0" />
-              <span>Manage Daily Report</span>
+              {!isSidebarCollapsed && <span>Manage Daily Report</span>}
             </Link>
           )}
         </nav>
@@ -404,19 +435,50 @@ export default function SidebarLayout() {
         <div className="shrink-0 border-t border-white/20 p-3">
           <button
             onClick={handleLogout}
-            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
+            className={`flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/20 ${isSidebarCollapsed ? 'px-2' : ''}`}
             style={{ backgroundColor: PRIMARY_LIGHT }}
           >
             <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" className="h-5 w-5" />
-            Logout
+            {!isSidebarCollapsed && 'Logout'}
           </button>
         </div>
       </aside>
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col pl-64 lg:pl-72">
+      <div className={`flex flex-1 flex-col pl-0 ${sidebarDesktopOffsetClass}`}>
         {/* Top header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-end gap-2 border-b border-gray-200 bg-white px-4 sm:px-6 shadow-sm dark:bg-gray-950 dark:border-gray-800">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-2 border-b border-gray-200 bg-white px-4 sm:px-6 shadow-sm dark:bg-gray-950 dark:border-gray-800">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen((v) => !v)}
+              className="lg:hidden rounded-lg p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-gray-100"
+              aria-label="Toggle sidebar"
+              title="Toggle sidebar"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed((v) => !v)}
+              className="hidden lg:flex rounded-lg p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-gray-100"
+              aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {isSidebarCollapsed ? (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => {
@@ -460,6 +522,7 @@ export default function SidebarLayout() {
               {user?.email?.charAt(0).toUpperCase() || '?'}
             </span>
           </button>
+          </div>
         </header>
 
         <main className="flex-1 p-4 sm:p-6 text-gray-900 dark:text-gray-100">
