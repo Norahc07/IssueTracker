@@ -418,7 +418,7 @@ export default function TaskAssignmentLog() {
     if (permissions.canCreateTasks(userRole)) fetchUsers();
   }, [supabase, userRole]);
 
-  // Onboarding records: source of truth for intern names (for Assigned To dropdown)
+  // Onboarding records: source of truth for intern names/team (for Assigned To dropdown)
   useEffect(() => {
     if (!supabase) return;
     const cached = queryCache.get('onboarding:records');
@@ -428,7 +428,7 @@ export default function TaskAssignmentLog() {
     }
     supabase
       .from('onboarding_records')
-      .select('name, email')
+      .select('name, email, team')
       .order('onboarding_datetime', { ascending: false })
       .then(({ data, error }) => {
         if (error) {
@@ -885,7 +885,7 @@ export default function TaskAssignmentLog() {
         description: description?.trim() || null,
         notes: notes?.trim() || null,
         assigned_to: assigned_to || null,
-        assigned_to_name: users.find((u) => u.id === assigned_to)?.full_name ?? null,
+        assigned_to_name: getUserDisplayNameOrNull(users.find((u) => String(u.id) === String(assigned_to))) ?? null,
       };
       if (isWpPlugin) payload.domain_migration = domainMigration;
       const { data, error } = await supabase.from('tasks').insert(payload).select('id').single();
@@ -1137,8 +1137,8 @@ export default function TaskAssignmentLog() {
         if (!task || !canUpdateStatus(task)) continue;
         const d = taskEditDrafts[id] || {};
         const assigned_to = d.assigned_to || null;
-      const assigned_to_name = assigned_to
-          ? (users.find((u) => u.id === assigned_to)?.full_name ?? null)
+        const assigned_to_name = assigned_to
+          ? (getUserDisplayNameOrNull(users.find((u) => String(u.id) === String(assigned_to))) ?? null)
           : null;
       const { error } = await supabase
         .from('tasks')
@@ -1159,7 +1159,9 @@ export default function TaskAssignmentLog() {
       if (selectedTask && taskEditDrafts[selectedTask.id]) {
         const d = taskEditDrafts[selectedTask.id];
         const assigned_to = d.assigned_to || null;
-        const assigned_to_name = assigned_to ? (users.find((u) => u.id === assigned_to)?.full_name ?? null) : null;
+        const assigned_to_name = assigned_to
+          ? (getUserDisplayNameOrNull(users.find((u) => String(u.id) === String(assigned_to))) ?? null)
+          : null;
         setSelectedTask((t) =>
           t ? { ...t, assigned_to, assigned_to_name, priority: d.priority, status: d.status } : null
         );
@@ -1261,9 +1263,37 @@ export default function TaskAssignmentLog() {
     (userRole === 'intern' || userRole === 'tl' || userRole === 'vtl') && isTlaTeam(userTeam);
 
   const handleClaimTask = async (task) => {
-    if (!user?.id || task.assigned_to) return;
+    if (!user?.id) return;
+    const claimedByMe = String(task?.assigned_to || '') === String(user?.id || '');
+    if (task?.assigned_to && !claimedByMe) return;
     setClaimingTaskId(task.id);
     try {
+      if (claimedByMe) {
+        const { error } = await supabase
+          .from('tasks')
+          .update({
+            assigned_to: null,
+            assigned_to_name: null,
+            updated_by: user?.id,
+            updated_by_name: user?.email,
+          })
+          .eq('id', task.id);
+        if (error) throw error;
+        await logAction(supabase, 'task_unclaimed', { task_id: task.id, task_name: task.name }, user?.id);
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === task.id ? { ...t, assigned_to: null, assigned_to_name: null } : t
+          )
+        );
+        queryCache.invalidate('tasks');
+        await fetchTasks(true);
+        if (selectedTask?.id === task.id) {
+          setSelectedTask((t) => (t ? { ...t, assigned_to: null, assigned_to_name: null } : null));
+        }
+        toast.success('Task unclaimed');
+        return;
+      }
+
       let assigned_to_name = (users.find((u) => u.id === user.id)?.full_name || '').trim();
       if (!assigned_to_name) {
         const { data: me } = await supabase.from('users').select('full_name').eq('id', user.id).maybeSingle();
@@ -1373,7 +1403,7 @@ export default function TaskAssignmentLog() {
     }
   };
 
-  // Onboarding name by email (source of truth for intern names when users.full_name is empty)
+  // Onboarding name by email (source of truth for names when users.full_name is empty)
   const onboardingByNameByEmail = useMemo(() => {
     const map = new Map();
     (onboardingRecords || []).forEach((r) => {
@@ -1384,14 +1414,47 @@ export default function TaskAssignmentLog() {
     return map;
   }, [onboardingRecords]);
 
-  // Assigned To: prefer users.full_name, then onboarding name by email, then 'Unnamed'
-  const getUserDisplayName = (u) => {
+  // Onboarding TLA team records keyed by email.
+  const tlaOnboardingByEmail = useMemo(() => {
+    const map = new Map();
+    (onboardingRecords || []).forEach((r) => {
+      const email = (r.email || '').trim().toLowerCase();
+      const name = (r.name || '').trim();
+      const team = String(r.team || '').trim().toLowerCase();
+      const compact = team.replace(/[^a-z0-9]+/g, '');
+      const isTla = compact === 'tla' || compact === 'teamleadassistant' || team.includes('team lead assistant');
+      if (!email || !isTla || map.has(email)) return;
+      map.set(email, name || null);
+    });
+    return map;
+  }, [onboardingRecords]);
+
+  const getUserDisplayNameOrNull = (u) => {
     const fromUser = (u?.full_name || '').trim();
     if (fromUser) return fromUser;
     const email = (u?.email || '').trim().toLowerCase();
     const fromOnboarding = email ? onboardingByNameByEmail.get(email) : null;
-    return (fromOnboarding || '').trim() || 'Unnamed';
+    const normalized = (fromOnboarding || '').trim();
+    return normalized || null;
   };
+
+  // Assigned To: prefer users.full_name, then onboarding name by email, then 'Unnamed'
+  const getUserDisplayName = (u) => {
+    return getUserDisplayNameOrNull(u) || 'Unnamed';
+  };
+
+  // Only Team Lead Assistant members from onboarding records are assignable in admin dropdowns.
+  const tlaAssignableUsers = useMemo(
+    () =>
+      (users || [])
+        .filter((u) => {
+          const email = (u?.email || '').trim().toLowerCase();
+          return !!email && tlaOnboardingByEmail.has(email);
+        })
+        .map((u) => ({ ...u, display_name: getUserDisplayNameOrNull(u) }))
+        .filter((u) => !!u.display_name),
+    [users, tlaOnboardingByEmail, onboardingByNameByEmail]
+  );
 
   const getAssignedToDisplay = (task) => {
     if (!task) return 'Unassigned';
@@ -1938,8 +2001,8 @@ export default function TaskAssignmentLog() {
                                 className="min-w-[8rem] rounded border border-gray-300 px-2 py-1.5 text-sm"
                               >
                                 <option value="">Unassigned</option>
-                                {users.map((u) => (
-                                  <option key={u.id} value={u.id}>{getUserDisplayName(u)}</option>
+                                {tlaAssignableUsers.map((u) => (
+                                  <option key={u.id} value={u.id}>{u.display_name}</option>
                                 ))}
                               </select>
                             ) : (
@@ -2017,9 +2080,14 @@ export default function TaskAssignmentLog() {
                               {canClaimTask(userRole, userTeam) && (
                                 task.assigned_to ? (
                                   String(task.assigned_to) === String(user?.id) ? (
-                                    <span className="inline-block text-xs font-medium min-w-[4rem] px-2.5 py-1.5 rounded-full bg-green-600 text-white text-center">
-                                      Claimed
-                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleClaimTask(task)}
+                                      disabled={claimingTaskId === task.id}
+                                      className="text-xs font-medium min-w-[4rem] px-2.5 py-1.5 rounded-full bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-opacity"
+                                    >
+                                      {claimingTaskId === task.id ? '...' : 'Unclaim'}
+                                    </button>
                                   ) : null
                                 ) : (
                                   <button
@@ -4669,9 +4737,9 @@ export default function TaskAssignmentLog() {
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
                   >
                     <option value="">Unassigned</option>
-                    {users.map((u) => (
+                    {tlaAssignableUsers.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {getUserDisplayName(u)}
+                        {u.display_name}
                       </option>
                     ))}
                   </select>
