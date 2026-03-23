@@ -42,9 +42,6 @@ const DEFAULT_UDEMY_COURSES = [
 
 const ROTATION_REVIEW_STATUS = ['Not Started', 'In Progress', 'Completed'];
 const ROTATION_SCREENSHOT_STATUS = ['Pending', 'Done'];
-const INTERN_REVIEW_STATUS = ['', 'in-progress', 'done'];
-const INTERN_REVIEW_LABELS = { '': '—', 'in-progress': 'In Progress', done: 'Done' };
-
 export default function UdemyCourseTab() {
   const { supabase, user, userRole, userTeam } = useSupabase();
   const [activeSubTab, setActiveSubTab] = useState('rotation'); // 'rotation' | 'intern'
@@ -60,11 +57,6 @@ export default function UdemyCourseTab() {
     ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam);
   /** Only admins may delete entire batches (rotation + related tracker data). */
   const canDeleteUdemyBatch = userRole === 'admin';
-  // Who can edit progress in Intern Tracker (per-cell, only their own column):
-  // - Interns in TLA team
-  // - TL/VTL in TLA team
-  const canEditInternProgress =
-    isTlaTeam && (userRole === 'intern' || userRole === 'tl' || userRole === 'vtl');
 
   // Rotation tracker
   const [rotationRows, setRotationRows] = useState([]);
@@ -89,7 +81,6 @@ export default function UdemyCourseTab() {
   const [internStatusMap, setInternStatusMap] = useState({}); // key: `${course}|${nameId}` -> status
   const [internLoading, setInternLoading] = useState(false);
   const [tlaPeople, setTlaPeople] = useState([]); // assignable interns sourced from onboarding records
-  const [currentInternName, setCurrentInternName] = useState('');
 
   const fetchBatches = async (options) => {
     const afterDeletingId = options?.afterDeletingId;
@@ -194,17 +185,6 @@ export default function UdemyCourseTab() {
         });
         const people = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
         setTlaPeople(people);
-
-        // derive current intern name for matching cells in Intern Tracker
-        const myEmail = (user?.email || '').toLowerCase();
-        const fromEmail = people.find((p) => (p.email || '').toLowerCase() === myEmail);
-        if (fromEmail?.name) {
-          setCurrentInternName(fromEmail.name);
-        } else {
-          setCurrentInternName(
-            (user?.user_metadata && user.user_metadata.full_name) || user?.email || ''
-          );
-        }
       } catch (err) {
         console.warn('TLA people fetch error', err);
       }
@@ -248,27 +228,22 @@ export default function UdemyCourseTab() {
         (r.assigned_intern || '').trim() === (assignedName || '').trim()
     );
 
-  // Course Assignment: aggregate Review Status per course (read-only) from interns' statuses in Intern Tracker
-  const courseAggregateReviewStatus = useMemo(() => {
-    const map = {};
-    const rows = rotationRows || [];
-    const byCourse = {};
-    rows.forEach((r) => {
-      const t = (r.course_title || '').trim();
-      if (!t) return;
-      if (!byCourse[t]) byCourse[t] = [];
-      byCourse[t].push(r.review_status || 'Not Started');
-    });
-    Object.keys(byCourse).forEach((courseTitle) => {
-      const statuses = byCourse[courseTitle];
-      const allCompleted = statuses.length > 0 && statuses.every((s) => s === 'Completed');
-      const anyCompletedOrInProgress = statuses.some((s) => s === 'Completed' || s === 'In Progress');
-      if (allCompleted) map[courseTitle] = 'Completed';
-      else if (anyCompletedOrInProgress) map[courseTitle] = 'In Progress';
-      else map[courseTitle] = 'Not Started';
-    });
-    return map;
-  }, [rotationRows]);
+  /**
+   * Intern Tracker cell: Completed only when Rotation has Review = Completed AND Screenshot = Done.
+   * Any other combination (Pending, Not Started, In Progress, etc.) shows as Pending.
+   */
+  const getInternTrackerCellStatus = (row) => {
+    if (!row) return 'Pending';
+    const review = String(row.review_status || '').trim();
+    const shot = String(row.screenshot_status || '').trim();
+    if (review === 'Completed' && shot === 'Done') return 'Completed';
+    return 'Pending';
+  };
+
+  const getInternTrackerStatusPillClasses = (label) => {
+    if (label === 'Completed') return getReviewStatusPillClasses('Completed');
+    return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200';
+  };
 
   const getReviewStatusPillClasses = (status) => {
     const s = String(status || '').toLowerCase();
@@ -277,6 +252,16 @@ export default function UdemyCourseTab() {
     if (s === 'in progress')
       return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200';
     return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200';
+  };
+
+  /** Styled select for review status (rotation table + modal). */
+  const getReviewStatusSelectClasses = (status) => {
+    const s = String(status || '').toLowerCase();
+    if (s === 'completed')
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200';
+    if (s === 'in progress')
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200';
+    return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
   };
 
   const getScreenshotStatusSelectClasses = (status) => {
@@ -439,6 +424,7 @@ export default function UdemyCourseTab() {
           course_title: courseTitle,
           assigned_intern: (rotationCreate.assigned_intern || '').trim() || null,
           day: (rotationCreate.day || '').trim() || null,
+          review_status: rotationCreate.review_status || 'Not Started',
           screenshot_status: rotationCreate.screenshot_status || 'Pending',
         };
         await handleUpdateRotationRow(editingRotationRow.id, payload);
@@ -811,6 +797,22 @@ export default function UdemyCourseTab() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
+                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Review status</label>
+                          <select
+                            value={rotationCreate.review_status || 'Not Started'}
+                            onChange={(e) => setRotationCreate((s) => ({ ...s, review_status: e.target.value }))}
+                            className={`w-full min-w-[8rem] px-2.5 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] ${getReviewStatusSelectClasses(
+                              rotationCreate.review_status || 'Not Started'
+                            )}`}
+                          >
+                            {ROTATION_REVIEW_STATUS.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
                           <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Screenshot status</label>
                           <select
                             value={rotationCreate.screenshot_status}
@@ -899,20 +901,31 @@ export default function UdemyCourseTab() {
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.assigned_intern || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.day || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                          {(() => {
-                            const label =
-                              courseAggregateReviewStatus[(row.course_title || '').trim()] ||
-                              'Not Started';
-                            return (
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getReviewStatusPillClasses(
-                                  label
-                                )}`}
-                              >
-                                {label}
-                              </span>
-                            );
-                          })()}
+                          {canManageUdemy ? (
+                            <select
+                              value={row.review_status || 'Not Started'}
+                              onChange={(e) =>
+                                handleUpdateRotationRow(row.id, { review_status: e.target.value })
+                              }
+                              className={`w-full min-w-[8rem] px-2.5 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] ${getReviewStatusSelectClasses(
+                                row.review_status || 'Not Started'
+                              )}`}
+                            >
+                              {ROTATION_REVIEW_STATUS.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getReviewStatusPillClasses(
+                                row.review_status || 'Not Started'
+                              )}`}
+                            >
+                              {row.review_status || 'Not Started'}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                           {canManageUdemy ? (
@@ -991,7 +1004,9 @@ export default function UdemyCourseTab() {
               Intern Tracker
             </h3>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              Courses and intern names come from Course Assignment. Progress dropdown only appears when an intern is assigned to that course.
+              Status comes from the Rotation Tracker: <span className="font-medium">Completed</span> only when Review Status is
+              Completed and Screenshot Status is Done. If either is still Pending, Not Started, or In Progress, this tab shows{' '}
+              <span className="font-medium">Pending</span>.
             </p>
           </div>
 
@@ -1036,36 +1051,17 @@ export default function UdemyCourseTab() {
                         </td>
                         {internTrackerNames.map((assignedName) => {
                           const row = getRotationRowForCell(course.course_title, assignedName);
-                          const isCurrentInternCell =
-                            canEditInternProgress &&
-                            currentInternName &&
-                            assignedName.trim().toLowerCase() === currentInternName.trim().toLowerCase();
+                          const cellLabel = row ? getInternTrackerCellStatus(row) : null;
                           return (
                             <td key={assignedName} className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                               {row ? (
-                                isCurrentInternCell ? (
-                                  <select
-                                    value={row.review_status || 'Not Started'}
-                                    onChange={(e) =>
-                                      handleUpdateRotationRow(row.id, { review_status: e.target.value })
-                                    }
-                                    className="w-full min-w-[140px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
-                                  >
-                                    {ROTATION_REVIEW_STATUS.map((s) => (
-                                      <option key={s} value={s}>
-                                        {s}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <span
-                                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getReviewStatusPillClasses(
-                                      row.review_status || 'Not Started'
-                                    )}`}
-                                  >
-                                    {row.review_status || 'Not Started'}
-                                  </span>
-                                )
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getInternTrackerStatusPillClasses(
+                                    cellLabel
+                                  )}`}
+                                >
+                                  {cellLabel}
+                                </span>
                               ) : (
                                 <span className="text-gray-400 dark:text-gray-500">—</span>
                               )}
