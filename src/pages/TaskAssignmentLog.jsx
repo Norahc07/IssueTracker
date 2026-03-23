@@ -11,6 +11,61 @@ import UdemyCourseTab from '../components/UdemyCourseTab.jsx';
 import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 import DomainUpdates from './DomainUpdates.jsx';
 
+/** Shared copy for Domains tab — weekly WordPress plugin update expectations */
+const WEEKLY_PLUGIN_SCHEDULE_BULLETS = [
+  'WordPress plugin updates run on a weekly schedule.',
+  'All plugins for all domains should be completed by Friday each week.',
+  'On Monday, the team begins the next weekly update cycle across all domains.',
+];
+
+function WeeklyPluginScheduleNote({ open, onToggle, className = '' }) {
+  return (
+    <div
+      className={`rounded-md border border-slate-200/90 bg-slate-50/90 dark:border-slate-600/50 dark:bg-slate-900/40 ${className}`}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full items-start gap-2 rounded-md px-3 py-2.5 text-left text-sm transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/50"
+      >
+        <span className="pt-0.5 text-base leading-none shrink-0" aria-hidden>
+          📌
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="font-semibold text-slate-900 dark:text-slate-100">Weekly plugin update schedule</span>
+          <span className="mt-0.5 block text-xs font-normal text-slate-600 dark:text-slate-400">
+            Finish all domains by Friday; a new cycle starts each Monday.
+          </span>
+        </span>
+        <span className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">{open ? 'Hide' : 'Details'}</span>
+        <svg
+          className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+          aria-hidden
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <ul className="space-y-2 border-t border-slate-200/80 px-3 pt-2 pb-3 pl-9 text-sm text-slate-700 dark:border-slate-600/50 dark:text-slate-300">
+          {WEEKLY_PLUGIN_SCHEDULE_BULLETS.map((text) => (
+            <li key={text} className="flex gap-2">
+              <span className="shrink-0 select-none" aria-hidden>
+                📌
+              </span>
+              <span>{text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 const PRIMARY = '#6795BE';
 const TASK_STATUSES = {
   'to-do': 'Not Started',
@@ -300,6 +355,7 @@ export default function TaskAssignmentLog() {
   const [domainClaims, setDomainClaims] = useState([]);
   const [domainClaimsTab, setDomainClaimsTab] = useState('old'); // 'old' | 'new'
   const [claimingDomainId, setClaimingDomainId] = useState(null);
+  const [weeklyPluginScheduleNoteOpen, setWeeklyPluginScheduleNoteOpen] = useState(false);
   const [isEditingDomainsTable, setIsEditingDomainsTable] = useState(false);
   const [savingDomains, setSavingDomains] = useState(false);
   const [courseListDomainId, setCourseListDomainId] = useState('');
@@ -1401,6 +1457,30 @@ export default function TaskAssignmentLog() {
     if (u.update_status === 'Skipped') return 'Skipped';
 
     return u.update_status || 'Pending';
+  };
+
+  /** Badge styles for old-domains “plugin update” status column (Updated vs Not updated) */
+  const oldDomainPluginUpdateBadgeClass = (isUpdated) =>
+    isUpdated
+      ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200/80 dark:bg-emerald-900/40 dark:text-emerald-200 dark:ring-emerald-800/60'
+      : 'bg-amber-100 text-amber-900 ring-1 ring-amber-200/80 dark:bg-amber-900/35 dark:text-amber-100 dark:ring-amber-800/50';
+
+  /** Badge styles for new-domains free-text row status */
+  const newDomainRowStatusBadgeClass = (status) => {
+    const s = String(status || '').trim().toLowerCase();
+    if (!s || s === '—') {
+      return 'bg-gray-100 text-gray-700 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-600';
+    }
+    if (s.includes('done') || s.includes('complete') || s === 'ok') {
+      return 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200/80 dark:bg-emerald-900/40 dark:text-emerald-200 dark:ring-emerald-800/60';
+    }
+    if (s.includes('block') || s.includes('verify') || s.includes('issue')) {
+      return 'bg-amber-100 text-amber-900 ring-1 ring-amber-200/80 dark:bg-amber-900/35 dark:text-amber-100 dark:ring-amber-800/50';
+    }
+    if (s.includes('progress') || s.includes('pending')) {
+      return 'bg-sky-100 text-sky-900 ring-1 ring-sky-200/80 dark:bg-sky-900/40 dark:text-sky-100 dark:ring-sky-800/50';
+    }
+    return 'bg-slate-100 text-slate-800 ring-1 ring-slate-200/80 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-600';
   };
 
   if (loading && tasks.length === 0) {
@@ -2936,16 +3016,18 @@ export default function TaskAssignmentLog() {
           {/* Note for Old Domains only: default accounts (editable) used for WordPress plugin updates */}
           {domainTypeFilter === 'old' && (
             <div className="rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50/80 dark:bg-blue-950/30 p-4 text-sm text-gray-800 dark:text-gray-200">
-              <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Default accounts for old domains (Intern Account WordPress &amp; SG Domain WordPress)</p>
-              <p className="mb-3 text-gray-700 dark:text-gray-300">These two accounts are the default credentials used for WordPress plugin updates on old domains. You can view and update the values below.</p>
-              <p className="mb-3 font-semibold text-orange-600">
-                Take Note: WordPress Plugin Updates are scheduled to be finished every week. This means all plugins for all domains must be updated until Friday each week. When Monday comes, we will begin updating all domain plugins again for the new week.
-              </p>
+              <p className="text-base font-bold text-gray-900 dark:text-gray-100 mb-2">Default accounts for old domains (Intern Account WordPress &amp; SG Domain WordPress)</p>
+              <p className="mb-3 text-gray-700 dark:text-gray-300 leading-relaxed">These two accounts are the default credentials used for WordPress plugin updates on old domains. You can view and update the values below.</p>
+              <WeeklyPluginScheduleNote
+                open={weeklyPluginScheduleNoteOpen}
+                onToggle={() => setWeeklyPluginScheduleNoteOpen((v) => !v)}
+                className="mb-3"
+              />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
                 <div className="bg-white/70 dark:bg-gray-900/50 rounded-lg p-3 border border-blue-100 dark:border-blue-900/40 relative">
-                  <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">Intern Account WordPress</p>
+                  <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Intern Account WordPress</p>
                   <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
-                    <span>Admin Username:</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100 shrink-0">Admin Username:</span>
                     {defaultAccounts.intern?.username ? (
                       <>
                         <span className="font-mono text-xs break-all">{defaultAccounts.intern.username}</span>
@@ -2963,7 +3045,7 @@ export default function TaskAssignmentLog() {
                     ) : '—'}
                   </p>
                   <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
-                    <span>Admin Password:</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100 shrink-0">Admin Password:</span>
                     {defaultAccounts.intern?.password ? (
                       <>
                         <span className="font-mono text-xs break-all">
@@ -3024,9 +3106,9 @@ export default function TaskAssignmentLog() {
                   )}
                 </div>
                 <div className="bg-white/70 dark:bg-gray-900/50 rounded-lg p-3 border border-amber-100 dark:border-amber-900/40 relative">
-                  <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">SG Domain WordPress</p>
+                  <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">SG Domain WordPress</p>
                   <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
-                    <span>Admin username:</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100 shrink-0">Admin username:</span>
                     {defaultAccounts.sg?.username ? (
                       <>
                         <span className="font-mono text-xs break-all">{defaultAccounts.sg.username}</span>
@@ -3044,7 +3126,7 @@ export default function TaskAssignmentLog() {
                     ) : '—'}
                   </p>
                   <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
-                    <span>Admin Password:</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100 shrink-0">Admin Password:</span>
                     {defaultAccounts.sg?.password ? (
                       <>
                         <span className="font-mono text-xs break-all">
@@ -3110,16 +3192,18 @@ export default function TaskAssignmentLog() {
 
           <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm overflow-x-auto">
             {domainTypeFilter === 'new' && (
-              <p className="px-4 pt-4 pb-1 text-xs sm:text-sm font-semibold text-orange-600">
-                Take Note: WordPress Plugin Updates are scheduled to be finished every week. This means all plugins for all domains must be updated until Friday each week. When Monday comes, we will begin updating all domain plugins again for the new week.
-              </p>
+              <WeeklyPluginScheduleNote
+                open={weeklyPluginScheduleNoteOpen}
+                onToggle={() => setWeeklyPluginScheduleNoteOpen((v) => !v)}
+                className="mx-4 mt-4 mb-1"
+              />
             )}
             {domainTypeFilter === 'old' ? (
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                 <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Country</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Country</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">URL</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Scanning</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
@@ -3151,13 +3235,21 @@ export default function TaskAssignmentLog() {
                               placeholder="Country"
                             />
                           ) : (
-                            domain.country || '—'
+                            <span className="font-semibold text-gray-900 dark:text-gray-100">{domain.country || '—'}</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                           {!isEditingDomains && (() => {
                             const summary = getDomainPluginSummary(domain);
-                            return summary === 'OK / Updated' || summary === 'OK' ? 'Updated' : 'Not updated';
+                            const isUpdated = summary === 'OK / Updated' || summary === 'OK';
+                            const label = isUpdated ? 'Updated' : 'Not updated';
+                            return (
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${oldDomainPluginUpdateBadgeClass(isUpdated)}`}
+                              >
+                                {label}
+                              </span>
+                            );
                           })()}
                           {isEditingDomains && <span className="text-gray-400">—</span>}
                         </td>
@@ -3289,9 +3381,9 @@ export default function TaskAssignmentLog() {
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                 <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Country</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Country</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">URL</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Status</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Scanning</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Plugin</th>
@@ -3325,7 +3417,7 @@ export default function TaskAssignmentLog() {
                               placeholder="Country"
                             />
                           ) : (
-                            domain.country || '—'
+                            <span className="font-semibold text-gray-900 dark:text-gray-100">{domain.country || '—'}</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 break-all" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
@@ -3355,7 +3447,11 @@ export default function TaskAssignmentLog() {
                               placeholder="Status"
                             />
                           ) : (
-                            domain.status || '—'
+                            <span
+                              className={`inline-flex max-w-full items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${newDomainRowStatusBadgeClass(domain.status)}`}
+                            >
+                              {domain.status || '—'}
+                            </span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 text-center" onClick={e => isEditingDomainsTable && e.stopPropagation()}>
