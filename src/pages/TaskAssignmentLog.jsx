@@ -2018,17 +2018,17 @@ export default function TaskAssignmentLog() {
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
                       <thead className="bg-gray-50 dark:bg-gray-950/40">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                             Course title
                           </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-32">
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide w-32">
                             G / S
                           </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-40">
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide w-40">
                             Status
                           </th>
                           {canEditCourseList(userRole, userTeam) && (
-                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide w-32">
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide w-32">
                               Actions
                             </th>
                           )}
@@ -2248,7 +2248,7 @@ export default function TaskAssignmentLog() {
                           type="button"
                           onClick={() => setCourseListPage((p) => Math.max(1, p - 1))}
                           disabled={courseListPage === 1}
-                          className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+                          className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                         >
                           Prev
                         </button>
@@ -2260,7 +2260,7 @@ export default function TaskAssignmentLog() {
                             )
                           }
                           disabled={courseListPage >= Math.ceil(courseListItems.length / 10)}
-                          className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+                          className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                         >
                           Next
                         </button>
@@ -2576,7 +2576,7 @@ export default function TaskAssignmentLog() {
                             </tbody>
                           </table>
                           {rows.length > 10 && (
-                            <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 border-t border-gray-100">
+                            <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800">
                               <span>
                                 Page {page} of {totalPages}
                               </span>
@@ -2589,7 +2589,7 @@ export default function TaskAssignmentLog() {
                                   }))
                                 }
                                 disabled={page === 1}
-                                className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                                className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                               >
                                 Prev
                               </button>
@@ -2602,7 +2602,7 @@ export default function TaskAssignmentLog() {
                                   }))
                                 }
                                 disabled={page >= totalPages}
-                                className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                                className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                               >
                                 Next
                               </button>
@@ -2620,7 +2620,7 @@ export default function TaskAssignmentLog() {
               {/* Singapore-specific course categories */}
               {isSingaporeCourseDomain && (
                 <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Singapore Course Categories</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Singapore Course Categories</h3>
                   {SINGAPORE_COURSE_CATEGORIES.map((category) => {
                     const rows = corporateCourseItems.filter((r) => r.category === category);
                     const page = corporateCoursePages[category] || 1;
@@ -2628,10 +2628,10 @@ export default function TaskAssignmentLog() {
                     return (
                       <div
                         key={category}
-                        className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm"
+                        className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm"
                       >
-                        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
-                          <h4 className="text-sm font-semibold text-gray-900">{category}</h4>
+                        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3">
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{category}</h4>
                           {canEditCourseList(userRole, userTeam) && (
                             <button
                               type="button"
@@ -2687,31 +2687,31 @@ export default function TaskAssignmentLog() {
                         </div>
                         <div className="overflow-x-auto">
                           {rows.length === 0 ? (
-                            <div className="py-6 text-center text-xs text-gray-500">
+                            <div className="py-6 text-center text-xs text-gray-500 dark:text-gray-400">
                               No courses yet for this category.
                             </div>
                           ) : (
                             <>
-                              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                                <thead className="bg-gray-50">
+                              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
+                                <thead className="bg-gray-50 dark:bg-gray-950/40">
                                   <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                                       Course title
                                     </th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-28">
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide w-28">
                                       G / S
                                     </th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-40">
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide w-40">
                                       Status
                                     </th>
                                     {canEditCourseList(userRole, userTeam) && (
-                                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide w-32">
+                                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide w-32">
                                         Actions
                                       </th>
                                     )}
                                   </tr>
                                 </thead>
-                                <tbody className="bg-white divide-y divide-gray-100">
+                                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                                   {rows
                                     .slice((page - 1) * 10, page * 10)
                                     .map((row) => {
@@ -2719,7 +2719,7 @@ export default function TaskAssignmentLog() {
                                       const isEditingRow = canEdit && editingCorporateCourseId === row.id;
                                       const draft = isEditingRow ? editingCorporateCourseDraft : null;
                                       return (
-                                        <tr key={row.id} className="hover:bg-gray-50">
+                                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
                                           <td className="px-4 py-2">
                                             {isEditingRow ? (
                                               <input
@@ -2732,10 +2732,10 @@ export default function TaskAssignmentLog() {
                                                   }))
                                                 }
                                                 placeholder="Enter course title"
-                                                className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                                                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
                                               />
                                             ) : (
-                                              <span className="text-gray-900">
+                                              <span className="text-gray-900 dark:text-gray-100">
                                                 {(row.course_title || '').trim() || '—'}
                                               </span>
                                             )}
@@ -2750,7 +2750,7 @@ export default function TaskAssignmentLog() {
                                                     course_type: e.target.value,
                                                   }))
                                                 }
-                                                className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                                               >
                                                 <option value="">—</option>
                                                 <option value="G">G</option>
@@ -2758,7 +2758,7 @@ export default function TaskAssignmentLog() {
                                                 <option value="G/S">G/S</option>
                                               </select>
                                             ) : (
-                                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200">
                                                   {courseTypeToUi(row.course_type) || '—'}
                                               </span>
                                             )}
@@ -2773,7 +2773,7 @@ export default function TaskAssignmentLog() {
                                                     status: e.target.value,
                                                   }))
                                                 }
-                                                className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white"
+                                                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                                               >
                                                 <option value="">—</option>
                                                 <option value="done">Done</option>
@@ -2787,14 +2787,14 @@ export default function TaskAssignmentLog() {
                                                   inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
                                                   ${
                                                     !row.status
-                                                      ? 'bg-gray-100 text-gray-500'
+                                                      ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300'
                                                       : row.status === 'done'
-                                                      ? 'bg-emerald-100 text-emerald-700'
+                                                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                                                       : row.status === 'has_issue'
-                                                      ? 'bg-red-100 text-red-700'
+                                                      ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
                                                       : row.status === 'different_title'
-                                                      ? 'bg-violet-100 text-violet-700'
-                                                      : 'bg-amber-100 text-amber-700'
+                                                      ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+                                                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
                                                   }
                                                 `}
                                               >
@@ -2860,7 +2860,7 @@ export default function TaskAssignmentLog() {
                                                       });
                                                       fetchCorporateCourseItems(courseListDomainId);
                                                     }}
-                                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
                                                   >
                                                     Cancel
                                                   </button>
@@ -2886,7 +2886,7 @@ export default function TaskAssignmentLog() {
                                                         status: row.status || '',
                                                       });
                                                     }}
-                                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border border-gray-300 bg-transparent hover:bg-gray-100"
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
                                                   >
                                                     Edit
                                                   </button>
@@ -2917,7 +2917,7 @@ export default function TaskAssignmentLog() {
                                                           toast.error(err?.message || 'Failed to delete course');
                                                         }
                                                       }}
-                                                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-200 bg-white hover:bg-red-50"
+                                                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 dark:text-red-300 border border-red-200 dark:border-red-900/60 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/40"
                                                     >
                                                       Delete
                                                     </button>
@@ -2932,7 +2932,7 @@ export default function TaskAssignmentLog() {
                                 </tbody>
                               </table>
                               {rows.length > 10 && (
-                                <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 border-t border-gray-100">
+                                <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800">
                                   <span>
                                     Page {page} of {totalPages}
                                   </span>
@@ -2945,7 +2945,7 @@ export default function TaskAssignmentLog() {
                                       }))
                                     }
                                     disabled={page === 1}
-                                    className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                                    className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                                   >
                                     Prev
                                   </button>
@@ -2958,7 +2958,7 @@ export default function TaskAssignmentLog() {
                                       }))
                                     }
                                     disabled={page >= totalPages}
-                                    className="px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
+                                    className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                                   >
                                     Next
                                   </button>
@@ -2974,10 +2974,10 @@ export default function TaskAssignmentLog() {
               )}
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-500">
-              <div className="mb-4 rounded-full bg-gray-100 p-4">
+            <div className="flex flex-col items-center justify-center py-16 text-gray-500 dark:text-gray-400">
+              <div className="mb-4 rounded-full bg-gray-100 dark:bg-gray-800 p-4">
                 <svg
-                  className="w-10 h-10 text-gray-400"
+                  className="w-10 h-10 text-gray-400 dark:text-gray-500"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -2991,7 +2991,7 @@ export default function TaskAssignmentLog() {
                   />
                 </svg>
               </div>
-              <p className="text-sm font-medium">Select a domain first.</p>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Select a domain first.</p>
             </div>
           )}
         </div>
