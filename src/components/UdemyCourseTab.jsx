@@ -58,6 +58,8 @@ export default function UdemyCourseTab() {
     userRole === 'admin' ||
     userRole === 'tla' ||
     ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam);
+  /** Only admins may delete entire batches (rotation + related tracker data). */
+  const canDeleteUdemyBatch = userRole === 'admin';
   // Who can edit progress in Intern Tracker (per-cell, only their own column):
   // - Interns in TLA team
   // - TL/VTL in TLA team
@@ -77,6 +79,7 @@ export default function UdemyCourseTab() {
     screenshot_status: 'Pending',
   });
   const [rotationSaving, setRotationSaving] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
   const [editingRotationRow, setEditingRotationRow] = useState(null);
 
   // Intern tracker
@@ -88,7 +91,8 @@ export default function UdemyCourseTab() {
   const [tlaPeople, setTlaPeople] = useState([]); // assignable interns sourced from onboarding records
   const [currentInternName, setCurrentInternName] = useState('');
 
-  const fetchBatches = async () => {
+  const fetchBatches = async (options) => {
+    const afterDeletingId = options?.afterDeletingId;
     const { data, error } = await supabase.from('udemy_batches').select('*').order('batch_no', { ascending: false });
     if (error) {
       console.warn('udemy_batches fetch error', error);
@@ -98,7 +102,14 @@ export default function UdemyCourseTab() {
     }
     const list = Array.isArray(data) ? data : [];
     setBatches(list);
-    if (!selectedBatchId && list[0]?.id) setSelectedBatchId(list[0].id);
+    if (afterDeletingId) {
+      setSelectedBatchId((prev) => {
+        if (prev !== afterDeletingId) return prev;
+        return list[0]?.id || '';
+      });
+    } else if (!selectedBatchId && list[0]?.id) {
+      setSelectedBatchId(list[0].id);
+    }
   };
 
   const fetchRotationRows = async (batchId) => {
@@ -297,6 +308,46 @@ export default function UdemyCourseTab() {
     } catch (err) {
       console.warn('Add batch error', err);
       toast.error(err?.message || 'Failed to add batch.');
+    }
+  };
+
+  const handleDeleteSelectedBatch = async () => {
+    if (!canDeleteUdemyBatch) {
+      toast.error('Only admins can remove Udemy batches.');
+      return;
+    }
+    if (!selectedBatchId) {
+      toast.error('Select a batch first.');
+      return;
+    }
+    const id = selectedBatchId;
+    const label = selectedBatch?.batch_no || 'this batch';
+    const assignmentCount = rotationRows.length;
+    const detail =
+      assignmentCount > 0
+        ? `\n\nThis will permanently delete ${assignmentCount} course assignment(s) and all related intern tracker data for this batch.`
+        : '\n\nAll related tracker data for this batch will be removed.';
+    const ok = window.confirm(
+      `Remove batch "${label}"? This cannot be undone.${detail}`
+    );
+    if (!ok) return;
+    setBatchDeleting(true);
+    try {
+      const { error } = await supabase.from('udemy_batches').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Batch removed.');
+      setShowRotationModal(false);
+      setEditingRotationRow(null);
+      setRotationRows([]);
+      setInternNames([]);
+      setInternStatusMap({});
+      await fetchBatches({ afterDeletingId: id });
+      // Rotation rows reload via useEffect when selectedBatchId updates.
+    } catch (err) {
+      console.warn('Delete batch error', err);
+      toast.error(err?.message || 'Failed to remove batch.');
+    } finally {
+      setBatchDeleting(false);
     }
   };
 
@@ -550,16 +601,33 @@ export default function UdemyCourseTab() {
               ))}
             </select>
           </div>
-          {canManageUdemy && (
-            <button
-              type="button"
-              onClick={handleAddBatch}
-              className="mt-5 px-3 py-2 rounded-lg text-xs font-medium text-white"
-              style={{ backgroundColor: PRIMARY }}
-            >
-              Add batch
-            </button>
-          )}
+          <div className="flex flex-wrap items-end gap-2 mt-5">
+            {canManageUdemy && (
+              <button
+                type="button"
+                onClick={handleAddBatch}
+                className="px-3 py-2 rounded-lg text-xs font-medium text-white"
+                style={{ backgroundColor: PRIMARY }}
+              >
+                Add batch
+              </button>
+            )}
+            {canDeleteUdemyBatch && (
+              <button
+                type="button"
+                onClick={handleDeleteSelectedBatch}
+                disabled={!selectedBatchId || batchDeleting}
+                title={
+                  !selectedBatchId
+                    ? 'Select a batch to remove'
+                    : 'Delete this batch and all course assignments / tracker data'
+                }
+                className="px-3 py-2 rounded-lg text-xs font-medium border border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {batchDeleting ? 'Removing…' : 'Remove batch'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
