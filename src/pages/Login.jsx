@@ -23,11 +23,18 @@ export default function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (loading) return;
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedPassword = String(password || '');
+    if (!normalizedEmail || !normalizedPassword) {
+      toast.error('Enter your email and password.');
+      return;
+    }
     setLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
+        email: normalizedEmail,
+        password: normalizedPassword,
       });
 
       if (error) {
@@ -69,7 +76,23 @@ export default function Login() {
 
       toast.success('Logged in successfully!');
     } catch (error) {
-      toast.error(error.message || 'Invalid email or password');
+      const rawMessage = String(error?.message || '').toLowerCase();
+      const status = error?.status ?? error?.code;
+      let userMessage = error?.message || 'Invalid email or password';
+
+      // Supabase auth returns 400 for common credential issues.
+      if (
+        status === 400 ||
+        rawMessage.includes('invalid login credentials') ||
+        rawMessage.includes('invalid email or password') ||
+        rawMessage.includes('email not confirmed')
+      ) {
+        userMessage = rawMessage.includes('email not confirmed')
+          ? 'Your email is not confirmed yet. Please check your inbox.'
+          : 'Invalid email or password. Please try again.';
+      }
+
+      toast.error(userMessage);
     } finally {
       setLoading(false);
     }

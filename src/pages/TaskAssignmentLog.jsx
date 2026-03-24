@@ -792,7 +792,9 @@ export default function TaskAssignmentLog() {
         .select('*')
         .order('claimed_at', { ascending: false });
       if (error) throw error;
-      setDomainClaims(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      // Support "soft unclaim" rows where claim fields are cleared via UPDATE.
+      setDomainClaims(list.filter((r) => r?.domain_id && r?.claimed_by));
     } catch (err) {
       console.warn('domain_claims fetch error:', err);
       setDomainClaims([]);
@@ -1367,6 +1369,54 @@ export default function TaskAssignmentLog() {
       toast.success('Domain claimed');
     } catch (error) {
       const msg = error?.message || 'Failed to claim domain';
+      toast.error(msg);
+    } finally {
+      setClaimingDomainId(null);
+    }
+  };
+
+  const handleUnclaimDomain = async (domain, claimRow) => {
+    if (!user?.id || !domain?.id || !claimRow?.domain_id) return;
+    if (!canClaimDomain(userRole, userTeam) && userRole !== 'admin') return;
+    setClaimingDomainId(domain.id);
+    try {
+      const { data: deleted, error } = await supabase
+        .from('domain_claims')
+        .delete()
+        .eq('domain_id', claimRow.domain_id)
+        .select('id, domain_id');
+      if (error) {
+        // Some environments allow UPDATE but not DELETE on domain_claims.
+        const { error: updateErr } = await supabase
+          .from('domain_claims')
+          .update({
+            claimed_by: null,
+            claimed_by_name: null,
+            claimed_at: null,
+            update_status: null,
+            post_update_check: null,
+          })
+          .eq('domain_id', claimRow.domain_id);
+        if (updateErr) throw updateErr;
+      } else if (!deleted || deleted.length === 0) {
+        // Delete succeeded but no rows returned (policy/select behavior). Try soft-unclaim fallback.
+        const { error: updateErr } = await supabase
+          .from('domain_claims')
+          .update({
+            claimed_by: null,
+            claimed_by_name: null,
+            claimed_at: null,
+            update_status: null,
+            post_update_check: null,
+          })
+          .eq('domain_id', claimRow.domain_id);
+        if (updateErr) throw updateErr;
+      }
+      setDomainClaims((prev) => prev.filter((c) => c.domain_id !== claimRow.domain_id));
+      await fetchDomainClaims();
+      toast.success('Domain unclaimed');
+    } catch (error) {
+      const msg = error?.message || 'Failed to unclaim domain';
       toast.error(msg);
     } finally {
       setClaimingDomainId(null);
@@ -3581,9 +3631,20 @@ export default function TaskAssignmentLog() {
                         <td className="px-4 py-3 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
                           {!isEditingDomainsTable && (
                             isClaimed ? (
-                              <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
-                                Claimed
-                              </span>
+                              canClaimDomain(userRole, userTeam) || userRole === 'admin' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnclaimDomain(domain, claim)}
+                                  disabled={claimingDomainId === domain.id}
+                                  className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center hover:bg-green-700 disabled:opacity-60 transition-opacity"
+                                >
+                                  {claimingDomainId === domain.id ? '...' : 'Unclaim'}
+                                </button>
+                              ) : (
+                                <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
+                                  Claimed
+                                </span>
+                              )
                             ) : canClaimDomain(userRole, userTeam) ? (
                               <button
                                 type="button"
@@ -3770,9 +3831,20 @@ export default function TaskAssignmentLog() {
                         <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           {!isEditingDomainsTable && (
                             isClaimed ? (
-                              <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
-                                Claimed
-                              </span>
+                              canClaimDomain(userRole, userTeam) || userRole === 'admin' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnclaimDomain(domain, claim)}
+                                  disabled={claimingDomainId === domain.id}
+                                  className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center hover:bg-green-700 disabled:opacity-60 transition-opacity"
+                                >
+                                  {claimingDomainId === domain.id ? '...' : 'Unclaim'}
+                                </button>
+                              ) : (
+                                <span className="inline-block text-xs font-medium min-w-[4rem] px-2 py-1 rounded bg-green-600 text-white text-center">
+                                  Claimed
+                                </span>
+                              )
                             ) : canClaimDomain(userRole, userTeam) ? (
                               <button
                                 type="button"

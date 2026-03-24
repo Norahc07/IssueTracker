@@ -528,7 +528,7 @@ export default function MonitoringTasks({ embedded = false }) {
                                     <select
                                       value={taskRec.assigned_to || ''}
                                       onChange={(e) => updateTask(taskName, 'assigned_to', e.target.value || null)}
-                                      className="text-sm bg-transparent border-none p-0 pr-6 focus:ring-0 cursor-pointer text-gray-700 dark:text-gray-200"
+                                      className="min-w-[11rem] rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-1.5 pr-7 text-sm text-gray-700 dark:text-gray-100 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
                                     >
                                       <option value="">Unassigned</option>
                                       {monitoringUsers.map(u => (
