@@ -52,11 +52,43 @@ function groupPluginsByCountry(plugins) {
   return grouped;
 }
 
+function toIsoDateLocal(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getFridayIsoDates(dateStr) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  const FRIDAY_INDEX = 5; // 0=Sun ... 5=Fri
+  const day = date.getDay();
+
+  // Previous Friday (including today if it's Friday)
+  const daysSinceFriday = (day - FRIDAY_INDEX + 7) % 7;
+  const prevFriday = new Date(date);
+  prevFriday.setDate(prevFriday.getDate() - daysSinceFriday);
+
+  // Next Friday (if today is Friday, next Friday is next week)
+  const daysUntilFriday = (FRIDAY_INDEX - day + 7) % 7;
+  const nextFriday = new Date(date);
+  nextFriday.setDate(nextFriday.getDate() + (daysUntilFriday === 0 ? 7 : daysUntilFriday));
+
+  return {
+    isFriday: day === FRIDAY_INDEX,
+    prevFridayIso: toIsoDateLocal(prevFriday),
+    nextFridayIso: toIsoDateLocal(nextFriday),
+  };
+}
+
 export default function DailyReportManage() {
   const { supabase, userRole, user } = useSupabase();
   const canManage = permissions.canManageDailyReport(userRole);
   const showMyFormTab = userRole === 'tl' || userRole === 'vtl';
   const showTeamReportTab = userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl';
+  // "Prepared by" is always derived from the logged-in account.
+  const preparedByValue = user?.user_metadata?.full_name || user?.email || '';
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('status'); // 'status' | 'questions' | 'my' | 'team' | 'attendanceReports'
   const [loading, setLoading] = useState(true);
@@ -234,8 +266,155 @@ export default function DailyReportManage() {
     }
   };
 
+  const fetchAutoPluginUpdatesForDate = async (reportDate) => {
+    const empty = { old: [], new: [] };
+    if (!supabase || !reportDate) return empty;
+    try {
+      const [{ data: domainsData, error: domainsErr }, { data: updatesData, error: updatesErr }] =
+        await Promise.all([
+          supabase.from('domains').select('id, type, country'),
+          supabase
+            .from('task_plugin_update_rows')
+            .select('domain_id, country, status, plugin_names, update_status, post_update_check, notes, created_at, updated_at'),
+        ]);
+      if (domainsErr) throw domainsErr;
+      if (updatesErr) throw updatesErr;
+
+      const domainsById = new Map();
+      (Array.isArray(domainsData) ? domainsData : []).forEach((d) => {
+        if (d?.id) domainsById.set(d.id, d);
+      });
+
+      const old = [];
+      const newer = [];
+
+      (Array.isArray(updatesData) ? updatesData : []).forEach((row) => {
+        const stamp = row?.updated_at || row?.created_at;
+        if (!stamp) return;
+        const day = String(stamp).slice(0, 10);
+        if (day !== reportDate) return;
+
+        const domain = domainsById.get(row.domain_id);
+        const domainType = String(domain?.type || 'old').toLowerCase();
+        const normalized = {
+          country: row?.country || domain?.country || '',
+          country_status: row?.status || '',
+          country_reason: row?.post_update_check === 'Issue Found' ? (row?.notes || 'Issue Found') : '',
+          plugins_updated: row?.plugin_names || '',
+          plugin_status: row?.update_status === 'Updated' ? 'Success' : (row?.update_status ? 'Fail' : ''),
+          notes: row?.notes || '',
+        };
+
+        if (domainType === 'new') newer.push(normalized);
+        else old.push(normalized);
+      });
+
+      return { old, new: newer };
+    } catch (err) {
+      console.warn('Auto plugin updates fetch error:', err);
+      return empty;
+    }
+  };
+
+  const fetchAutoNotableTasksForDate = async (reportDate) => {
+    // Auto-fill IT Team Leads Assistants Notable Tasks/Contribution
+    // from each intern's Daily Report "Tasks Accomplished" answer.
+    if (!supabase || !reportDate) return [];
+    try {
+      // 1) Find the "Tasks Accomplished" question id.
+      // DailyReportForm uses questions[1] as the "Tasks Accomplished" section (2.–7 sections).
+      const { data: questionsData } = await supabase
+        .from('daily_report_questions')
+        .select('id, sort_order, question_text')
+        .order('sort_order');
+
+      const taskAccomplishedQuestion = (() => {
+        const list = Array.isArray(questionsData) ? questionsData : [];
+        const byText = list.find((q) => {
+          const text = String(q?.question_text || '').toLowerCase();
+          return /tasks.*accomplish/i.test(text) || text.includes('tasks accomplished');
+        });
+        if (byText?.id) return byText;
+        const byOrder = list.find((q) => Number(q?.sort_order) === 2);
+        if (byOrder?.id) return byOrder;
+        return list[1] || null;
+      })();
+
+      const taskQuestionId = taskAccomplishedQuestion?.id;
+      if (!taskQuestionId) return [];
+
+      // 2) Fetch TLA-team members for name mapping (intern, tl, vtl).
+      const { data: tlaUsers } = await supabase
+        .from('users')
+        .select('id, full_name, email, role, team')
+        .in('role', ['intern', 'tl', 'vtl'])
+        .order('full_name');
+
+      const userIdToName = new Map();
+      const isTlaTeam = (team) => {
+        const t = String(team || '').trim().toLowerCase();
+        const tNoSpaces = t.replace(/\s+/g, '');
+        if (!t) return false;
+        return (
+          t === 'tla' ||
+          tNoSpaces === 'tla' ||
+          t.includes('team lead assistant') ||
+          tNoSpaces.includes('teamleadassistant') ||
+          tNoSpaces.includes('tla')
+        );
+      };
+
+      (Array.isArray(tlaUsers) ? tlaUsers : [])
+        .filter((u) => isTlaTeam(u?.team))
+        .forEach((u) => {
+          if (u?.id) userIdToName.set(u.id, u.full_name || u.email || '—');
+      });
+
+      // If team filtering is too strict for the stored values, avoid showing an empty table.
+      // Fallback to all tl/vtl/intern users if we didn't match anything.
+      if (userIdToName.size === 0) {
+        console.warn('Auto notable tasks: no users matched TLA team filter; falling back to all tl/vtl/intern.');
+        (Array.isArray(tlaUsers) ? tlaUsers : []).forEach((u) => {
+          if (u?.id) userIdToName.set(u.id, u.full_name || u.email || '—');
+        });
+      }
+
+      const internIds = Array.from(userIdToName.keys());
+      if (internIds.length === 0) return [];
+
+      // 3) Fetch all TLA-team submissions for the report date.
+      const { data: subs } = await supabase
+        .from('daily_report_submissions')
+        .select('user_id, answers')
+        .eq('report_date', reportDate)
+        .in('user_id', internIds);
+
+      const rows = Array.isArray(subs) ? subs : [];
+      const notable = rows
+        .map((s) => {
+          const answers = s?.answers || {};
+          const contribution = String(answers?.[taskQuestionId] || '').trim();
+          if (!contribution) return null;
+          return {
+            member: userIdToName.get(s.user_id) || '—',
+            task_contribution: contribution,
+          };
+        })
+        .filter(Boolean);
+
+      return notable;
+    } catch (err) {
+      console.warn('Auto notable tasks fetch error:', err);
+      return [];
+    }
+  };
+
   const fetchTeamReport = async () => {
     try {
+      const [autoPluginData, autoNotableTasks] = await Promise.all([
+        fetchAutoPluginUpdatesForDate(teamReportDate),
+        fetchAutoNotableTasksForDate(teamReportDate),
+      ]);
       const { data, error } = await supabase
         .from('team_daily_report')
         .select('*')
@@ -251,32 +430,33 @@ export default function DailyReportManage() {
         const parsed = {
           ...data,
           tasks: typeof data.tasks === 'string' ? JSON.parse(data.tasks) : (data.tasks || {}),
-          old_domains_plugins: typeof data.old_domains_plugins === 'string' ? JSON.parse(data.old_domains_plugins) : (data.old_domains_plugins || []),
-          new_domains_plugins: typeof data.new_domains_plugins === 'string' ? JSON.parse(data.new_domains_plugins) : (data.new_domains_plugins || []),
+          old_domains_plugins: autoPluginData.old,
+          new_domains_plugins: autoPluginData.new,
+          notable_tasks: autoNotableTasks,
           course_price_edits: typeof data.course_price_edits === 'string' ? JSON.parse(data.course_price_edits) : (data.course_price_edits || []),
-          notable_tasks: typeof data.notable_tasks === 'string' ? JSON.parse(data.notable_tasks) : (data.notable_tasks || []),
           attendance_counts: typeof data.attendance_counts === 'string' ? JSON.parse(data.attendance_counts) : (data.attendance_counts || {}),
           reviews: typeof data.reviews === 'string' ? JSON.parse(data.reviews) : (data.reviews || {}),
           interns_remaining_hours: typeof data.interns_remaining_hours === 'string' ? JSON.parse(data.interns_remaining_hours) : (data.interns_remaining_hours || []),
         };
-        setTeamReport(parsed);
+        // Always set "prepared_by" from the logged-in account (no manual editing).
+        setTeamReport({ ...parsed, prepared_by: preparedByValue });
         setIsEditingTeamReport(false); // Existing report: start in view mode
       } else {
         // Initialize empty report
         setTeamReport({
           report_date: teamReportDate,
-          prepared_by: user?.user_metadata?.full_name || user?.email || '',
+          prepared_by: preparedByValue,
           tasks: {
             onboarding_offboarding: '',
             gsc_crawling: '',
             wp_plugins_updates: '',
           },
           old_domains_plugins_date: teamReportDate,
-          old_domains_plugins: [],
+          old_domains_plugins: autoPluginData.old,
           new_domains_plugins_date: teamReportDate,
-          new_domains_plugins: [],
+          new_domains_plugins: autoPluginData.new,
           course_price_edits: [],
-          notable_tasks: [],
+          notable_tasks: autoNotableTasks,
           attendance_counts: {
             late: 0,
             notable_late: 0,
@@ -299,7 +479,7 @@ export default function DailyReportManage() {
       // Initialize empty report on error
       setTeamReport({
         report_date: teamReportDate,
-        prepared_by: user?.user_metadata?.full_name || user?.email || '',
+        prepared_by: preparedByValue,
         tasks: {
           onboarding_offboarding: '',
           gsc_crawling: '',
@@ -379,7 +559,8 @@ export default function DailyReportManage() {
     try {
       const payload = {
         report_date: teamReportDate,
-        prepared_by: teamReport.prepared_by || '',
+        // Always save the logged-in account name.
+        prepared_by: preparedByValue,
         tasks: teamReport.tasks || {},
         old_domains_plugins_date: teamReportDate,
         old_domains_plugins: teamReport.old_domains_plugins || [],
@@ -905,39 +1086,28 @@ export default function DailyReportManage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                   Prepared by
                 </label>
-                {isEditingTeamReport ? (
-                  <input
-                    type="text"
-                    value={teamReport.prepared_by || ''}
-                    onChange={(e) =>
-                      setTeamReport((prev) => ({ ...prev, prepared_by: e.target.value }))
-                    }
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
-                    placeholder="Enter name"
-                  />
-                ) : (
-                  <p className="text-sm text-gray-900 dark:text-gray-100 py-2">
-                    {teamReport.prepared_by || '—'}
-                  </p>
-                )}
+                <input
+                  type="text"
+                  value={preparedByValue}
+                  disabled
+                  tabIndex={-1}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 text-gray-700 dark:text-gray-100 px-3 py-2 text-sm cursor-not-allowed pointer-events-none opacity-100"
+                />
               </div>
             </div>
           </div>
 
           {/* Tasks Table */}
           <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">Tasks</h3>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">New Tasks</h3>
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-950/40">
                 <tr>
                   <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">
-                    Onboarding and Offboarding Interns
+                    Onboarding and Offboarding Intern
                   </th>
                   <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">
                     Google Search Console (GSC) Crawling
-                  </th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">
-                    WordPress Plugins Updates
                   </th>
                 </tr>
               </thead>
@@ -945,8 +1115,8 @@ export default function DailyReportManage() {
                 <tr>
                   <td className="px-4 py-2 border-t border-gray-200 dark:border-gray-800">
                     {isEditingTeamReport ? (
-                      <input
-                        type="text"
+                      <textarea
+                        rows={3}
                         value={teamReport.tasks?.onboarding_offboarding || ''}
                         onChange={(e) =>
                           setTeamReport((prev) => ({
@@ -955,18 +1125,18 @@ export default function DailyReportManage() {
                           }))
                         }
                         className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
-                        placeholder="Enter name"
+                        placeholder="Write a short paragraph/sentence (e.g., onboarding/offboarding actions)"
                       />
                     ) : (
-                      <p className="text-sm text-gray-900 dark:text-gray-100 py-1">
+                      <p className="text-sm text-gray-900 dark:text-gray-100 py-1 whitespace-pre-wrap">
                         {teamReport.tasks?.onboarding_offboarding || '—'}
                       </p>
                     )}
                   </td>
                   <td className="px-4 py-2 border-t border-gray-200 dark:border-gray-800">
                     {isEditingTeamReport ? (
-                      <input
-                        type="text"
+                      <textarea
+                        rows={3}
                         value={teamReport.tasks?.gsc_crawling || ''}
                         onChange={(e) =>
                           setTeamReport((prev) => ({
@@ -975,37 +1145,83 @@ export default function DailyReportManage() {
                           }))
                         }
                         className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
-                        placeholder="Enter name"
+                        placeholder="Write a short paragraph/sentence (GSC crawling results/actions)"
                       />
                     ) : (
-                      <p className="text-sm text-gray-900 dark:text-gray-100 py-1">
+                      <p className="text-sm text-gray-900 dark:text-gray-100 py-1 whitespace-pre-wrap">
                         {teamReport.tasks?.gsc_crawling || '—'}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 border-t border-gray-200 dark:border-gray-800">
-                    {isEditingTeamReport ? (
-                      <input
-                        type="text"
-                        value={teamReport.tasks?.wp_plugins_updates || ''}
-                        onChange={(e) =>
-                          setTeamReport((prev) => ({
-                            ...prev,
-                            tasks: { ...prev.tasks, wp_plugins_updates: e.target.value },
-                          }))
-                        }
-                        className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
-                        placeholder="Enter name"
-                      />
-                    ) : (
-                      <p className="text-sm text-gray-900 dark:text-gray-100 py-1">
-                        {teamReport.tasks?.wp_plugins_updates || '—'}
                       </p>
                     )}
                   </td>
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          {/* WordPress Plugins Updates Summary */}
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">WordPress Plugins Updates</h3>
+            <div className="text-sm text-gray-600 dark:text-gray-300">
+              {(() => {
+                const teamDate = String(teamReportDate || '');
+                const d = getFridayIsoDates(teamDate);
+                const lastCheckedIso = d.isFriday ? teamDate : d.prevFridayIso;
+                const oldRows = teamReport.old_domains_plugins || [];
+                const newRows = teamReport.new_domains_plugins || [];
+
+                const oldAllUpdated =
+                  oldRows.length > 0 &&
+                  oldRows.every(
+                    (r) =>
+                      String(r?.plugin_status || '').trim() === 'Success' &&
+                      String(r?.plugins_updated || '').trim() !== ''
+                  );
+                const newAllUpdated =
+                  newRows.length > 0 &&
+                  newRows.every(
+                    (r) =>
+                      String(r?.plugin_status || '').trim() === 'Success' &&
+                      String(r?.plugins_updated || '').trim() !== ''
+                  );
+
+                const oldTagText = oldAllUpdated ? 'Old Updated' : 'Old Not finished';
+                const newTagText = newAllUpdated ? 'New Updated' : 'New Not finished';
+
+                const oldTagClass = oldAllUpdated
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200';
+                const newTagClass = newAllUpdated
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200';
+
+                return (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>
+                      Last Checked{' '}
+                      <span className="font-semibold">{formatDateLong(lastCheckedIso)}</span>
+                    </span>
+                    {d.isFriday && (
+                      <>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${oldTagClass}`}
+                        >
+                          {oldTagText}
+                        </span>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${newTagClass}`}
+                        >
+                          {newTagText}
+                        </span>
+                      </>
+                    )}
+                    <span>
+                      Next Update on{' '}
+                      <span className="font-semibold">{formatDateLong(d.nextFridayIso)}</span>
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
 
           {/* Old Domains Plugins Table */}
@@ -1015,25 +1231,29 @@ export default function DailyReportManage() {
                 1. List of Updated Plugins for migrated old domains as of{' '}
                 <span className="font-normal text-gray-700 dark:text-gray-300">{formatDateLong(teamReportDate)}</span>
               </h3>
-              {isEditingTeamReport && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const updated = [...(teamReport.old_domains_plugins || []), { country: '', country_status: '', country_reason: '', plugins_updated: '', plugin_status: '', notes: '' }];
-                    setTeamReport((prev) => ({ ...prev, old_domains_plugins: updated }));
-                  }}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium text-white shadow-sm"
-                  style={{ backgroundColor: PRIMARY }}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Country
-                </button>
-              )}
             </div>
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-950/40">
+            <table className="w-full text-sm table-fixed">
+              {isEditingTeamReport ? (
+                <colgroup>
+                  <col style={{ width: '160px' }} />
+                  <col style={{ width: '120px' }} />
+                  <col style={{ width: '180px' }} />
+                  <col style={{ width: '220px' }} />
+                  <col style={{ width: '120px' }} />
+                  <col style={{ width: '180px' }} />
+                  <col style={{ width: '80px' }} />
+                </colgroup>
+              ) : (
+                <colgroup>
+                  <col style={{ width: '160px' }} />
+                  <col style={{ width: '120px' }} />
+                  <col style={{ width: '180px' }} />
+                  <col style={{ width: '220px' }} />
+                  <col style={{ width: '120px' }} />
+                  <col style={{ width: '180px' }} />
+                </colgroup>
+              )}
+              <thead className="bg-gray-50/70 dark:bg-gray-950/40">
                 <tr>
                   <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Country</th>
                   <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Status</th>
@@ -1046,15 +1266,18 @@ export default function DailyReportManage() {
                   )}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-gray-50/70 dark:bg-gray-950/40">
                 {(() => {
                   const plugins = teamReport.old_domains_plugins || [];
                   const colSpan = isEditingTeamReport ? 7 : 6;
-                  if (plugins.length === 0 && !isEditingTeamReport) {
+                  if (plugins.length === 0) {
                     return (
-                      <tr>
-                        <td colSpan={colSpan} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
-                          No data
+                      <tr className="bg-gray-50/70 dark:bg-gray-950/40">
+                        <td
+                          colSpan={colSpan}
+                          className="px-4 py-8 text-center text-gray-500 dark:text-gray-400 text-sm"
+                        >
+                          No data{isEditingTeamReport ? ' (auto from Domain Updates)' : ''}.
                         </td>
                       </tr>
                     );
@@ -1071,11 +1294,14 @@ export default function DailyReportManage() {
                       const idx = plugin.originalIndex;
                       
                       return (
-                        <tr key={`old-${idx}`} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
+                        <tr
+                          key={`old-${idx}`}
+                          className="bg-gray-50/70 dark:bg-gray-950/40 hover:bg-gray-50/80 dark:hover:bg-gray-800/60"
+                        >
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40 font-medium text-gray-900 dark:text-gray-100"
+                              className="px-4 py-2 align-top bg-gray-50/70 dark:bg-gray-950/40 font-medium text-gray-900 dark:text-gray-100"
                               style={{ verticalAlign: 'top' }}
                             >
                               <div className="flex items-start gap-2">
@@ -1122,7 +1348,7 @@ export default function DailyReportManage() {
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40"
+                              className="px-4 py-2 align-top bg-gray-50/70 dark:bg-gray-950/40"
                               style={{ verticalAlign: 'top' }}
                             >
                               {isEditingTeamReport ? (
@@ -1152,7 +1378,7 @@ export default function DailyReportManage() {
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40"
+                              className="px-4 py-2 align-top bg-gray-50/70 dark:bg-gray-950/40"
                               style={{ verticalAlign: 'top' }}
                             >
                               {isEditingTeamReport ? (
@@ -1232,7 +1458,7 @@ export default function DailyReportManage() {
                             )}
                           </td>
                           {isEditingTeamReport && (
-                            <td className="px-4 py-2">
+                            <td className="px-4 py-2 w-20">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1261,25 +1487,29 @@ export default function DailyReportManage() {
                 2. List of Updated Plugins for migrated new domains as of{' '}
                 <span className="font-normal text-gray-700 dark:text-gray-300">{formatDateLong(teamReportDate)}</span>
               </h3>
-              {isEditingTeamReport && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const updated = [...(teamReport.new_domains_plugins || []), { country: '', country_status: '', country_reason: '', plugins_updated: '', plugin_status: '', notes: '' }];
-                    setTeamReport((prev) => ({ ...prev, new_domains_plugins: updated }));
-                  }}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium text-white shadow-sm"
-                  style={{ backgroundColor: PRIMARY }}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Country
-                </button>
-              )}
             </div>
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-950/40">
+            <table className="w-full text-sm table-fixed">
+              {isEditingTeamReport ? (
+                <colgroup>
+                  <col style={{ width: '160px' }} />
+                  <col style={{ width: '120px' }} />
+                  <col style={{ width: '180px' }} />
+                  <col style={{ width: '220px' }} />
+                  <col style={{ width: '120px' }} />
+                  <col style={{ width: '180px' }} />
+                  <col style={{ width: '80px' }} />
+                </colgroup>
+              ) : (
+                <colgroup>
+                  <col style={{ width: '160px' }} />
+                  <col style={{ width: '120px' }} />
+                  <col style={{ width: '180px' }} />
+                  <col style={{ width: '220px' }} />
+                  <col style={{ width: '120px' }} />
+                  <col style={{ width: '180px' }} />
+                </colgroup>
+              )}
+              <thead className="bg-gray-50/70 dark:bg-gray-950/40">
                 <tr>
                   <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Country</th>
                   <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Status</th>
@@ -1292,15 +1522,18 @@ export default function DailyReportManage() {
                   )}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-gray-50/70 dark:bg-gray-950/40">
                 {(() => {
                   const plugins = teamReport.new_domains_plugins || [];
                   const colSpan = isEditingTeamReport ? 7 : 6;
-                  if (plugins.length === 0 && !isEditingTeamReport) {
+                  if (plugins.length === 0) {
                     return (
-                      <tr>
-                        <td colSpan={colSpan} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
-                          No data
+                      <tr className="bg-gray-50/70 dark:bg-gray-950/40">
+                        <td
+                          colSpan={colSpan}
+                          className="px-4 py-8 text-center text-gray-500 dark:text-gray-400 text-sm"
+                        >
+                          No data{isEditingTeamReport ? ' (auto from Domain Updates)' : ''}.
                         </td>
                       </tr>
                     );
@@ -1317,11 +1550,14 @@ export default function DailyReportManage() {
                       const idx = plugin.originalIndex;
                       
                       return (
-                        <tr key={`new-${idx}`} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
+                        <tr
+                          key={`new-${idx}`}
+                          className="bg-gray-50/70 dark:bg-gray-950/40 hover:bg-gray-50/80 dark:hover:bg-gray-800/60"
+                        >
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40 font-medium text-gray-900 dark:text-gray-100"
+                              className="px-4 py-2 align-top bg-gray-50/70 dark:bg-gray-950/40 font-medium text-gray-900 dark:text-gray-100"
                               style={{ verticalAlign: 'top' }}
                             >
                               <div className="flex items-start gap-2">
@@ -1368,7 +1604,7 @@ export default function DailyReportManage() {
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40"
+                              className="px-4 py-2 align-top bg-gray-50/70 dark:bg-gray-950/40"
                               style={{ verticalAlign: 'top' }}
                             >
                               {isEditingTeamReport ? (
@@ -1398,7 +1634,7 @@ export default function DailyReportManage() {
                           {isFirstPlugin && (
                             <td 
                               rowSpan={rowSpan} 
-                              className="px-4 py-2 align-top bg-gray-50 dark:bg-gray-950/40"
+                              className="px-4 py-2 align-top bg-gray-50/70 dark:bg-gray-950/40"
                               style={{ verticalAlign: 'top' }}
                             >
                               {isEditingTeamReport ? (
@@ -1477,8 +1713,8 @@ export default function DailyReportManage() {
                               <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{plugin.notes || '—'}</p>
                             )}
                           </td>
-                          <td className="px-4 py-2">
-                            {isEditingTeamReport && (
+                          {isEditingTeamReport && (
+                            <td className="px-4 py-2 w-20">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1489,8 +1725,8 @@ export default function DailyReportManage() {
                               >
                                 Remove
                               </button>
-                            )}
-                          </td>
+                            </td>
+                          )}
                         </tr>
                       );
                     });
@@ -1508,7 +1744,8 @@ export default function DailyReportManage() {
                 <tr>
                   <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Country Name</th>
                   <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Status</th>
-                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Notes</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Issue (optional)</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Notes (optional)</th>
                   {isEditingTeamReport && (
                     <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100 w-20">Action</th>
                   )}
@@ -1517,7 +1754,7 @@ export default function DailyReportManage() {
               <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                 {(teamReport.course_price_edits || []).length === 0 && !isEditingTeamReport ? (
                   <tr>
-                    <td colSpan={isEditingTeamReport ? 4 : 3} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                    <td colSpan={isEditingTeamReport ? 5 : 4} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
                       No data
                     </td>
                   </tr>
@@ -1535,6 +1772,7 @@ export default function DailyReportManage() {
                               setTeamReport((prev) => ({ ...prev, course_price_edits: updated }));
                             }}
                             className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
+                            placeholder="Enter country name"
                           />
                         ) : (
                           <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.country_name || '—'}</p>
@@ -1542,8 +1780,7 @@ export default function DailyReportManage() {
                       </td>
                       <td className="px-4 py-2">
                         {isEditingTeamReport ? (
-                          <input
-                            type="text"
+                          <select
                             value={row.status || ''}
                             onChange={(e) => {
                               const updated = [...(teamReport.course_price_edits || [])];
@@ -1551,9 +1788,30 @@ export default function DailyReportManage() {
                               setTeamReport((prev) => ({ ...prev, course_price_edits: updated }));
                             }}
                             className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
-                          />
+                          >
+                            <option value="">Select status</option>
+                            <option value="ongoing">Ongoing</option>
+                            <option value="completed">Completed</option>
+                          </select>
                         ) : (
                           <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.status || '—'}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-2">
+                        {isEditingTeamReport ? (
+                          <input
+                            type="text"
+                            value={row.issue || ''}
+                            onChange={(e) => {
+                              const updated = [...(teamReport.course_price_edits || [])];
+                              updated[idx] = { ...updated[idx], issue: e.target.value };
+                              setTeamReport((prev) => ({ ...prev, course_price_edits: updated }));
+                            }}
+                            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
+                            placeholder="Enter issue (optional)"
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.issue || '—'}</p>
                         )}
                       </td>
                       <td className="px-4 py-2">
@@ -1567,6 +1825,7 @@ export default function DailyReportManage() {
                               setTeamReport((prev) => ({ ...prev, course_price_edits: updated }));
                             }}
                             className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
+                            placeholder="Enter notes (optional)"
                           />
                         ) : (
                           <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.notes || '—'}</p>
@@ -1591,11 +1850,14 @@ export default function DailyReportManage() {
                 )}
                 {isEditingTeamReport && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-2">
+                    <td colSpan={5} className="px-4 py-2">
                       <button
                         type="button"
                         onClick={() => {
-                          const updated = [...(teamReport.course_price_edits || []), { country_name: '', status: '', notes: '' }];
+                          const updated = [
+                            ...(teamReport.course_price_edits || []),
+                            { country_name: '', status: '', issue: '', notes: '' },
+                          ];
                           setTeamReport((prev) => ({ ...prev, course_price_edits: updated }));
                         }}
                         className="text-sm text-[#6795BE] hover:underline"
@@ -1715,8 +1977,9 @@ export default function DailyReportManage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Counts</th>
                     <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Status</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Count</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-900 dark:text-gray-100">Names</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
@@ -1728,28 +1991,86 @@ export default function DailyReportManage() {
                     { key: 'absent', label: 'Absent' },
                   ].map(({ key, label }) => (
                     <tr key={key} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
+                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{label}</td>
                       <td className="px-4 py-2">
                         {isEditingTeamReport ? (
                           <input
                             type="number"
                             min="0"
                             value={teamReport.attendance_counts?.[key] || 0}
-                            onChange={(e) =>
-                              setTeamReport((prev) => ({
-                                ...prev,
-                                attendance_counts: {
-                                  ...prev.attendance_counts,
-                                  [key]: parseInt(e.target.value) || 0,
-                                },
-                              }))
-                            }
+                            onChange={(e) => {
+                              const count = parseInt(e.target.value) || 0;
+                              const namesKey = `${key}_names`;
+                              setTeamReport((prev) => {
+                                const currentNames = prev.attendance_counts?.[namesKey] || [];
+                                const nextNames = [
+                                  ...currentNames.slice(0, count),
+                                  ...Array(Math.max(0, count - currentNames.length)).fill(''),
+                                ];
+                                return {
+                                  ...prev,
+                                  attendance_counts: {
+                                    ...prev.attendance_counts,
+                                    [key]: count,
+                                    [namesKey]: nextNames,
+                                  },
+                                };
+                              });
+                            }}
                             className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
                           />
                         ) : (
                           <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{teamReport.attendance_counts?.[key] || 0}</p>
                         )}
                       </td>
-                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{label}</td>
+                      <td className="px-4 py-2">
+                        {(() => {
+                          const count = teamReport.attendance_counts?.[key] || 0;
+                          const namesKey = `${key}_names`;
+                          const names = teamReport.attendance_counts?.[namesKey] || [];
+                          const safeNames = Array.from({ length: count }, (_, i) => names[i] || '');
+
+                          if (!isEditingTeamReport) {
+                            const filled = safeNames.filter(Boolean);
+                            return (
+                              <p className="text-sm text-gray-900 dark:text-gray-100 py-1">
+                                {filled.length > 0 ? filled.join(', ') : '—'}
+                              </p>
+                            );
+                          }
+
+                          return (
+                            <div className="space-y-2">
+                              {safeNames.map((name, idx) => (
+                                <input
+                                  key={`${key}-name-${idx}`}
+                                  type="text"
+                                  value={name}
+                                  onChange={(e) => {
+                                    const nextVal = e.target.value;
+                                    setTeamReport((prev) => {
+                                      const nextNames = [...(prev.attendance_counts?.[namesKey] || [])];
+                                      nextNames[idx] = nextVal;
+                                      return {
+                                        ...prev,
+                                        attendance_counts: {
+                                          ...prev.attendance_counts,
+                                          [namesKey]: nextNames,
+                                        },
+                                      };
+                                    });
+                                  }}
+                                  placeholder={`Name ${idx + 1}`}
+                                  className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
+                                />
+                              ))}
+                              {count === 0 && (
+                                <p className="text-sm text-gray-500 dark:text-gray-400">No names</p>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1875,6 +2196,7 @@ export default function DailyReportManage() {
                                 setTeamReport((prev) => ({ ...prev, interns_remaining_hours: updated }));
                               }}
                               className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
+                              placeholder="e.g., Christian Chuck"
                             />
                           ) : (
                             <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.intern_name || '—'}</p>
@@ -1893,6 +2215,7 @@ export default function DailyReportManage() {
                                 setTeamReport((prev) => ({ ...prev, interns_remaining_hours: updated }));
                               }}
                               className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
+                              placeholder="e.g., 24.5"
                             />
                           ) : (
                             <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.hours_remaining || '—'}</p>
@@ -1909,6 +2232,7 @@ export default function DailyReportManage() {
                                 setTeamReport((prev) => ({ ...prev, interns_remaining_hours: updated }));
                               }}
                               className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
+                              placeholder="e.g., Intern / Team Member"
                             />
                           ) : (
                             <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.designation || '—'}</p>

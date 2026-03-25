@@ -1349,18 +1349,23 @@ export default function TaskAssignmentLog() {
         claimed_by_name = (me?.full_name || '').trim() || user?.user_metadata?.full_name || user?.email || null;
       }
       const nameForDb = claimed_by_name || user?.user_metadata?.full_name || user?.email || null;
-      const { error } = await supabase.from('domain_claims').insert({
+      const claimPayload = {
         domain_id: domain.id,
         claimed_by: user.id,
         claimed_by_name: nameForDb,
-      });
+        claimed_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('domain_claims')
+        .upsert(claimPayload, { onConflict: 'domain_id' });
       if (error) throw error;
       const newClaim = {
         id: crypto.randomUUID(),
         domain_id: domain.id,
         claimed_by: user.id,
         claimed_by_name: nameForDb,
-        claimed_at: new Date().toISOString(),
+        claimed_at: claimPayload.claimed_at,
         update_status: null,
         post_update_check: null,
       };
