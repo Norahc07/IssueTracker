@@ -72,6 +72,39 @@ function timeStringToMinutes(t) {
   return (h || 0) * 60 + (m || 0);
 }
 
+function parseTimeHHMMToMinutesOrNull(value) {
+  const s = value == null ? '' : String(value).trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  return hh * 60 + mm;
+}
+
+function getLateStartStatus({ clockInMinutes, scheduledInMinutes, isLateFlag }) {
+  if (clockInMinutes == null || Number.isNaN(clockInMinutes)) {
+    return { label: '—', badgeClass: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300' };
+  }
+
+  if (scheduledInMinutes == null || Number.isNaN(scheduledInMinutes)) {
+    // If we don't have schedule start time, we can still show Late vs On Time.
+    if (isLateFlag) {
+      return { label: 'Late', badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' };
+    }
+    return { label: 'On Time', badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' };
+  }
+
+  if (clockInMinutes === scheduledInMinutes) {
+    return { label: 'On Time', badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' };
+  }
+  if (clockInMinutes < scheduledInMinutes) {
+    return { label: 'Undertime', badgeClass: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300' };
+  }
+  return { label: 'Late', badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' };
+}
+
 function minutesToTimeString(minutes) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -1185,6 +1218,10 @@ export default function Attendance() {
   const handleSaveLateReason = async (e) => {
     e?.preventDefault?.();
     if (!supabase || !lateReasonModalLog || savingLateReason) return;
+    if (lateReasonModalLog.fromClockIn && !String(lateReasonText || '').trim()) {
+      toast.error('Reason is required when you are marked late from clock-in.');
+      return;
+    }
     setSavingLateReason(true);
     try {
       const { error } = await supabase
@@ -1843,7 +1880,7 @@ export default function Attendance() {
 
       {/* Admin: view-only message */}
       {!canClockInOut && (
-        <div className="rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/30 p-4 text-blue-800 dark:text-blue-200">
+        <div className="rounded-lg border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/20 p-4 text-red-700 dark:text-red-200">
           You are viewing attendance in read-only mode. Only interns and team leads record time in/out.
         </div>
       )}
@@ -2048,6 +2085,18 @@ export default function Attendance() {
                             const dayTotalSec = getLogRenderedSeconds(log) + (isTodayRow ? currentSegmentSeconds : 0);
                             const hasRendered = (log.total_rendered_seconds != null || log.rendered_seconds != null || log.rendered_minutes != null) || isTodayRow;
                             const pendingRequest = myLateRequests.find((r) => r.log_date === log.log_date);
+                            const clockInMinutes = firstInLog ? (() => {
+                              const d = new Date(firstInLog);
+                              if (Number.isNaN(d.getTime())) return null;
+                              return d.getHours() * 60 + d.getMinutes();
+                            })() : null;
+                            const scheduledInMinutes =
+                              parseTimeHHMMToMinutesOrNull(mySchedule?.scheduled_time_in) ?? timeStringToMinutes('09:00');
+                            const startStatus = getLateStartStatus({
+                              clockInMinutes,
+                              scheduledInMinutes,
+                              isLateFlag: log.is_late,
+                            });
                             return (
                               <tr key={log.id ?? `${log.user_id}-${log.log_date}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
                                 <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{formatDateMonthDayYear(log.log_date)}</td>
@@ -2055,7 +2104,11 @@ export default function Attendance() {
                                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(latestInLog)}</td>
                                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(lastOutLog)}</td>
                                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{hasRendered ? formatHoursMinutesLabel(dayTotalSec) : '—'}</td>
-                                <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{log.is_late ? 'Yes' : '—'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${startStatus.badgeClass}`}>
+                                    {startStatus.label}
+                                  </span>
+                                </td>
                                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
                                   {log.is_late ? (
                                     log.late_reason ? (
@@ -2349,6 +2402,13 @@ export default function Attendance() {
                             const isActiveSession = log.log_date === today && isClockedIn(log);
                             const dayTotalSec = getLogRenderedSeconds(log) + (isTodayRow ? currentSegmentSeconds : 0);
                             const hasRendered = (log.total_rendered_seconds != null || log.rendered_seconds != null || log.rendered_minutes != null) || isTodayRow;
+                            const clockInMinutes = firstInLog ? (() => {
+                              const d = new Date(firstInLog);
+                              if (Number.isNaN(d.getTime())) return null;
+                              return d.getHours() * 60 + d.getMinutes();
+                            })() : null;
+                            const scheduledInMinutes = parseTimeHHMMToMinutesOrNull(u?.scheduled_time_in) ?? null;
+                            const startStatus = getLateStartStatus({ clockInMinutes, scheduledInMinutes, isLateFlag: log.is_late });
                             return (
                               <tr key={log.id ?? `${log.user_id}-${log.log_date}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
                                 <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{getUserDisplayName(u)}</td>
@@ -2368,7 +2428,11 @@ export default function Attendance() {
                                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(latestInLog)}</td>
                                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(lastOutLog)}</td>
                                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{hasRendered ? formatHoursMinutesLabel(dayTotalSec) : '—'}</td>
-                                <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{log.is_late ? 'Yes' : '—'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${startStatus.badgeClass}`}>
+                                    {startStatus.label}
+                                  </span>
+                                </td>
                                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
                                   {log.is_late ? (
                                     <>
@@ -2875,7 +2939,14 @@ export default function Attendance() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => !savingLateReason && setLateReasonModalLog(null)}
+                  onClick={() => {
+                    if (savingLateReason) return;
+                    if (lateReasonModalLog.fromClockIn && !String(lateReasonText || '').trim()) {
+                      toast.error('Please provide a reason before skipping.');
+                      return;
+                    }
+                    setLateReasonModalLog(null);
+                  }}
                   className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                   aria-label="Close"
                 >
@@ -2902,15 +2973,16 @@ export default function Attendance() {
                   <button
                     type="button"
                     onClick={() => !savingLateReason && setLateReasonModalLog(null)}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    disabled={savingLateReason || (lateReasonModalLog.fromClockIn && !String(lateReasonText || '').trim())}
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {lateReasonModalLog.fromClockIn ? 'Skip' : 'Cancel'}
                   </button>
                   <button
                     type="button"
                     onClick={handleSaveLateReason}
-                    disabled={savingLateReason}
-                    className="px-4 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60"
+                    disabled={savingLateReason || (lateReasonModalLog.fromClockIn && !String(lateReasonText || '').trim())}
+                    className="px-4 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {savingLateReason ? 'Saving…' : 'Save reason'}
                   </button>
@@ -3007,6 +3079,18 @@ export default function Attendance() {
                           const latestInLog = seg.length > 0 ? seg[seg.length - 1].time_in : log.time_in;
                           const lastOutLog = seg.length > 0 ? seg[seg.length - 1].time_out : log.time_out;
                           const totalSec = getLogRenderedSeconds(log);
+                            const clockInMinutes = firstInLog ? (() => {
+                              const d = new Date(firstInLog);
+                              if (Number.isNaN(d.getTime())) return null;
+                              return d.getHours() * 60 + d.getMinutes();
+                            })() : null;
+                            const scheduledInMinutes =
+                              parseTimeHHMMToMinutesOrNull(mySchedule?.scheduled_time_in) ?? timeStringToMinutes('09:00');
+                            const startStatus = getLateStartStatus({
+                              clockInMinutes,
+                              scheduledInMinutes,
+                              isLateFlag: log.is_late,
+                            });
                           return (
                             <tr key={log.id ?? `${log.user_id}-${log.log_date}`}>
                               <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{log.log_date}</td>
@@ -3014,7 +3098,11 @@ export default function Attendance() {
                               <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(latestInLog)}</td>
                               <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(lastOutLog)}</td>
                               <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatHoursMinutesLabel(totalSec)}</td>
-                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{log.is_late ? 'Yes' : '—'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${startStatus.badgeClass}`}>
+                                    {startStatus.label}
+                                  </span>
+                                </td>
                             </tr>
                           );
                         })}
@@ -3100,6 +3188,18 @@ export default function Attendance() {
                           const latestInLog = seg.length > 0 ? seg[seg.length - 1].time_in : log.time_in;
                           const lastOutLog = seg.length > 0 ? seg[seg.length - 1].time_out : log.time_out;
                           const totalSec = getLogRenderedSeconds(log);
+                          const u = getUserRecordById(log.user_id) || {};
+                          const clockInMinutes = firstInLog ? (() => {
+                            const d = new Date(firstInLog);
+                            if (Number.isNaN(d.getTime())) return null;
+                            return d.getHours() * 60 + d.getMinutes();
+                          })() : null;
+                          const scheduledInMinutes = parseTimeHHMMToMinutesOrNull(u?.scheduled_time_in) ?? null;
+                          const startStatus = getLateStartStatus({
+                            clockInMinutes,
+                            scheduledInMinutes,
+                            isLateFlag: log.is_late,
+                          });
                           return (
                             <tr key={log.id ?? `${log.user_id}-${log.log_date}`}>
                               <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{log.log_date}</td>
@@ -3107,7 +3207,11 @@ export default function Attendance() {
                               <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(latestInLog)}</td>
                               <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatTimeHHMM(lastOutLog)}</td>
                               <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatHoursMinutesLabel(totalSec)}</td>
-                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{log.is_late ? 'Yes' : '—'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${startStatus.badgeClass}`}>
+                                  {startStatus.label}
+                                </span>
+                              </td>
                             </tr>
                           );
                         })}

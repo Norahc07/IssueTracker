@@ -27,6 +27,13 @@ function safeDate(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function formatDurationDays(hours) {
+  const h = Number(hours) || 0;
+  const days = h / 24;
+  if (days >= 1) return `${days.toFixed(2)} days`;
+  return `${h.toFixed(1)} hrs`;
+}
+
 function Donut({ segments, size = 140, stroke = 14 }) {
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -174,7 +181,7 @@ function MiniBars({ days }) {
 }
 
 export default function DashboardTicketCharts({ tickets, title = 'Analytics', daysBack = 14, totalUsers, userRoleCounts }) {
-  const { statusSegments, trendDays } = useMemo(() => {
+  const { statusSegments, trendDays, avgCompletionHours, avgCompletionCount } = useMemo(() => {
     const list = Array.isArray(tickets) ? tickets : [];
     const statusCounts = { open: 0, 'in-progress': 0, closed: 0 };
     list.forEach((t) => {
@@ -218,6 +225,30 @@ export default function DashboardTicketCharts({ tickets, title = 'Analytics', da
       }
     });
 
+    // Average completion time (closed tickets resolved within last `daysBack` days)
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(start.getDate() - (daysBack - 1));
+    start.setHours(0, 0, 0, 0);
+
+    const completionDurationsMs = [];
+    list.forEach((t) => {
+      const status = String(t?.status || '').toLowerCase();
+      if (status !== 'closed') return;
+      const createdAt = safeDate(t?.created_at);
+      if (!createdAt) return;
+      const resolvedAt = safeDate(t?.updated_at) || safeDate(t?.closed_at) || safeDate(t?.resolved_at);
+      if (!resolvedAt) return;
+      if (resolvedAt < start) return;
+      completionDurationsMs.push(resolvedAt.getTime() - createdAt.getTime());
+    });
+
+    const avgMs = completionDurationsMs.length
+      ? completionDurationsMs.reduce((a, b) => a + b, 0) / completionDurationsMs.length
+      : null;
+    const avgHours = avgMs != null ? avgMs / (1000 * 60 * 60) : null;
+    const completionCount = completionDurationsMs.length;
+
     const statusSegmentsOut = Object.keys(statusCounts).map((key) => ({
       key,
       label: STATUS_META[key]?.label || key,
@@ -225,7 +256,12 @@ export default function DashboardTicketCharts({ tickets, title = 'Analytics', da
       value: statusCounts[key],
     }));
 
-    return { statusSegments: statusSegmentsOut, trendDays: days.map((k) => byDay.get(k)).filter(Boolean) };
+    return {
+      statusSegments: statusSegmentsOut,
+      trendDays: days.map((k) => byDay.get(k)).filter(Boolean),
+      avgCompletionHours: avgHours,
+      avgCompletionCount: completionCount,
+    };
   }, [tickets, daysBack]);
 
   const hasUsersCard = typeof totalUsers === 'number';
@@ -280,6 +316,23 @@ export default function DashboardTicketCharts({ tickets, title = 'Analytics', da
           <p className="mt-3 text-[11px] text-gray-500 dark:text-gray-400 text-center">
             “Completed tickets” uses ticket <code>updated_at</code> when status is <code>closed</code>.
           </p>
+
+          {/* KPI: Average completion time */}
+          <div className="mt-4 w-full">
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/40 px-4 py-3">
+              <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                Average completion time ({daysBack} days)
+              </p>
+              <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">
+                {typeof avgCompletionHours === 'number' ? formatDurationDays(avgCompletionHours) : '—'}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {typeof avgCompletionCount === 'number' && avgCompletionCount > 0
+                  ? `${avgCompletionCount} completed tickets`
+                  : 'No completed tickets in the selected period'}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 

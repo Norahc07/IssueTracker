@@ -321,7 +321,7 @@ export default function SidebarLayout() {
         }}
       >
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <div className="relative flex shrink-0 h-28 items-center justify-center border-b border-white/20 px-4">
+          <div className="relative flex shrink-0 h-24 items-center justify-center border-b border-white/20 px-4">
             <Link to={getDashboardPath()} className="flex w-full items-center justify-center focus:outline-none">
               <img
                 src="/white-logo.png"
@@ -330,7 +330,7 @@ export default function SidebarLayout() {
               />
             </Link>
           </div>
-          <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-0.5" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <nav className="flex-1 min-h-0 overflow-x-hidden overflow-y-hidden px-3 py-2 space-y-0.5">
           {userRole !== 'superadmin' && navItems.map((item) => {
             // Tracker: only for admin, tla, intern, TLA team, or TL/VTL in TLA
             const canAccessTracker = () => {

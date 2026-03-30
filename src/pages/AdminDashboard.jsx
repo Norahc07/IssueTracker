@@ -32,6 +32,41 @@ function minutesToHours(minutes) {
   return (m / 60).toFixed(2);
 }
 
+/** Get segments for a log (supports legacy single time_in/time_out) */
+function getSegments(log) {
+  if (!log) return [];
+  const seg = log.segments;
+  if (Array.isArray(seg) && seg.length > 0) return seg;
+  if (log.time_in) return [{ time_in: log.time_in, time_out: log.time_out || null }];
+  return [];
+}
+
+/** Get total rendered seconds for one log: total_rendered_seconds, or sum segments, or legacy rendered_seconds/minutes */
+function getLogRenderedSeconds(log) {
+  if (!log) return 0;
+  if (log.total_rendered_seconds != null) return log.total_rendered_seconds;
+  const segments = getSegments(log);
+  const fromSegments = segments.reduce((acc, s) => {
+    if (!s?.time_in) return acc;
+    const out = s.time_out ? new Date(s.time_out).getTime() : null;
+    const inMs = new Date(s.time_in).getTime();
+    if (out != null) return acc + Math.floor((out - inMs) / 1000);
+    return acc;
+  }, 0);
+  if (fromSegments > 0) return fromSegments;
+  if (log.rendered_seconds != null) return log.rendered_seconds;
+  const min = Number(log.rendered_minutes);
+  return Number.isNaN(min) ? 0 : min * 60;
+}
+
+/** Is user currently clocked in (last segment has no time_out) */
+function isClockedIn(log) {
+  const seg = getSegments(log);
+  if (seg.length === 0) return false;
+  const last = seg[seg.length - 1];
+  return last && !last.time_out;
+}
+
 export default function AdminDashboard() {
   const { user, supabase, userRole } = useSupabase();
   const [tickets, setTickets] = useState([]);
@@ -42,8 +77,12 @@ export default function AdminDashboard() {
   const [ojt, setOjt] = useState({
     scheduleSet: false,
     requiredHours: DEFAULT_OJT_REQUIRED_HOURS,
-    renderedMinutes: 0,
+    // DB saved rendered time excluding the currently-active (no time_out yet) segment.
+    renderedSecondsBase: 0,
+    // If the user is currently clocked-in today, this stores the start ms of the active segment.
+    clockedInStartMs: null,
   });
+  const [ojtNowTick, setOjtNowTick] = useState(0);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [ticketFilter, setTicketFilter] = useState('all');
@@ -66,6 +105,21 @@ export default function AdminDashboard() {
     fetchAttendanceStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, userRole]);
+
+  // Live-update the OJT cards while the user is currently clocked-in.
+  useEffect(() => {
+    if (userRole !== 'tla' || !ojt.clockedInStartMs) return;
+    const id = setInterval(() => setOjtNowTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [userRole, ojt.clockedInStartMs]);
+
+  // Periodically refetch base values so the live clock-out updates quickly.
+  useEffect(() => {
+    if (userRole !== 'tla' || !ojt.clockedInStartMs || !user?.id) return;
+    const id = setInterval(() => fetchOjt(true), 15000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRole, ojt.clockedInStartMs, user?.id, supabase]);
 
   // Fetch onboarding records for team fallback (matches User Management logic)
   useEffect(() => {
@@ -92,7 +146,7 @@ export default function AdminDashboard() {
 
   const fetchOjt = async (bypassCache = false) => {
     if (!user?.id) return;
-    const cacheKey = `admin:ojt:${user.id}`;
+    const cacheKey = `admin:ojt:v2:${user.id}`;
     if (!bypassCache) {
       const cached = queryCache.get(cacheKey);
       if (cached && typeof cached === 'object') {
@@ -112,25 +166,34 @@ export default function AdminDashboard() {
 
       const { data: logs, error: logsErr } = await supabase
         .from('attendance_logs')
-        .select('total_rendered_seconds, rendered_minutes')
+        .select('log_date, segments, total_rendered_seconds, rendered_seconds, rendered_minutes, time_in, time_out')
         .eq('user_id', user.id);
       if (logsErr) {
         const status = logsErr?.status;
         if (status !== 403) console.warn('Admin/TLA OJT attendance_logs fetch error:', logsErr);
         const imported = Number(u?.imported_rendered_minutes) || 0;
-        const next = { scheduleSet, requiredHours, renderedMinutes: imported };
+        const next = { scheduleSet, requiredHours, renderedSecondsBase: imported * 60, clockedInStartMs: null };
         setOjt(next);
         queryCache.set(cacheKey, next);
         return;
       }
-      const fromLogsMinutes = (Array.isArray(logs) ? logs : []).reduce((acc, row) => {
-        const sec = row?.total_rendered_seconds;
-        const min = row?.rendered_minutes;
-        return acc + (sec != null ? Math.round(sec / 60) : (min || 0));
-      }, 0);
       const imported = Number(u?.imported_rendered_minutes) || 0;
-      const renderedMinutes = fromLogsMinutes + imported;
-      const next = { scheduleSet, requiredHours, renderedMinutes };
+      const allLogs = Array.isArray(logs) ? logs : [];
+      const fromLogsSeconds = allLogs.reduce((acc, row) => acc + getLogRenderedSeconds(row), 0);
+      const renderedSecondsBase = fromLogsSeconds + imported * 60;
+
+      // Live segment: if the last segment for today's log has no time_out, add elapsed time.
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayLog = allLogs.find((l) => l?.log_date === todayStr) || null;
+      let clockedInStartMs = null;
+      if (todayLog && isClockedIn(todayLog)) {
+        const seg = getSegments(todayLog);
+        const last = seg.length ? seg[seg.length - 1] : null;
+        const startIso = last?.time_in || todayLog.time_in || null;
+        clockedInStartMs = startIso ? new Date(startIso).getTime() : null;
+      }
+
+      const next = { scheduleSet, requiredHours, renderedSecondsBase, clockedInStartMs };
       setOjt(next);
       queryCache.set(cacheKey, next);
     } catch (e) {
@@ -285,6 +348,12 @@ export default function AdminDashboard() {
 
   const ticketsToShow = filteredTickets.slice(0, 5);
 
+  const elapsedSecondsLive =
+    ojt.clockedInStartMs != null ? Math.max(0, Math.floor((Date.now() - ojt.clockedInStartMs) / 1000)) : 0;
+  const renderedSecondsLive = (ojt.renderedSecondsBase || 0) + elapsedSecondsLive;
+  const renderedMinutesLive = Math.floor(renderedSecondsLive / 60);
+  const remainingMinutesLive = Math.max(0, ojt.requiredHours * 60 - renderedMinutesLive);
+
   const getStatusBadge = (status) => {
     const label = status === 'closed' ? 'Completed' : status === 'in-progress' ? 'In Progress' : 'Open';
     return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ticketStatusPill(status)}`}>{label}</span>;
@@ -385,12 +454,14 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm">
               <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Rendered hours</p>
-              <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{minutesToHours(ojt.renderedMinutes)}</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">
+                {minutesToHours(renderedMinutesLive)}
+              </p>
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm">
               <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Remaining hours</p>
               <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                {minutesToHours(Math.max(0, ojt.requiredHours * 60 - ojt.renderedMinutes))}
+                {minutesToHours(remainingMinutesLive)}
               </p>
             </div>
           </div>

@@ -1889,7 +1889,7 @@ export default function DailyReportManage() {
               <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                 {(teamReport.notable_tasks || []).length === 0 && !isEditingTeamReport ? (
                   <tr>
-                    <td colSpan={isEditingTeamReport ? 3 : 2} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                          <td colSpan={isEditingTeamReport ? 3 : 2} className="px-4 py-4 text-center text-gray-500 dark:text-gray-400 text-sm">
                       No data
                     </td>
                   </tr>
@@ -1928,8 +1928,8 @@ export default function DailyReportManage() {
                           <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.task_contribution || '—'}</p>
                         )}
                       </td>
-                      <td className="px-4 py-2">
-                        {isEditingTeamReport && (
+                      {isEditingTeamReport && (
+                        <td className="px-4 py-2">
                           <button
                             type="button"
                             onClick={() => {
@@ -1940,8 +1940,8 @@ export default function DailyReportManage() {
                           >
                             Remove
                           </button>
-                        )}
-                      </td>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}

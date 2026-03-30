@@ -283,6 +283,11 @@ const SINGAPORE_COURSE_CATEGORIES = [
   '2025',
 ];
 
+// Some legacy rows exist with empty `course_title` for these domains.
+// We fix them on fetch to prevent the course lists from showing blank rows again.
+const COURSE_TITLE_BLANK_FIX_COUNTRIES = ['Belize', 'Qatar', 'Indonesia', 'Kenya'];
+const DEFAULT_COURSE_TITLE_FALLBACK = 'New course';
+
 export default function TaskAssignmentLog() {
   const { supabase, user, userRole, userTeam } = useSupabase();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -372,18 +377,63 @@ export default function TaskAssignmentLog() {
   const [corporateCourseLoading, setCorporateCourseLoading] = useState(false);
   const [hasLoadedSavedCourseDomain, setHasLoadedSavedCourseDomain] = useState(false);
   const [courseListPage, setCourseListPage] = useState(1);
+  const [courseListSearchQuery, setCourseListSearchQuery] = useState(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem('courseListSearchQuery') || '';
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return '';
+  });
+
   const [corporateCoursePages, setCorporateCoursePages] = useState({});
+
+  // Per-domain course list: client-side filter by title (helps with locating letters like "T").
+  const courseListFilteredItems = useMemo(() => {
+    const q = String(courseListSearchQuery || '').trim().toLowerCase();
+    if (!q) return courseListItems;
+    return (Array.isArray(courseListItems) ? courseListItems : []).filter((r) =>
+      String(r?.course_title || '').toLowerCase().includes(q)
+    );
+  }, [courseListItems, courseListSearchQuery]);
+
+  const courseListTotalPages = Math.max(1, Math.ceil(courseListFilteredItems.length / 10));
+
+  // Corporate course list uses the same search query as the per-domain course list.
+  const courseListFilteredCorporateItems = useMemo(() => {
+    const q = String(courseListSearchQuery || '').trim().toLowerCase();
+    if (!q) return corporateCourseItems;
+    return (Array.isArray(corporateCourseItems) ? corporateCourseItems : []).filter((r) =>
+      String(r?.course_title || '').toLowerCase().includes(q)
+    );
+  }, [corporateCourseItems, courseListSearchQuery]);
+
   const [editingDomainCourseId, setEditingDomainCourseId] = useState(null);
   const [editingDomainCourseDraft, setEditingDomainCourseDraft] = useState({
     course_title: '',
     course_type: '',
     status: '',
   });
+  const [isCreatingDomainCourse, setIsCreatingDomainCourse] = useState(false);
+  const [creatingDomainCourseDraft, setCreatingDomainCourseDraft] = useState({
+    course_title: '',
+    course_type: 'G',
+    status: 'in_progress',
+  });
   const [editingCorporateCourseId, setEditingCorporateCourseId] = useState(null);
   const [editingCorporateCourseDraft, setEditingCorporateCourseDraft] = useState({
     course_title: '',
     course_type: '',
     status: '',
+  });
+  const [isCreatingCorporateCourse, setIsCreatingCorporateCourse] = useState(false);
+  const [creatingCorporateCourseCategory, setCreatingCorporateCourseCategory] = useState(null);
+  const [creatingCorporateCourseDraft, setCreatingCorporateCourseDraft] = useState({
+    course_title: '',
+    course_type: 'G',
+    status: 'in_progress',
   });
   const [createTaskForm, setCreateTaskForm] = useState({
     name: '',
@@ -466,16 +516,68 @@ export default function TaskAssignmentLog() {
     setHasLoadedSavedCourseDomain(true);
   }, [courseListDomainId, hasLoadedSavedCourseDomain]);
 
+  // Persist course list search query (helps with refresh).
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const q = String(courseListSearchQuery || '');
+        if (q) window.localStorage.setItem('courseListSearchQuery', q);
+        else window.localStorage.removeItem('courseListSearchQuery');
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [courseListSearchQuery]);
+
+  // When search changes, restart pagination at first page.
+  useEffect(() => {
+    setCourseListPage(1);
+  }, [courseListSearchQuery]);
+
+  // Also reset pagination for corporate categories when search changes.
+  useEffect(() => {
+    setCorporateCoursePages({});
+  }, [courseListSearchQuery]);
+
+  // Keep pagination valid when filtered result size changes.
+  useEffect(() => {
+    setCourseListPage((p) => Math.min(Math.max(1, p), courseListTotalPages));
+  }, [courseListTotalPages]);
+
   // Fetch course list data when Course List tab is active
   useEffect(() => {
     if (activeMainTab !== 'course-list') return;
     if (courseListDomainId) {
       setCourseListPage(1);
+      setIsCreatingDomainCourse(false);
+      setCreatingDomainCourseDraft({
+        course_title: '',
+        course_type: 'G',
+        status: 'in_progress',
+      });
+      setEditingDomainCourseId(null);
+      setEditingDomainCourseDraft({
+        course_title: '',
+        course_type: '',
+        status: '',
+      });
       fetchCourseListItems(courseListDomainId);
       fetchCorporateCourseItems(courseListDomainId);
     } else {
       setCourseListItems([]);
       setCorporateCourseItems([]);
+      setIsCreatingDomainCourse(false);
+      setCreatingDomainCourseDraft({
+        course_title: '',
+        course_type: 'G',
+        status: 'in_progress',
+      });
+      setEditingDomainCourseId(null);
+      setEditingDomainCourseDraft({
+        course_title: '',
+        course_type: '',
+        status: '',
+      });
     }
   }, [activeMainTab, courseListDomainId]);
 
@@ -721,7 +823,7 @@ export default function TaskAssignmentLog() {
   const fetchCourseListItems = async (domainId) => {
     if (!domainId) {
       setCourseListItems([]);
-      return;
+      return [];
     }
     setCourseListLoading(true);
     try {
@@ -733,12 +835,53 @@ export default function TaskAssignmentLog() {
       if (error) {
         console.warn('course_list_domain_items fetch error:', error);
         setCourseListItems([]);
-        return;
+        return [];
       }
-      setCourseListItems(Array.isArray(data) ? data : []);
+      let list = Array.isArray(data) ? data : [];
+
+      // Fix legacy empty titles for the affected domains.
+      const hasBlankTitles = list.some((r) => !String(r?.course_title || '').trim());
+      if (hasBlankTitles) {
+        const { data: domainRow, error: domainErr } = await supabase
+          .from('domains')
+          .select('country')
+          .eq('id', domainId)
+          .maybeSingle();
+
+        const country = String(domainRow?.country || '').trim();
+        if (!domainErr && COURSE_TITLE_BLANK_FIX_COUNTRIES.includes(country)) {
+          const idsToFix = list.filter((r) => !String(r?.course_title || '').trim()).map((r) => r.id);
+          const updatedAtIso = new Date().toISOString();
+          const payload = { course_title: DEFAULT_COURSE_TITLE_FALLBACK, updated_at: updatedAtIso };
+
+          try {
+            await Promise.all(
+              idsToFix.map(async (id) => {
+                const { error: updErr } = await supabase
+                  .from('course_list_domain_items')
+                  .update(payload)
+                  .eq('id', id);
+                if (updErr) throw updErr;
+              })
+            );
+            const { data: refetched, error: refetchErr } = await supabase
+              .from('course_list_domain_items')
+              .select('*')
+              .eq('domain_id', domainId)
+              .order('course_title', { ascending: true });
+            if (!refetchErr && Array.isArray(refetched)) list = refetched;
+          } catch (e) {
+            console.warn('course_list_domain_items blank title sanitize error:', e);
+          }
+        }
+      }
+
+      setCourseListItems(list);
+      return list;
     } catch (error) {
       console.warn('course_list_domain_items fetch error:', error);
       setCourseListItems([]);
+      return [];
     } finally {
       setCourseListLoading(false);
     }
@@ -747,7 +890,7 @@ export default function TaskAssignmentLog() {
   const fetchCorporateCourseItems = async (domainId) => {
     if (!domainId) {
       setCorporateCourseItems([]);
-      return;
+      return [];
     }
     setCorporateCourseLoading(true);
     try {
@@ -760,12 +903,54 @@ export default function TaskAssignmentLog() {
       if (error) {
         console.warn('corporate_course_items fetch error:', error);
         setCorporateCourseItems([]);
-        return;
+        return [];
       }
-      setCorporateCourseItems(Array.isArray(data) ? data : []);
+      let list = Array.isArray(data) ? data : [];
+
+      // Fix legacy empty titles for the affected domains.
+      const hasBlankTitles = list.some((r) => !String(r?.course_title || '').trim());
+      if (hasBlankTitles) {
+        const { data: domainRow, error: domainErr } = await supabase
+          .from('domains')
+          .select('country')
+          .eq('id', domainId)
+          .maybeSingle();
+
+        const country = String(domainRow?.country || '').trim();
+        if (!domainErr && COURSE_TITLE_BLANK_FIX_COUNTRIES.includes(country)) {
+          const idsToFix = list.filter((r) => !String(r?.course_title || '').trim()).map((r) => r.id);
+          const updatedAtIso = new Date().toISOString();
+          const payload = { course_title: DEFAULT_COURSE_TITLE_FALLBACK, updated_at: updatedAtIso };
+
+          try {
+            await Promise.all(
+              idsToFix.map(async (id) => {
+                const { error: updErr } = await supabase
+                  .from('corporate_course_items')
+                  .update(payload)
+                  .eq('id', id);
+                if (updErr) throw updErr;
+              })
+            );
+            const { data: refetched, error: refetchErr } = await supabase
+              .from('corporate_course_items')
+              .select('*')
+              .eq('domain_id', domainId)
+              .order('category', { ascending: true })
+              .order('course_title', { ascending: true });
+            if (!refetchErr && Array.isArray(refetched)) list = refetched;
+          } catch (e) {
+            console.warn('corporate_course_items blank title sanitize error:', e);
+          }
+        }
+      }
+
+      setCorporateCourseItems(list);
+      return list;
     } catch (error) {
       console.warn('corporate_course_items fetch error:', error);
       setCorporateCourseItems([]);
+      return [];
     } finally {
       setCorporateCourseLoading(false);
     }
@@ -2226,6 +2411,16 @@ export default function TaskAssignmentLog() {
                   })}
                 </select>
               </div>
+              <div className="min-w-[240px]">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Search</label>
+                <input
+                  type="text"
+                  value={courseListSearchQuery}
+                  onChange={(e) => setCourseListSearchQuery(e.target.value)}
+                  placeholder="Type to filter course title…"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
+                />
+              </div>
             </div>
           </div>
           {courseListDomainId ? (
@@ -2236,48 +2431,148 @@ export default function TaskAssignmentLog() {
                   <button
                     type="button"
                     onClick={async () => {
-                      if (editingDomainCourseId) {
-                        toast.error('Finish editing the current course row first.');
-                        return;
-                      }
-                      setCourseListSaving(true);
-                      try {
-                        const { data, error } = await supabase
-                          .from('course_list_domain_items')
-                          .insert({
-                            domain_id: courseListDomainId,
-                            course_title: '',
-                            course_type: 'G',
-                            status: 'in_progress',
-                            updated_by: user?.id || null,
-                          })
-                          .select('*')
-                          .single();
-                        if (error) throw error;
-                        setCourseListItems((prev) => {
-                          const next = [...prev, data];
-                          setCourseListPage(Math.ceil(next.length / 10));
-                          return next;
+                        if (editingDomainCourseId || isCreatingDomainCourse) {
+                          toast.error('Finish editing the current course row first.');
+                          return;
+                        }
+                        setIsCreatingDomainCourse(true);
+                        setCreatingDomainCourseDraft({
+                          course_title: '',
+                          course_type: 'G',
+                          status: 'in_progress',
                         });
-                        setEditingDomainCourseId(data.id);
-                        setEditingDomainCourseDraft({
-                          course_title: data.course_title || '',
-                          course_type: courseTypeToUi(data.course_type) || '',
-                          status: data.status || '',
-                        });
-                      } catch (err) {
-                        console.warn('Add course_list_domain_items error:', err);
-                        toast.error(err?.message || 'Failed to add course');
-                      } finally {
-                        setCourseListSaving(false);
-                      }
                     }}
-                    disabled={courseListSaving}
+                      disabled={courseListSaving || isCreatingDomainCourse}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
                     style={{ backgroundColor: PRIMARY }}
                   >
-                    {courseListSaving ? 'Adding…' : 'Add course'}
+                      {courseListSaving ? 'Working…' : isCreatingDomainCourse ? 'Adding…' : 'Add course'}
                   </button>
+                </div>
+              )}
+
+              {/* Per-domain: Add course form (separate from table to keep sorting consistent) */}
+              {canEditCourseList(userRole, userTeam) && isCreatingDomainCourse && (
+                <div className="mx-4 mb-3 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4 shadow-sm">
+                  <div className="flex flex-col md:flex-row md:items-end gap-3">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Course title</label>
+                      <input
+                        type="text"
+                        value={creatingDomainCourseDraft.course_title}
+                        onChange={(e) =>
+                          setCreatingDomainCourseDraft((prev) => ({
+                            ...prev,
+                            course_title: e.target.value,
+                          }))
+                        }
+                        placeholder="Enter course title (required)"
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
+                      />
+                    </div>
+                    <div className="w-full md:w-40">
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">G / S</label>
+                      <select
+                        value={creatingDomainCourseDraft.course_type}
+                        onChange={(e) =>
+                          setCreatingDomainCourseDraft((prev) => ({
+                            ...prev,
+                            course_type: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                      >
+                        <option value="">—</option>
+                        <option value="G">G</option>
+                        <option value="S">S</option>
+                        <option value="G/S">G/S</option>
+                      </select>
+                    </div>
+                    <div className="w-full md:w-56">
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Status</label>
+                      <select
+                        value={creatingDomainCourseDraft.status}
+                        onChange={(e) =>
+                          setCreatingDomainCourseDraft((prev) => ({
+                            ...prev,
+                            status: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                      >
+                        <option value="">—</option>
+                        <option value="done">Done</option>
+                        <option value="has_issue">Has issue</option>
+                        <option value="in_progress">In-Progress</option>
+                        <option value="different_title">Different title / Not in domain</option>
+                      </select>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const title = String(creatingDomainCourseDraft.course_title || '').trim();
+                          if (!title) {
+                            toast.error('Course title is required.');
+                            return;
+                          }
+                          if (!window.confirm('Create this new course?')) return;
+                          setCourseListSaving(true);
+                          try {
+                            const payload = buildDomainCoursePayload(creatingDomainCourseDraft, {}, user?.id);
+                            const { data, error } = await supabase
+                              .from('course_list_domain_items')
+                              .insert({
+                                domain_id: courseListDomainId,
+                                ...payload,
+                              })
+                              .select('*')
+                              .single();
+                            if (error) throw error;
+
+                            const nextList = await fetchCourseListItems(courseListDomainId);
+                            const q = String(courseListSearchQuery || '').trim().toLowerCase();
+                            const filteredNextList = q
+                              ? (nextList || []).filter((r) => String(r?.course_title || '').toLowerCase().includes(q))
+                              : nextList || [];
+                            const idx = filteredNextList.findIndex((r) => r.id === data.id);
+                            if (idx >= 0) setCourseListPage(Math.floor(idx / 10) + 1);
+
+                            setIsCreatingDomainCourse(false);
+                            setCreatingDomainCourseDraft({
+                              course_title: '',
+                              course_type: 'G',
+                              status: 'in_progress',
+                            });
+                          } catch (err) {
+                            console.warn('Add course_list_domain_items error:', err);
+                            toast.error(err?.message || 'Failed to create course');
+                          } finally {
+                            setCourseListSaving(false);
+                          }
+                        }}
+                        disabled={courseListSaving || !String(creatingDomainCourseDraft.course_title || '').trim()}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                        style={{ backgroundColor: PRIMARY }}
+                      >
+                        {courseListSaving ? 'Working…' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCreatingDomainCourse(false);
+                          setCreatingDomainCourseDraft({
+                            course_title: '',
+                            course_type: 'G',
+                            status: 'in_progress',
+                          });
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -2290,6 +2585,10 @@ export default function TaskAssignmentLog() {
                     <div className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                       No courses yet for this domain.{' '}
                       {canEditCourseList(userRole, userTeam) ? 'Use “Add course” to create the first row.' : ''}
+                    </div>
+                  ) : courseListFilteredItems.length === 0 ? (
+                    <div className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                      No matching courses found.
                     </div>
                   ) : (
                     <>
@@ -2313,7 +2612,7 @@ export default function TaskAssignmentLog() {
                         </tr>
                       </thead>
                       <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-                        {courseListItems
+                        {courseListFilteredItems
                           .slice((courseListPage - 1) * 10, courseListPage * 10)
                           .map((row) => {
                           const canEdit = canEditCourseList(userRole, userTeam);
@@ -2337,7 +2636,7 @@ export default function TaskAssignmentLog() {
                                   />
                                 ) : (
                                   <span className="text-gray-900 dark:text-gray-100">
-                                    {(row.course_title || '').trim() || '—'}
+                                    {(row.course_title || '').trim() || DEFAULT_COURSE_TITLE_FALLBACK}
                                   </span>
                                 )}
                               </td>
@@ -2418,6 +2717,11 @@ export default function TaskAssignmentLog() {
                                         <button
                                           type="button"
                                           onClick={async () => {
+                                            const title = String(draft?.course_title ?? '').trim();
+                                            if (!title) {
+                                              toast.error('Course title is required.');
+                                              return;
+                                            }
                                             const payload = buildDomainCoursePayload(
                                               editingDomainCourseDraft,
                                               row,
@@ -2430,9 +2734,13 @@ export default function TaskAssignmentLog() {
                                                 .update(payload)
                                               .eq('id', row.id);
                                             if (error) throw error;
-                                            setCourseListItems((prev) =>
-                                              prev.map((r) => (r.id === row.id ? { ...r, ...payload } : r))
-                                            );
+                                            const nextList = await fetchCourseListItems(courseListDomainId);
+                                            const q = String(courseListSearchQuery || '').trim().toLowerCase();
+                                            const filteredNextList = q
+                                              ? (nextList || []).filter((r) => String(r?.course_title || '').toLowerCase().includes(q))
+                                              : nextList || [];
+                                            const idx = filteredNextList.findIndex((r) => r.id === row.id);
+                                            if (idx >= 0) setCourseListPage(Math.floor(idx / 10) + 1);
                                             setEditingDomainCourseId(null);
                                           } catch (err) {
                                             console.warn('Save course_list_domain_items error:', err);
@@ -2442,7 +2750,7 @@ export default function TaskAssignmentLog() {
                                             setCourseListSaving(false);
                                           }
                                         }}
-                                        disabled={courseListSaving}
+                                        disabled={courseListSaving || !String(draft?.course_title ?? '').trim()}
                                         className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
                                         style={{ backgroundColor: PRIMARY }}
                                       >
@@ -2517,10 +2825,10 @@ export default function TaskAssignmentLog() {
                         })}
                       </tbody>
                     </table>
-                    {courseListItems.length > 10 && (
+                    {courseListFilteredItems.length > 10 && (
                       <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800">
                         <span>
-                          Page {courseListPage} of {Math.ceil(courseListItems.length / 10)}
+                          Page {courseListPage} of {courseListTotalPages}
                         </span>
                         <button
                           type="button"
@@ -2534,10 +2842,10 @@ export default function TaskAssignmentLog() {
                           type="button"
                           onClick={() =>
                             setCourseListPage((p) =>
-                              Math.min(Math.ceil(courseListItems.length / 10), p + 1)
+                              Math.min(courseListTotalPages, p + 1)
                             )
                           }
-                          disabled={courseListPage >= Math.ceil(courseListItems.length / 10)}
+                          disabled={courseListPage >= courseListTotalPages}
                           className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                         >
                           Next
@@ -2553,9 +2861,10 @@ export default function TaskAssignmentLog() {
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Corporate Courses</h3>
                 {CORPORATE_COURSE_CATEGORIES.map((category) => {
-                  const rows = corporateCourseItems.filter((r) => r.category === category);
+                  const rows = courseListFilteredCorporateItems.filter((r) => r.category === category);
                   const page = corporateCoursePages[category] || 1;
                   const totalPages = Math.max(1, Math.ceil(rows.length / 10));
+                  const clampedPage = Math.min(Math.max(1, page), totalPages);
                   return (
                     <div key={category} className="space-y-0">
                       <div className="flex items-center justify-between gap-3 px-4 py-3">
@@ -2564,48 +2873,19 @@ export default function TaskAssignmentLog() {
                           <button
                             type="button"
                             onClick={async () => {
-                              if (editingCorporateCourseId) {
+                              if (editingCorporateCourseId || isCreatingCorporateCourse) {
                                 toast.error('Finish editing the current course row first.');
                                 return;
                               }
-                              setCorporateCourseLoading(true);
-                              try {
-                                const { data, error } = await supabase
-                                  .from('corporate_course_items')
-                                  .insert({
-                                    category,
-                                    domain_id: courseListDomainId,
-                                    course_title: '',
-                                    course_type: 'G',
-                                    status: 'in_progress',
-                                    updated_by: user?.id || null,
-                                  })
-                                  .select('*')
-                                  .single();
-                                if (error) throw error;
-                                setCorporateCourseItems((prev) => {
-                                  const next = [...prev, data];
-                                  const categoryRows = next.filter((r) => r.category === category);
-                                  setCorporateCoursePages((p) => ({
-                                    ...p,
-                                    [category]: Math.ceil(categoryRows.length / 10),
-                                  }));
-                                  return next;
-                                });
-                                setEditingCorporateCourseId(data.id);
-                                setEditingCorporateCourseDraft({
-                                  course_title: data.course_title || '',
-                                  course_type: courseTypeToUi(data.course_type) || '',
-                                  status: data.status || '',
-                                });
-                              } catch (err) {
-                                console.warn('Add corporate_course_items error:', err);
-                                toast.error(err?.message || 'Failed to add course');
-                              } finally {
-                                setCorporateCourseLoading(false);
-                              }
+                              setIsCreatingCorporateCourse(true);
+                              setCreatingCorporateCourseCategory(category);
+                              setCreatingCorporateCourseDraft({
+                                course_title: '',
+                                course_type: 'G',
+                                status: 'in_progress',
+                              });
                             }}
-                            disabled={corporateCourseLoading}
+                            disabled={corporateCourseLoading || isCreatingCorporateCourse}
                             className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
                             style={{ backgroundColor: PRIMARY }}
                           >
@@ -2613,6 +2893,140 @@ export default function TaskAssignmentLog() {
                           </button>
                         )}
                       </div>
+
+                      {canEditCourseList(userRole, userTeam) &&
+                        isCreatingCorporateCourse &&
+                        creatingCorporateCourseCategory === category && (
+                          <div className="mx-4 mb-3 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4 shadow-sm">
+                            <div className="flex flex-col md:flex-row md:items-end gap-3">
+                              <div className="flex-1">
+                                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Course title</label>
+                                <input
+                                  type="text"
+                                  value={creatingCorporateCourseDraft.course_title}
+                                  onChange={(e) =>
+                                    setCreatingCorporateCourseDraft((prev) => ({
+                                      ...prev,
+                                      course_title: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Enter course title (required)"
+                                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
+                                />
+                              </div>
+                              <div className="w-full md:w-40">
+                                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">G / S</label>
+                                <select
+                                  value={creatingCorporateCourseDraft.course_type}
+                                  onChange={(e) =>
+                                    setCreatingCorporateCourseDraft((prev) => ({
+                                      ...prev,
+                                      course_type: e.target.value,
+                                    }))
+                                  }
+                                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                                >
+                                  <option value="G">G</option>
+                                  <option value="S">S</option>
+                                  <option value="G/S">G/S</option>
+                                </select>
+                              </div>
+                              <div className="w-full md:w-56">
+                                <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Status</label>
+                                <select
+                                  value={creatingCorporateCourseDraft.status}
+                                  onChange={(e) =>
+                                    setCreatingCorporateCourseDraft((prev) => ({
+                                      ...prev,
+                                      status: e.target.value,
+                                    }))
+                                  }
+                                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                                >
+                                  <option value="done">Done</option>
+                                  <option value="has_issue">Has issue</option>
+                                  <option value="in_progress">In-Progress</option>
+                                  <option value="different_title">Different title / Not in domain</option>
+                                </select>
+                              </div>
+                              <div className="flex gap-2 justify-end">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const title = String(creatingCorporateCourseDraft.course_title || '').trim();
+                                    if (!title) {
+                                      toast.error('Course title is required.');
+                                      return;
+                                    }
+                                    if (!window.confirm('Create this new course?')) return;
+
+                                    setCorporateCourseLoading(true);
+                                    try {
+                                      const payload = buildCorporateCoursePayload(
+                                        creatingCorporateCourseDraft,
+                                        {},
+                                        user?.id
+                                      );
+                                      const { data, error } = await supabase
+                                        .from('corporate_course_items')
+                                        .insert({
+                                          category,
+                                          domain_id: courseListDomainId,
+                                          ...payload,
+                                        })
+                                        .select('*')
+                                        .single();
+                                      if (error) throw error;
+
+                                      const next = await fetchCorporateCourseItems(courseListDomainId);
+                                      const categoryRows = (next || []).filter((r) => r.category === category);
+                                      const idx = categoryRows.findIndex((r) => r.id === data.id);
+                                      if (idx >= 0) {
+                                        setCorporateCoursePages((p) => ({
+                                          ...p,
+                                          [category]: Math.floor(idx / 10) + 1,
+                                        }));
+                                      }
+
+                                      setIsCreatingCorporateCourse(false);
+                                      setCreatingCorporateCourseCategory(null);
+                                      setCreatingCorporateCourseDraft({
+                                        course_title: '',
+                                        course_type: 'G',
+                                        status: 'in_progress',
+                                      });
+                                    } catch (err) {
+                                      console.warn('Add corporate_course_items error:', err);
+                                      toast.error(err?.message || 'Failed to create course');
+                                    } finally {
+                                      setCorporateCourseLoading(false);
+                                    }
+                                  }}
+                                  disabled={corporateCourseLoading || !String(creatingCorporateCourseDraft.course_title || '').trim()}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                                  style={{ backgroundColor: PRIMARY }}
+                                >
+                                  {corporateCourseLoading ? 'Working…' : 'Save'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsCreatingCorporateCourse(false);
+                                    setCreatingCorporateCourseCategory(null);
+                                    setCreatingCorporateCourseDraft({
+                                      course_title: '',
+                                      course_type: 'G',
+                                      status: 'in_progress',
+                                    });
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
                         <div className="overflow-x-auto">
                         {rows.length === 0 ? (
@@ -2642,7 +3056,7 @@ export default function TaskAssignmentLog() {
                             </thead>
                             <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                               {rows
-                                .slice((page - 1) * 10, page * 10)
+                                .slice((clampedPage - 1) * 10, clampedPage * 10)
                                 .map((row) => {
                                 const canEdit = canEditCourseList(userRole, userTeam);
                                 const isEditingRow = canEdit && editingCorporateCourseId === row.id;
@@ -2665,7 +3079,7 @@ export default function TaskAssignmentLog() {
                                         />
                                       ) : (
                                         <span className="text-gray-900 dark:text-gray-100">
-                                          {(row.course_title || '').trim() || '—'}
+                                          {(row.course_title || '').trim() || DEFAULT_COURSE_TITLE_FALLBACK}
                                         </span>
                                       )}
                                     </td>
@@ -2770,7 +3184,7 @@ export default function TaskAssignmentLog() {
                                                   setCorporateCourseLoading(false);
                                                 }
                                               }}
-                                              disabled={corporateCourseLoading}
+                                              disabled={corporateCourseLoading || !String(draft?.course_title ?? '').trim()}
                                               className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
                                               style={{ backgroundColor: PRIMARY }}
                                             >
@@ -2856,17 +3270,17 @@ export default function TaskAssignmentLog() {
                           {rows.length > 10 && (
                             <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800">
                               <span>
-                                Page {page} of {totalPages}
+                                Page {clampedPage} of {totalPages}
                               </span>
                               <button
                                 type="button"
                                 onClick={() =>
                                   setCorporateCoursePages((prev) => ({
                                     ...prev,
-                                    [category]: Math.max(1, page - 1),
+                                    [category]: Math.max(1, clampedPage - 1),
                                   }))
                                 }
-                                disabled={page === 1}
+                                disabled={clampedPage === 1}
                                 className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                               >
                                 Prev
@@ -2876,10 +3290,10 @@ export default function TaskAssignmentLog() {
                                 onClick={() =>
                                   setCorporateCoursePages((prev) => ({
                                     ...prev,
-                                    [category]: Math.min(totalPages, page + 1),
+                                    [category]: Math.min(totalPages, clampedPage + 1),
                                   }))
                                 }
-                                disabled={page >= totalPages}
+                                disabled={clampedPage >= totalPages}
                                 className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                               >
                                 Next
@@ -2900,9 +3314,10 @@ export default function TaskAssignmentLog() {
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Singapore Course Categories</h3>
                   {SINGAPORE_COURSE_CATEGORIES.map((category) => {
-                    const rows = corporateCourseItems.filter((r) => r.category === category);
+                    const rows = courseListFilteredCorporateItems.filter((r) => r.category === category);
                     const page = corporateCoursePages[category] || 1;
                     const totalPages = Math.max(1, Math.ceil(rows.length / 10));
+                    const clampedPage = Math.min(Math.max(1, page), totalPages);
                     return (
                       <div
                         key={category}
@@ -2991,7 +3406,7 @@ export default function TaskAssignmentLog() {
                                 </thead>
                                 <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                                   {rows
-                                    .slice((page - 1) * 10, page * 10)
+                                    .slice((clampedPage - 1) * 10, clampedPage * 10)
                                     .map((row) => {
                                       const canEdit = canEditCourseList(userRole, userTeam);
                                       const isEditingRow = canEdit && editingCorporateCourseId === row.id;
@@ -3014,7 +3429,7 @@ export default function TaskAssignmentLog() {
                                               />
                                             ) : (
                                               <span className="text-gray-900 dark:text-gray-100">
-                                                {(row.course_title || '').trim() || '—'}
+                                                  {(row.course_title || '').trim() || DEFAULT_COURSE_TITLE_FALLBACK}
                                               </span>
                                             )}
                                           </td>
@@ -3121,7 +3536,7 @@ export default function TaskAssignmentLog() {
                                                         setCorporateCourseLoading(false);
                                                       }
                                                     }}
-                                                    disabled={corporateCourseLoading}
+                                                    disabled={corporateCourseLoading || !String(draft?.course_title ?? '').trim()}
                                                     className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
                                                     style={{ backgroundColor: PRIMARY }}
                                                   >
@@ -3212,17 +3627,17 @@ export default function TaskAssignmentLog() {
                               {rows.length > 10 && (
                                 <div className="px-4 py-2 flex items-center justify-end gap-2 text-xs text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800">
                                   <span>
-                                    Page {page} of {totalPages}
+                                    Page {clampedPage} of {totalPages}
                                   </span>
                                   <button
                                     type="button"
                                     onClick={() =>
                                       setCorporateCoursePages((prev) => ({
                                         ...prev,
-                                        [category]: Math.max(1, page - 1),
+                                        [category]: Math.max(1, clampedPage - 1),
                                       }))
                                     }
-                                    disabled={page === 1}
+                                    disabled={clampedPage === 1}
                                     className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                                   >
                                     Prev
@@ -3232,10 +3647,10 @@ export default function TaskAssignmentLog() {
                                     onClick={() =>
                                       setCorporateCoursePages((prev) => ({
                                         ...prev,
-                                        [category]: Math.min(totalPages, page + 1),
+                                        [category]: Math.min(totalPages, clampedPage + 1),
                                       }))
                                     }
-                                    disabled={page >= totalPages}
+                                    disabled={clampedPage >= totalPages}
                                     className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                                   >
                                     Next
