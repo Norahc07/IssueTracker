@@ -11,7 +11,6 @@ const PRIMARY = '#6795BE';
 const TL_VTL_DEPARTMENTS = ['IT', 'HR', 'Marketing'];
 const TL_VTL_TEAMS = ['Team Lead Assistant', 'Monitoring Team', 'PAT1', 'HR Intern', 'Marketing Intern'];
 const TL_VTL_ROLES = ['Team Leader', 'Vice Team Leader', 'Representative'];
-const LEAVE_STORAGE_KEY = 'tracker:leaveRows:v1';
 const LEAVE_TEMPLATE_URL = 'https://ssgcgroup-my.sharepoint.com/:x:/g/personal/carl_ssgc_group/IQC95nJHfVwAQYLtfdOApPbIAXDs4P-HgyG02kq6fE9BdyY?e=n9HW7j';
 const formatMdy = (value) => {
   if (!value) return '—';
@@ -176,23 +175,27 @@ export default function TrackerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackerTab, canAccessTlaInternRecords]);
 
-  useEffect(() => {
+  const fetchLeaveRows = async () => {
+    if (!supabase) return;
     try {
-      const raw = localStorage.getItem(LEAVE_STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(parsed)) setLeaveRows(parsed);
-    } catch {
+      const { data, error } = await supabase
+        .from('leave_tracker')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setLeaveRows(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('TrackerPage: leave_tracker fetch error', err);
+      toast.error(err?.message || 'Failed to load leave records.');
       setLeaveRows([]);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    try {
-      localStorage.setItem(LEAVE_STORAGE_KEY, JSON.stringify(leaveRows));
-    } catch {
-      // ignore storage write errors
-    }
-  }, [leaveRows]);
+    if (trackerTab !== 'leave') return;
+    fetchLeaveRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackerTab, supabase]);
 
   const resetRecordForm = () => {
     setRecordForm({
@@ -414,7 +417,7 @@ export default function TrackerPage() {
     });
   };
 
-  const addLeaveRow = () => {
+  const addLeaveRow = async () => {
     const internName = String(currentActorName || '').trim();
     const start = leaveForm.leave_start_date;
     const end = leaveForm.leave_end_date;
@@ -430,7 +433,6 @@ export default function TrackerPage() {
       return;
     }
     const next = {
-      id: (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`),
       intern_name: internName,
       submitter_user_id: user?.id || null,
       submitter_role: userRole || null,
@@ -444,11 +446,23 @@ export default function TrackerPage() {
       status: 'pending',
       note: String(leaveForm.note || '').trim(),
       created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
-    setLeaveRows((prev) => [next, ...prev]);
-    resetLeaveForm();
-    setLeaveModalOpen(false);
-    toast.success('Leave record added.');
+    try {
+      const { data, error } = await supabase
+        .from('leave_tracker')
+        .insert(next)
+        .select('*')
+        .single();
+      if (error) throw error;
+      setLeaveRows((prev) => [data, ...prev]);
+      resetLeaveForm();
+      setLeaveModalOpen(false);
+      toast.success('Leave record added.');
+    } catch (err) {
+      console.warn('TrackerPage: add leave record error', err);
+      toast.error(err?.message || 'Failed to add leave record.');
+    }
   };
 
   const beginEditLeaveRow = (row) => {
@@ -461,7 +475,7 @@ export default function TrackerPage() {
     setLeaveEditDraft(null);
   };
 
-  const saveEditLeaveRow = () => {
+  const saveEditLeaveRow = async () => {
     if (!editingLeaveId || !leaveEditDraft) return;
     const start = leaveEditDraft.leave_start_date;
     const end = leaveEditDraft.leave_end_date;
@@ -476,21 +490,24 @@ export default function TrackerPage() {
       toast.error('Leave end date must be on or after leave start date.');
       return;
     }
-    setLeaveRows((prev) =>
-      prev.map((r) =>
-        r.id === editingLeaveId
-          ? {
-              ...r,
-              ...leaveEditDraft,
-              leave_form_link: link,
-              note: String(leaveEditDraft.note || '').trim(),
-              leave_type: leaveEditDraft.leave_type === 'half' ? 'half' : 'whole',
-            }
-          : r
-      )
-    );
-    cancelEditLeaveRow();
-    toast.success('Leave record updated.');
+    const payload = {
+      leave_start_date: start,
+      leave_end_date: end,
+      leave_type: leaveEditDraft.leave_type === 'half' ? 'half' : 'whole',
+      leave_form_link: link,
+      note: String(leaveEditDraft.note || '').trim(),
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      const { error } = await supabase.from('leave_tracker').update(payload).eq('id', editingLeaveId);
+      if (error) throw error;
+      setLeaveRows((prev) => prev.map((r) => (r.id === editingLeaveId ? { ...r, ...payload } : r)));
+      cancelEditLeaveRow();
+      toast.success('Leave record updated.');
+    } catch (err) {
+      console.warn('TrackerPage: update leave record error', err);
+      toast.error(err?.message || 'Failed to update leave record.');
+    }
   };
 
   const canApproveLeaveRow = (row) => {
@@ -510,6 +527,7 @@ export default function TrackerPage() {
 
   const canEditDeleteLeaveRow = (row) => {
     if (!row) return false;
+    if (String(row.status || '').toLowerCase() === 'approved') return false;
     if (userRole === 'admin') return false; // admin validates only
     return row.submitter_user_id && row.submitter_user_id === user?.id;
   };
@@ -532,33 +550,43 @@ export default function TrackerPage() {
     return leaveRows;
   }, [leaveRows, userRole, isInternRole, isTlVtlRole, isTlaTeam, user?.id]);
 
-  const updateLeaveStatus = (row, nextStatus) => {
+  const updateLeaveStatus = async (row, nextStatus) => {
     if (!row?.id) return;
     if (!['approved', 'declined'].includes(nextStatus)) return;
     if (!canApproveLeaveRow(row)) {
       toast.error('You do not have permission to validate this leave form.');
       return;
     }
-    setLeaveRows((prev) =>
-      prev.map((r) =>
-        r.id === row.id
-          ? {
-              ...r,
-              status: nextStatus,
-              signed_by: nextStatus === 'approved' ? currentActorName : null,
-              signed_by_user_id: nextStatus === 'approved' ? (user?.id || null) : null,
-            }
-          : r
-      )
-    );
-    toast.success(nextStatus === 'approved' ? 'Leave form approved.' : 'Leave form declined.');
+    const payload = {
+      status: nextStatus,
+      signed_by: nextStatus === 'approved' ? currentActorName : null,
+      signed_by_user_id: nextStatus === 'approved' ? (user?.id || null) : null,
+      validated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      const { error } = await supabase.from('leave_tracker').update(payload).eq('id', row.id);
+      if (error) throw error;
+      setLeaveRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, ...payload } : r)));
+      toast.success(nextStatus === 'approved' ? 'Leave form approved.' : 'Leave form declined.');
+    } catch (err) {
+      console.warn('TrackerPage: approve/decline leave error', err);
+      toast.error(err?.message || 'Failed to update leave status.');
+    }
   };
 
-  const deleteLeaveRow = (id) => {
+  const deleteLeaveRow = async (id) => {
     if (!window.confirm('Delete this leave record?')) return;
-    setLeaveRows((prev) => prev.filter((r) => r.id !== id));
-    if (editingLeaveId === id) cancelEditLeaveRow();
-    toast.success('Leave record deleted.');
+    try {
+      const { error } = await supabase.from('leave_tracker').delete().eq('id', id);
+      if (error) throw error;
+      setLeaveRows((prev) => prev.filter((r) => r.id !== id));
+      if (editingLeaveId === id) cancelEditLeaveRow();
+      toast.success('Leave record deleted.');
+    } catch (err) {
+      console.warn('TrackerPage: delete leave record error', err);
+      toast.error(err?.message || 'Failed to delete leave record.');
+    }
   };
 
   if (!canAccessTracker(userRole, userTeam)) {
