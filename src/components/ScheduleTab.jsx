@@ -514,11 +514,17 @@ export default function ScheduleTab() {
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
                   <thead className="bg-gray-50 dark:bg-gray-950/40">
                     <tr>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36 sticky left-0 bg-gray-50 z-10">Name</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-36 sticky left-0 z-20 bg-gray-50 dark:bg-gray-950/40 border-r border-gray-200 dark:border-gray-700">
+                        Name
+                      </th>
                       {INTERN_SCHEDULE_HOURS.map((hour) => (
-                        <th key={hour} className="px-2 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[4.5rem]">{formatHourLabel(hour)}</th>
+                        <th key={hour} className="px-2 py-2.5 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[4.5rem]">
+                          {formatHourLabel(hour)}
+                        </th>
                       ))}
-                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28 min-w-[7rem]">Actions</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-28 min-w-[7rem]">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
@@ -526,8 +532,8 @@ export default function ScheduleTab() {
                       const grid = row.schedule && typeof row.schedule === 'object' ? row.schedule : createEmptyInternScheduleGrid();
                       const daySchedule = grid[internScheduleDayTab] || {};
                       return (
-                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                          <td className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100 font-medium sticky left-0 bg-white dark:bg-gray-900 z-10">
+                        <tr key={row.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                          <td className="px-3 py-2 text-sm font-medium text-gray-900 dark:text-gray-100 sticky left-0 z-10 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/60">
                             {row.name}
                           </td>
                           {INTERN_SCHEDULE_HOURS.map((hour) => {
@@ -586,7 +592,7 @@ export default function ScheduleTab() {
                   </tbody>
                   <tfoot className="bg-gray-50 dark:bg-gray-950/40 border-t-2 border-gray-200 dark:border-gray-800">
                     <tr>
-                        <td className="px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-200 sticky left-0 bg-gray-50 dark:bg-gray-950/40 z-10">
+                        <td className="px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-200 sticky left-0 z-20 border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950/40">
                           Availability
                         </td>
                       {INTERN_SCHEDULE_HOURS.map((hour) => {

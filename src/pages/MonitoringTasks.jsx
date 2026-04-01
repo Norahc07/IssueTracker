@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { TEAMS } from '../utils/rolePermissions.js';
@@ -86,7 +86,7 @@ const MONITORING_TASK_CATEGORIES = [
   }
 ];
 
-export default function MonitoringTasks({ embedded = false }) {
+export default function MonitoringTasks({ embedded: _embedded = false } = {}) {
   const { supabase, user, userRole, userTeam } = useSupabase();
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [loading, setLoading] = useState(false);
@@ -117,9 +117,12 @@ export default function MonitoringTasks({ embedded = false }) {
   // UI: which task categories are expanded (for dropdown-style view)
   const [openCategories, setOpenCategories] = useState(() => new Set(MONITORING_TASK_CATEGORIES.map((c) => c.category)));
 
+  // Single scope for standalone /admin Tasks embed so accordion + tab state survives tab switches.
+  const monitoringTasksUiScope = 'monitoringTasks';
+
   // Persist UI state across navigation within this session
   useEffect(() => {
-    const key = makeUiStateKey({ userId: user?.id, scope: embedded ? 'monitoringTasks:embedded' : 'monitoringTasks' });
+    const key = makeUiStateKey({ userId: user?.id, scope: monitoringTasksUiScope });
     const cached = loadUiState(key);
     if (!cached) return;
     if (cached.selectedDate) setSelectedDate(cached.selectedDate);
@@ -127,22 +130,32 @@ export default function MonitoringTasks({ embedded = false }) {
     if (typeof cached.myTasksOnly === 'boolean') setMyTasksOnly(cached.myTasksOnly);
     if (Array.isArray(cached.openCategories)) setOpenCategories(new Set(cached.openCategories));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, embedded]);
+  }, [user?.id]);
+
+  const monitoringUiRef = useRef(null);
+  monitoringUiRef.current = {
+    selectedDate,
+    viewTab,
+    myTasksOnly,
+    openCategories: Array.from(openCategories),
+  };
 
   useEffect(() => {
-    const key = makeUiStateKey({ userId: user?.id, scope: embedded ? 'monitoringTasks:embedded' : 'monitoringTasks' });
-    saveUiState(key, {
-      selectedDate,
-      viewTab,
-      myTasksOnly,
-      openCategories: Array.from(openCategories),
-    });
-  }, [user?.id, embedded, selectedDate, viewTab, myTasksOnly, openCategories]);
+    const key = makeUiStateKey({ userId: user?.id, scope: monitoringTasksUiScope });
+    saveUiState(key, monitoringUiRef.current);
+  }, [user?.id, selectedDate, viewTab, myTasksOnly, openCategories]);
+
+  useEffect(() => {
+    const key = makeUiStateKey({ userId: user?.id, scope: monitoringTasksUiScope });
+    return () => {
+      saveUiState(key, monitoringUiRef.current);
+    };
+  }, [user?.id]);
 
   const persistUiStateNow = (next) => {
     const key = makeUiStateKey({
       userId: user?.id,
-      scope: embedded ? 'monitoringTasks:embedded' : 'monitoringTasks',
+      scope: monitoringTasksUiScope,
     });
     saveUiState(key, {
       selectedDate: next?.selectedDate ?? selectedDate,

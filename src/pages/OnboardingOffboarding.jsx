@@ -416,14 +416,21 @@ export default function OnboardingOffboarding() {
     return () => clearInterval(t);
   }, [onboardingInnerTab]);
 
-  const offboardedEmailSet = useMemo(() => {
-    const set = new Set();
+  const offboardedEmailSetByYear = useMemo(() => {
+    const byYear = new Map();
     offboarding.forEach((r) => {
       const email = (r.email || '').trim().toLowerCase();
-      if (email) set.add(email);
+      const y = getYear(r.actual_end_date);
+      if (!email || !y) return;
+      if (!byYear.has(y)) byYear.set(y, new Set());
+      byYear.get(y).add(email);
     });
-    return set;
+    return byYear;
   }, [offboarding]);
+
+  const offboardedEmailSet = useMemo(() => {
+    return offboardedEmailSetByYear.get(activeYear) || new Set();
+  }, [offboardedEmailSetByYear, activeYear]);
 
   const onboardingByEmail = useMemo(() => {
     const map = new Map();
@@ -609,12 +616,38 @@ export default function OnboardingOffboarding() {
   }, [filteredOffboarding, offboardingSearch, offboardingSort]);
 
   const onboardingCandidates = useMemo(() => {
-    return onboarding.filter((r) => {
-      const email = (r.email || '').trim().toLowerCase();
-      if (!email) return false;
-      return !offboardedEmailSet.has(email);
-    });
-  }, [onboarding, offboardedEmailSet]);
+    return onboarding
+      .filter((r) => {
+        const email = (r.email || '').trim().toLowerCase();
+        if (!email) return false;
+        const onboardingYear = getYear(r.onboarding_datetime);
+        if (onboardingYear !== activeYear) return false;
+        return !offboardedEmailSet.has(email);
+      })
+      .sort((a, b) => {
+        const ta = a?.onboarding_datetime ? new Date(a.onboarding_datetime).getTime() : 0;
+        const tb = b?.onboarding_datetime ? new Date(b.onboarding_datetime).getTime() : 0;
+        return tb - ta;
+      });
+  }, [onboarding, activeYear, offboardedEmailSet]);
+
+  useEffect(() => {
+    if (!showOffboardingModal) return;
+    const currentEmail = (offboardingForm.email || '').trim().toLowerCase();
+    if (!currentEmail) return;
+    const existsInYear = onboardingCandidates.some(
+      (r) => (r.email || '').trim().toLowerCase() === currentEmail
+    );
+    if (existsInYear) return;
+    // Keep dropdown choices and selected value aligned with the active year tab.
+    setOffboardingForm((f) => ({
+      ...f,
+      email: '',
+      first_name: '',
+      last_name: '',
+      department: '',
+    }));
+  }, [showOffboardingModal, offboardingForm.email, onboardingCandidates]);
 
   const handleOnboardingSubmit = async (e) => {
     e.preventDefault();
@@ -2708,7 +2741,9 @@ export default function OnboardingOffboarding() {
                   }}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                 >
-                  <option value="">Select from onboarding...</option>
+                  <option value="">
+                    {`Select from ${activeYear} onboarding...`}
+                  </option>
                   {onboardingCandidates.map((r) => (
                     <option key={r.id} value={r.email || ''}>
                       {r.name || 'Unnamed'}
@@ -2716,7 +2751,7 @@ export default function OnboardingOffboarding() {
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Choose an email from onboarding; department and name will fill automatically.
+                  Choose an email from onboarding for {activeYear}; department and name will fill automatically.
                 </p>
                 {offboardingSubmitAttempted && !offboardingForm.email?.trim() && (
                   <p className="mt-1 text-xs font-medium text-red-600">Required.</p>

@@ -2,12 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import DailyReportReminder from './DailyReportReminder.jsx';
 import { useSupabase } from '../context/supabase.jsx';
-import { getRoleDisplayName, getRoleColor, permissions } from '../utils/rolePermissions.js';
+import { getRoleDisplayName, getRoleColor, getRoleDescription, permissions } from '../utils/rolePermissions.js';
 import { createNotifications } from '../utils/notifications.js';
 import { applyTheme, getStoredTheme, setStoredTheme } from '../utils/theme.js';
 
 const PRIMARY = '#6795BE';
-const PRIMARY_LIGHT = 'rgba(103, 149, 190, 0.15)';
 
 const navItems = [
   { to: 'dashboard', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -30,6 +29,35 @@ function Icon({ path, className = 'w-5 h-5' }) {
   );
 }
 
+/** Human-readable team label (TLA, Monitoring, HR, etc.) */
+function formatTeamLabel(team) {
+  if (team == null || String(team).trim() === '') return null;
+  const t = String(team).trim();
+  const lower = t.toLowerCase();
+  const map = {
+    tla: 'TLA',
+    monitoring: 'Monitoring',
+    pat1: 'PAT1',
+    hr: 'HR',
+    supervisor: 'Supervisor',
+  };
+  if (map[lower]) return map[lower];
+  return t
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function displayNameFromUser(user, profileFullName) {
+  const meta = user?.user_metadata || {};
+  const fromDb = profileFullName && String(profileFullName).trim() ? String(profileFullName).trim() : '';
+  const fromMeta = [meta.full_name, meta.name, meta.display_name].find((s) => typeof s === 'string' && s.trim());
+  if (fromDb) return fromDb;
+  if (fromMeta) return fromMeta.trim();
+  const em = user?.email;
+  if (em) return em.split('@')[0];
+  return 'User';
+}
+
 export default function SidebarLayout() {
   const { user, userRole, userTeam, supabase, clearSession } = useSupabase();
   const location = useLocation();
@@ -38,11 +66,21 @@ export default function SidebarLayout() {
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationDetail, setNotificationDetail] = useState(null);
+  const [notificationFilter, setNotificationFilter] = useState('all'); // 'all' | 'read' | 'unread'
+  const [selectedNotificationIds, setSelectedNotificationIds] = useState([]);
   const [autoJobRunning, setAutoJobRunning] = useState(false);
   const [theme, setTheme] = useState(() => getStoredTheme());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileFullName, setProfileFullName] = useState(null);
   const canSendReminders = permissions.canManageAttendanceSchedules(userRole, userTeam); // Admin + Monitoring TL/VTL
+
+  const profileDisplayName = useMemo(
+    () => displayNameFromUser(user, profileFullName),
+    [user, profileFullName],
+  );
+  const profileTeamLabel = formatTeamLabel(userTeam);
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -71,6 +109,23 @@ export default function SidebarLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notificationsOpen, supabase, user?.id]);
 
+  useEffect(() => {
+    if (!notificationsOpen) {
+      setNotificationFilter('all');
+      setSelectedNotificationIds([]);
+    }
+  }, [notificationsOpen]);
+
+  useEffect(() => {
+    setSelectedNotificationIds([]);
+  }, [notificationFilter]);
+
+  const filteredNotifications = useMemo(() => {
+    if (notificationFilter === 'read') return notifications.filter((n) => n.read_at);
+    if (notificationFilter === 'unread') return notifications.filter((n) => !n.read_at);
+    return notifications;
+  }, [notifications, notificationFilter]);
+
   // Keep the <html> class in sync with stored theme.
   // (We apply via setStoredTheme to avoid any stale state re-applying "dark".)
   useEffect(() => {
@@ -90,6 +145,38 @@ export default function SidebarLayout() {
     media.addEventListener('change', onChange);
     return () => media.removeEventListener('change', onChange);
   }, []);
+
+  useEffect(() => {
+    setProfileOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setProfileOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [profileOpen]);
+
+  useEffect(() => {
+    if (!profileOpen || !supabase || !user?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase.from('users').select('full_name').eq('id', user.id).single();
+        if (cancelled) return;
+        if (!error && data?.full_name && String(data.full_name).trim())
+          setProfileFullName(String(data.full_name).trim());
+        else setProfileFullName(null);
+      } catch {
+        if (!cancelled) setProfileFullName(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profileOpen, supabase, user?.id]);
 
   const markAllAsRead = async () => {
     if (!supabase || !user?.id) return;
@@ -117,6 +204,75 @@ export default function SidebarLayout() {
       console.warn('Notifications mark single read error:', e);
     }
   };
+
+  const toggleNotificationSelected = (id, checked) => {
+    setSelectedNotificationIds((prev) => {
+      if (checked) return prev.includes(id) ? prev : [...prev, id];
+      return prev.filter((x) => x !== id);
+    });
+  };
+
+  const markSelectedAsRead = async () => {
+    if (!supabase || !user?.id) return;
+    const ids = selectedNotificationIds.filter((id) => {
+      const n = notifications.find((x) => x.id === id);
+      return n && !n.read_at;
+    });
+    if (!ids.length) return;
+    const nowIso = new Date().toISOString();
+    try {
+      await supabase.from('notifications').update({ read_at: nowIso }).in('id', ids);
+      setNotifications((prev) => prev.map((n) => (ids.includes(n.id) ? { ...n, read_at: nowIso } : n)));
+      setSelectedNotificationIds((prev) => prev.filter((x) => !ids.includes(x)));
+    } catch (e) {
+      console.warn('Notifications bulk mark read error:', e);
+    }
+  };
+
+  const markSelectedAsUnread = async () => {
+    if (!supabase || !user?.id) return;
+    const ids = selectedNotificationIds.filter((id) => {
+      const n = notifications.find((x) => x.id === id);
+      return n && n.read_at;
+    });
+    if (!ids.length) return;
+    try {
+      await supabase.from('notifications').update({ read_at: null }).in('id', ids);
+      setNotifications((prev) => prev.map((n) => (ids.includes(n.id) ? { ...n, read_at: null } : n)));
+      setSelectedNotificationIds((prev) => prev.filter((x) => !ids.includes(x)));
+    } catch (e) {
+      console.warn('Notifications bulk mark unread error:', e);
+    }
+  };
+
+  const selectedHasUnread = selectedNotificationIds.some((id) => {
+    const n = notifications.find((x) => x.id === id);
+    return n && !n.read_at;
+  });
+  const selectedHasRead = selectedNotificationIds.some((id) => {
+    const n = notifications.find((x) => x.id === id);
+    return n && n.read_at;
+  });
+
+  /** All unread → only “Mark as read”. All read → only “Mark as unread”. Mixed → both. */
+  const selectionBulkToolbar = useMemo(() => {
+    if (selectedNotificationIds.length === 0) {
+      return { showMarkRead: false, showMarkUnread: false };
+    }
+    const rows = selectedNotificationIds
+      .map((id) => notifications.find((x) => x.id === id))
+      .filter(Boolean);
+    if (rows.length !== selectedNotificationIds.length) {
+      return { showMarkRead: true, showMarkUnread: true };
+    }
+    const allUnread = rows.every((n) => !n.read_at);
+    const allRead = rows.every((n) => n.read_at);
+    const mixed = !allUnread && !allRead;
+    return {
+      showMarkRead: allUnread || mixed,
+      showMarkUnread: allRead || mixed,
+    };
+  }, [selectedNotificationIds, notifications]);
 
   const openNotificationDetail = async (n) => {
     if (!n) return;
@@ -452,16 +608,6 @@ export default function SidebarLayout() {
           )}
         </nav>
         </div>
-        <div className="shrink-0 border-t border-white/20 p-3">
-          <button
-            onClick={handleLogout}
-            className={`flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/20 ${isSidebarCollapsed ? 'px-2' : ''}`}
-            style={{ backgroundColor: PRIMARY_LIGHT }}
-          >
-            <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" className="h-5 w-5" />
-            {!isSidebarCollapsed && 'Logout'}
-          </button>
-        </div>
       </aside>
 
       {/* Main content */}
@@ -522,7 +668,10 @@ export default function SidebarLayout() {
           </button>
           <button
             type="button"
-            onClick={() => setNotificationsOpen(true)}
+            onClick={() => {
+              setProfileOpen(false);
+              setNotificationsOpen(true);
+            }}
             className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#6795BE] dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-gray-100 dark:focus:ring-offset-gray-950"
             aria-label="Notifications"
           >
@@ -535,15 +684,105 @@ export default function SidebarLayout() {
           </span>
           <button
             type="button"
-            className="rounded-full p-1.5 text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#6795BE] dark:text-gray-300 dark:hover:bg-gray-900 dark:focus:ring-offset-gray-950"
-            aria-label="Profile"
+            onClick={() => {
+              setNotificationsOpen(false);
+              setNotificationDetail(null);
+              setProfileOpen((v) => !v);
+            }}
+            aria-expanded={profileOpen}
+            aria-haspopup="dialog"
+            className={`rounded-full p-1.5 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#6795BE] dark:focus:ring-offset-gray-950 ${
+              profileOpen
+                ? 'bg-gray-200 text-gray-800 dark:bg-gray-800 dark:text-gray-100'
+                : 'text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-900'
+            }`}
+            aria-label="Account and profile"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm font-medium text-gray-600">
-              {user?.email?.charAt(0).toUpperCase() || '?'}
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+              {profileDisplayName.charAt(0).toUpperCase() || '?'}
             </span>
           </button>
           </div>
         </header>
+
+        {profileOpen && user && (
+          <>
+            <button
+              type="button"
+              className="fixed inset-0 z-[90] cursor-default bg-black/20 dark:bg-black/40"
+              aria-label="Close account menu"
+              onClick={() => setProfileOpen(false)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="profile-menu-title"
+              className="fixed z-[91] left-1/2 top-[4.25rem] w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-800 dark:bg-gray-900 sm:left-auto sm:right-6 sm:translate-x-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+                <div className="min-w-0">
+                  <h2 id="profile-menu-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                    Your account
+                  </h2>
+                  <p className="mt-0.5 truncate text-sm text-gray-600 dark:text-gray-300">{profileDisplayName}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen(false)}
+                  className="shrink-0 rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="space-y-4 px-4 py-4">
+                <dl className="space-y-3 text-sm">
+                  <div>
+                    <dt className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Email
+                    </dt>
+                    <dd className="mt-0.5 break-all text-gray-900 dark:text-gray-100">{user.email || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Role
+                    </dt>
+                    <dd className="mt-0.5">
+                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${getRoleColor(userRole)}`}>
+                        {getRoleDisplayName(userRole) || '—'}
+                      </span>
+                      <p className="mt-1.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                        {getRoleDescription(userRole)}
+                      </p>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Team
+                    </dt>
+                    <dd className="mt-0.5 text-gray-900 dark:text-gray-100">
+                      {profileTeamLabel || (
+                        <span className="text-gray-400 dark:text-gray-500">Not assigned</span>
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    handleLogout();
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
+                >
+                  <Icon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" className="h-4 w-4" />
+                  Sign out
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         <main className="flex-1 p-4 sm:p-6 text-gray-900 dark:text-gray-100">
           <Outlet />
@@ -560,7 +799,9 @@ export default function SidebarLayout() {
             <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
-                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">All notifications are shown here. Close anytime.</p>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  Filter by All, Read, or Unread. Select items to mark read or unread in bulk.
+                </p>
               </div>
               <button
                 type="button"
@@ -577,29 +818,87 @@ export default function SidebarLayout() {
 
             <div className="px-5 py-4 space-y-4">
               {!notificationDetail && (
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={loadNotifications}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-                    >
-                      Refresh
-                    </button>
-                    <button
-                      type="button"
-                      onClick={markAllAsRead}
-                      disabled={!notifications.some((n) => !n.read_at)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60"
-                    >
-                      Mark all as read
-                    </button>
+                <div className="space-y-3">
+                  <div className="flex flex-nowrap items-center justify-between gap-4 sm:gap-8 min-w-0 overflow-x-auto pb-0.5">
+                    <div className="flex shrink-0 items-center gap-2" role="tablist" aria-label="Notification filter">
+                      {[
+                        { id: 'all', label: 'All' },
+                        { id: 'read', label: 'Read' },
+                        { id: 'unread', label: 'Unread' },
+                      ].map(({ id, label }) => (
+                        <button
+                          key={id}
+                          type="button"
+                          role="tab"
+                          aria-selected={notificationFilter === id}
+                          onClick={() => setNotificationFilter(id)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap ${
+                            notificationFilter === id
+                              ? 'border-[#6795BE] bg-[rgba(103,149,190,0.12)] text-gray-900 dark:text-gray-100'
+                              : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex shrink-0 items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={loadNotifications}
+                        aria-label="Refresh notifications"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 whitespace-nowrap"
+                      >
+                        <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                        Refresh
+                      </button>
+                      <button
+                        type="button"
+                        onClick={markAllAsRead}
+                        disabled={!notifications.some((n) => !n.read_at)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60 whitespace-nowrap"
+                      >
+                        Mark all as read
+                      </button>
+                    </div>
                   </div>
 
+                  {selectedNotificationIds.length > 0 && (
+                    <div className="flex flex-wrap items-center justify-start gap-2 pt-1">
+                      {selectionBulkToolbar.showMarkRead && (
+                        <button
+                          type="button"
+                          onClick={markSelectedAsRead}
+                          disabled={!selectedHasUnread}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60 whitespace-nowrap"
+                        >
+                          Mark as read
+                        </button>
+                      )}
+                      {selectionBulkToolbar.showMarkUnread && (
+                        <button
+                          type="button"
+                          onClick={markSelectedAsUnread}
+                          disabled={!selectedHasRead}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60 whitespace-nowrap"
+                        >
+                          Mark as unread
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {canSendReminders && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                    <span className="block text-xs text-gray-500 dark:text-gray-400">
                       Reminders are sent automatically at 6:30 PM; missed clock-outs auto close at 12:00 AM and notify Monitoring TL/VTL.
-                      {autoJobRunning ? ' (running…)': ''}
+                      {autoJobRunning ? ' (running…)' : ''}
                     </span>
                   )}
                 </div>
@@ -610,6 +909,10 @@ export default function SidebarLayout() {
                   <div className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">Loading notifications…</div>
                 ) : notifications.length === 0 ? (
                   <div className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">No notifications yet.</div>
+                ) : filteredNotifications.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
+                    No notifications match this filter.
+                  </div>
                 ) : (
                   <>
                     {/* Detail view */}
@@ -623,17 +926,35 @@ export default function SidebarLayout() {
                           >
                             ← Back
                           </button>
-                          <span className={`text-[11px] font-medium px-2 py-1 rounded-full ${notificationDetail.read_at ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300' : 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-200'}`}>
+                          <span
+                            className={`text-[11px] font-medium px-2 py-1 rounded-full ${
+                              notificationDetail.read_at
+                                ? 'bg-gray-100 dark:bg-gray-800/80 text-gray-400 dark:text-gray-500 opacity-80'
+                                : 'bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-200 font-semibold ring-1 ring-blue-200/80 dark:ring-blue-800/80'
+                            }`}
+                          >
                             {notificationDetail.read_at ? 'Read' : 'Unread'}
                           </span>
                         </div>
 
                         <div className="space-y-1">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                          <p
+                            className={`text-sm ${
+                              notificationDetail.read_at
+                                ? 'font-normal text-gray-500 dark:text-gray-400'
+                                : 'font-bold text-gray-900 dark:text-gray-50'
+                            }`}
+                          >
                             {notificationDetail.title || '—'}
                           </p>
                           {notificationDetail.body && (
-                            <pre className="text-xs text-gray-700 dark:text-gray-200 whitespace-pre-wrap leading-5">
+                            <pre
+                              className={`text-xs whitespace-pre-wrap leading-5 ${
+                                notificationDetail.read_at
+                                  ? 'text-gray-400 dark:text-gray-500'
+                                  : 'text-gray-700 dark:text-gray-200 font-medium'
+                              }`}
+                            >
                               {notificationDetail.body}
                             </pre>
                           )}
@@ -650,37 +971,55 @@ export default function SidebarLayout() {
                     {/* List view */}
                     {!notificationDetail && (
                       <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-                        {notifications.map((n) => (
+                        {filteredNotifications.map((n) => {
+                          const isRead = Boolean(n.read_at);
+                          return (
                           <li
                             key={n.id}
-                            className={`px-4 py-3 cursor-pointer ${n.read_at ? 'bg-white dark:bg-gray-900' : 'bg-blue-50/40 dark:bg-blue-950/30'} hover:bg-gray-50 dark:hover:bg-gray-900`}
+                            className={`px-4 py-3 cursor-pointer border-l-[3px] transition-colors ${
+                              isRead
+                                ? 'border-l-transparent bg-gray-50/80 dark:bg-gray-950/40 opacity-90 hover:bg-gray-100/90 dark:hover:bg-gray-900/80'
+                                : 'border-l-[#6795BE] bg-blue-50/70 dark:bg-blue-950/35 hover:bg-blue-100/80 dark:hover:bg-blue-950/50'
+                            }`}
                             role="button"
                             tabIndex={0}
                             onClick={() => openNotificationDetail(n)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') openNotificationDetail(n);
                             }}
-                            aria-label={`Open notification: ${n.title || 'notification'}`}
+                            aria-label={`Open notification: ${n.title || 'notification'}${isRead ? ', read' : ', unread'}`}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{n.title}</p>
-                                {n.body && (
-                                  <p className="mt-0.5 text-xs text-gray-700 dark:text-gray-200 whitespace-pre-line">
-                                    {n.body}
-                                  </p>
-                                )}
-                                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                                  {n.created_at ? new Date(n.created_at).toLocaleString() : '—'}
-                                  {n.read_at ? ' • Read' : ' • Unread'}
+                            <div className="flex items-start gap-3">
+                              <input
+                                type="checkbox"
+                                className={`mt-1 h-4 w-4 shrink-0 rounded border-gray-300 text-[#6795BE] focus:ring-[#6795BE] ${isRead ? 'opacity-60' : ''}`}
+                                checked={selectedNotificationIds.includes(n.id)}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => toggleNotificationSelected(n.id, e.target.checked)}
+                                aria-label={`Select notification: ${n.title || 'notification'}`}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  className={`text-sm ${
+                                    isRead
+                                      ? 'font-normal text-gray-500 dark:text-gray-400'
+                                      : 'font-bold text-gray-900 dark:text-gray-50'
+                                  }`}
+                                >
+                                  {n.title || '—'}
                                 </p>
-                              </div>
-                              <div className="text-gray-400 dark:text-gray-500 text-xs font-medium">
-                                View
+                                <p
+                                  className={`mt-0.5 text-[11px] tabular-nums ${
+                                    isRead ? 'text-gray-400 dark:text-gray-500' : 'text-gray-600 dark:text-gray-300'
+                                  }`}
+                                >
+                                  {n.created_at ? new Date(n.created_at).toLocaleString() : '—'}
+                                </p>
                               </div>
                             </div>
                           </li>
-                        ))}
+                          );
+                        })}
                       </ul>
                     )}
                   </>

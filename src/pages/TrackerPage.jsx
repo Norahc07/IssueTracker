@@ -11,11 +11,24 @@ const PRIMARY = '#6795BE';
 const TL_VTL_DEPARTMENTS = ['IT', 'HR', 'Marketing'];
 const TL_VTL_TEAMS = ['Team Lead Assistant', 'Monitoring Team', 'PAT1', 'HR Intern', 'Marketing Intern'];
 const TL_VTL_ROLES = ['Team Leader', 'Vice Team Leader', 'Representative'];
+const LEAVE_STORAGE_KEY = 'tracker:leaveRows:v1';
+const LEAVE_TEMPLATE_URL = 'https://ssgcgroup-my.sharepoint.com/:x:/g/personal/carl_ssgc_group/IQC95nJHfVwAQYLtfdOApPbIAXDs4P-HgyG02kq6fE9BdyY?e=n9HW7j';
 const formatMdy = (value) => {
   if (!value) return '—';
   const d = new Date(`${value}T00:00:00`);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+};
+
+const calculateLeaveDuration = (startDate, endDate, leaveType) => {
+  if (!startDate || !endDate) return '—';
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return '—';
+  const diffDays = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+  const multiplier = leaveType === 'half' ? 0.5 : 1;
+  const days = diffDays * multiplier;
+  return `${days % 1 === 0 ? days.toFixed(0) : days.toFixed(1)} day${days === 1 ? '' : 's'}`;
 };
 
 const canAccessTracker = (userRole, userTeam) => {
@@ -30,10 +43,17 @@ const canAccessTracker = (userRole, userTeam) => {
 };
 
 export default function TrackerPage() {
-  const { supabase, userRole, userTeam } = useSupabase();
+  const { supabase, user, userRole, userTeam } = useSupabase();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab'); // 'tl-vtl' | 'schedule' | 'intern-records'
-  const trackerTab = tabParam === 'schedule' ? 'schedule' : (tabParam === 'intern-records' ? 'intern-records' : 'tl-vtl');
+  const tabParam = searchParams.get('tab'); // 'tl-vtl' | 'schedule' | 'intern-records' | 'leave'
+  const trackerTab =
+    tabParam === 'schedule'
+      ? 'schedule'
+      : tabParam === 'intern-records'
+      ? 'intern-records'
+      : tabParam === 'leave'
+      ? 'leave'
+      : 'tl-vtl';
 
   const [users, setUsers] = useState([]);
   const [tlVtlTrackerRows, setTlVtlTrackerRows] = useState([]);
@@ -56,6 +76,19 @@ export default function TrackerPage() {
     target_end_2: '',
   });
 
+  const [leaveRows, setLeaveRows] = useState([]);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  const [leaveSampleModalOpen, setLeaveSampleModalOpen] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({
+    leave_start_date: '',
+    leave_end_date: '',
+    leave_type: 'whole',
+    leave_form_link: '',
+    note: '',
+  });
+  const [editingLeaveId, setEditingLeaveId] = useState(null);
+  const [leaveEditDraft, setLeaveEditDraft] = useState(null);
+
   const tlVtlAssignableUsers = useMemo(
     () => users.filter((u) => u.role === 'intern' || u.role === 'tl' || u.role === 'vtl'),
     [users]
@@ -66,6 +99,22 @@ export default function TrackerPage() {
     userRole === 'admin' ||
     userRole === 'tla' ||
     ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam);
+  const canManageLeaveApprovals =
+    userRole === 'admin' || ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam);
+  const isInternRole = userRole === 'intern';
+  const isTlVtlRole = userRole === 'tl' || userRole === 'vtl';
+
+  const currentActorName = useMemo(() => {
+    const meta = user?.user_metadata || {};
+    const byMeta = [meta.full_name, meta.name, meta.display_name].find(
+      (v) => typeof v === 'string' && v.trim()
+    );
+    if (byMeta) return byMeta.trim();
+    const byUsersList = users.find((u) => u.id === user?.id)?.full_name;
+    if (byUsersList && String(byUsersList).trim()) return String(byUsersList).trim();
+    if (user?.email) return user.email.split('@')[0];
+    return 'Unknown user';
+  }, [user, users]);
 
   const fetchUsers = async () => {
     try {
@@ -126,6 +175,24 @@ export default function TrackerPage() {
     fetchInternRecords();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackerTab, canAccessTlaInternRecords]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LEAVE_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) setLeaveRows(parsed);
+    } catch {
+      setLeaveRows([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LEAVE_STORAGE_KEY, JSON.stringify(leaveRows));
+    } catch {
+      // ignore storage write errors
+    }
+  }, [leaveRows]);
 
   const resetRecordForm = () => {
     setRecordForm({
@@ -337,6 +404,163 @@ export default function TrackerPage() {
     }
   };
 
+  const resetLeaveForm = () => {
+    setLeaveForm({
+      leave_start_date: '',
+      leave_end_date: '',
+      leave_type: 'whole',
+      leave_form_link: '',
+      note: '',
+    });
+  };
+
+  const addLeaveRow = () => {
+    const internName = String(currentActorName || '').trim();
+    const start = leaveForm.leave_start_date;
+    const end = leaveForm.leave_end_date;
+    const link = String(leaveForm.leave_form_link || '').trim();
+    if (!internName || !start || !end || !link) {
+      toast.error('Please fill in dates and leave form link.');
+      return;
+    }
+    const startDt = new Date(`${start}T00:00:00`);
+    const endDt = new Date(`${end}T00:00:00`);
+    if (endDt < startDt) {
+      toast.error('Leave end date must be on or after leave start date.');
+      return;
+    }
+    const next = {
+      id: (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`),
+      intern_name: internName,
+      submitter_user_id: user?.id || null,
+      submitter_role: userRole || null,
+      submitter_team: userTeam || null,
+      leave_start_date: start,
+      leave_end_date: end,
+      leave_type: leaveForm.leave_type === 'half' ? 'half' : 'whole',
+      leave_form_link: link,
+      signed_by: null,
+      signed_by_user_id: null,
+      status: 'pending',
+      note: String(leaveForm.note || '').trim(),
+      created_at: new Date().toISOString(),
+    };
+    setLeaveRows((prev) => [next, ...prev]);
+    resetLeaveForm();
+    setLeaveModalOpen(false);
+    toast.success('Leave record added.');
+  };
+
+  const beginEditLeaveRow = (row) => {
+    setEditingLeaveId(row.id);
+    setLeaveEditDraft({ ...row });
+  };
+
+  const cancelEditLeaveRow = () => {
+    setEditingLeaveId(null);
+    setLeaveEditDraft(null);
+  };
+
+  const saveEditLeaveRow = () => {
+    if (!editingLeaveId || !leaveEditDraft) return;
+    const start = leaveEditDraft.leave_start_date;
+    const end = leaveEditDraft.leave_end_date;
+    const link = String(leaveEditDraft.leave_form_link || '').trim();
+    if (!start || !end || !link) {
+      toast.error('Please fill in dates and leave form link.');
+      return;
+    }
+    const startDt = new Date(`${start}T00:00:00`);
+    const endDt = new Date(`${end}T00:00:00`);
+    if (endDt < startDt) {
+      toast.error('Leave end date must be on or after leave start date.');
+      return;
+    }
+    setLeaveRows((prev) =>
+      prev.map((r) =>
+        r.id === editingLeaveId
+          ? {
+              ...r,
+              ...leaveEditDraft,
+              leave_form_link: link,
+              note: String(leaveEditDraft.note || '').trim(),
+              leave_type: leaveEditDraft.leave_type === 'half' ? 'half' : 'whole',
+            }
+          : r
+      )
+    );
+    cancelEditLeaveRow();
+    toast.success('Leave record updated.');
+  };
+
+  const canApproveLeaveRow = (row) => {
+    if (!canManageLeaveApprovals) return false;
+    if (!row) return false;
+    if (row.submitter_user_id && row.submitter_user_id === user?.id) return false;
+    const submitterRole = String(row.submitter_role || '').toLowerCase();
+    const submitterTeam = String(row.submitter_team || '').toLowerCase();
+    if (submitterRole === 'tl' && submitterTeam === 'tla') {
+      return userRole === 'admin';
+    }
+    if (submitterRole === 'vtl' && submitterTeam === 'tla') {
+      return userRole === 'admin' || (userRole === 'tl' && isTlaTeam);
+    }
+    return true;
+  };
+
+  const canEditDeleteLeaveRow = (row) => {
+    if (!row) return false;
+    if (userRole === 'admin') return false; // admin validates only
+    return row.submitter_user_id && row.submitter_user_id === user?.id;
+  };
+
+  const visibleLeaveRows = useMemo(() => {
+    if (userRole === 'admin') {
+      return leaveRows.filter((r) => ['intern', 'tl', 'vtl'].includes(String(r.submitter_role || '').toLowerCase()));
+    }
+    if (isInternRole) {
+      return leaveRows.filter((r) => r.submitter_user_id && r.submitter_user_id === user?.id);
+    }
+    if (isTlVtlRole && isTlaTeam) {
+      return leaveRows.filter((r) => {
+        const role = String(r.submitter_role || '').toLowerCase();
+        const mine = r.submitter_user_id && r.submitter_user_id === user?.id;
+        const isIntern = role === 'intern';
+        return mine || isIntern;
+      });
+    }
+    return leaveRows;
+  }, [leaveRows, userRole, isInternRole, isTlVtlRole, isTlaTeam, user?.id]);
+
+  const updateLeaveStatus = (row, nextStatus) => {
+    if (!row?.id) return;
+    if (!['approved', 'declined'].includes(nextStatus)) return;
+    if (!canApproveLeaveRow(row)) {
+      toast.error('You do not have permission to validate this leave form.');
+      return;
+    }
+    setLeaveRows((prev) =>
+      prev.map((r) =>
+        r.id === row.id
+          ? {
+              ...r,
+              status: nextStatus,
+              signed_by: nextStatus === 'approved' ? currentActorName : null,
+              signed_by_user_id: nextStatus === 'approved' ? (user?.id || null) : null,
+            }
+          : r
+      )
+    );
+    toast.success(nextStatus === 'approved' ? 'Leave form approved.' : 'Leave form declined.');
+  };
+
+  const deleteLeaveRow = (id) => {
+    if (!window.confirm('Delete this leave record?')) return;
+    setLeaveRows((prev) => prev.filter((r) => r.id !== id));
+    if (editingLeaveId === id) cancelEditLeaveRow();
+    toast.success('Leave record deleted.');
+  };
+
   if (!canAccessTracker(userRole, userTeam)) {
     const dashboard = userRole === 'admin' || userRole === 'tla' ? '/admin/dashboard' : '/intern/dashboard';
     return <Navigate to={dashboard} replace />;
@@ -344,56 +568,110 @@ export default function TrackerPage() {
 
   return (
     <div className="w-full space-y-4 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
-            Tracker
-          </h1>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            TL/VTL tracker and schedule form. Use the tabs below to switch between views.
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+          Tracker
+        </h1>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          TL/VTL tracker and schedule form. Use the tabs below to switch between views.
+        </p>
       </div>
 
-      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
-        <button
-          type="button"
-          onClick={() => setSearchParams({ tab: 'tl-vtl' })}
-          className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-            trackerTab === 'tl-vtl'
-              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
-              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
-          }`}
-          style={trackerTab === 'tl-vtl' ? { borderTopColor: PRIMARY } : {}}
-        >
-          TL/VTL
-        </button>
-        {(userRole === 'admin' || userRole === 'tla' || ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam)) && (
+      <div className="relative flex flex-col gap-3 border-b border-gray-200 dark:border-gray-800 sm:block">
+        <div className="flex flex-wrap gap-2 pr-0 sm:pr-[18rem]">
           <button
             type="button"
-            onClick={() => setSearchParams({ tab: 'intern-records' })}
+            onClick={() => setSearchParams({ tab: 'tl-vtl' })}
             className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-              trackerTab === 'intern-records'
+              trackerTab === 'tl-vtl'
                 ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
                 : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
             }`}
-            style={trackerTab === 'intern-records' ? { borderTopColor: PRIMARY } : {}}
+            style={trackerTab === 'tl-vtl' ? { borderTopColor: PRIMARY } : {}}
           >
-            Intern Records (TLA)
+            TL/VTL
           </button>
+          {(userRole === 'admin' || userRole === 'tla' || ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam)) && (
+            <button
+              type="button"
+              onClick={() => setSearchParams({ tab: 'intern-records' })}
+              className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                trackerTab === 'intern-records'
+                  ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                  : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
+              }`}
+              style={trackerTab === 'intern-records' ? { borderTopColor: PRIMARY } : {}}
+            >
+              Intern Records (TLA)
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setSearchParams({ tab: 'schedule' })}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              trackerTab === 'schedule'
+                ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
+            }`}
+            style={trackerTab === 'schedule' ? { borderTopColor: PRIMARY } : {}}
+          >
+            Schedule
+          </button>
+          <button
+            type="button"
+            onClick={() => setSearchParams({ tab: 'leave' })}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              trackerTab === 'leave'
+                ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
+            }`}
+            style={trackerTab === 'leave' ? { borderTopColor: PRIMARY } : {}}
+          >
+            Leave
+          </button>
+        </div>
+        {trackerTab === 'tl-vtl' && (
+          <div className="flex flex-wrap items-center gap-2 pb-2 sm:absolute sm:right-0 sm:top-0 sm:pb-0">
+            {!isTlVtlTrackerEditMode ? (
+              <button
+                type="button"
+                onClick={() => setIsTlVtlTrackerEditMode(true)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                style={{ backgroundColor: PRIMARY }}
+              >
+                Edit
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={addTlVtlTrackerRow}
+                  disabled={savingTlVtlTracker}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-60"
+                >
+                  {savingTlVtlTracker ? 'Adding...' : 'Add row'}
+                </button>
+                <button
+                  type="button"
+                  onClick={saveAllTlVtlTrackerRows}
+                  disabled={savingTlVtlTracker}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  {savingTlVtlTracker ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelTlVtlTrackerEdit}
+                  disabled={savingTlVtlTracker}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
         )}
-        <button
-          type="button"
-          onClick={() => setSearchParams({ tab: 'schedule' })}
-          className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
-            trackerTab === 'schedule'
-              ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
-              : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
-          }`}
-          style={trackerTab === 'schedule' ? { borderTopColor: PRIMARY } : {}}
-        >
-          Schedule
-        </button>
       </div>
 
       {trackerTab === 'schedule' ? (
@@ -543,49 +821,396 @@ export default function TrackerPage() {
             </Modal>
           )}
         </div>
+      ) : trackerTab === 'leave' ? (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+                  Leave Tracker
+                </h2>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Temporary version: create and manage leave entries locally in this browser.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLeaveSampleModalOpen(true)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  Sample leave form
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLeaveModalOpen(true)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Add leave record
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Intern name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Leave start</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Leave end</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Option</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Duration</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Leave form</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Signed by</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Note</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-gray-900">
+                  {visibleLeaveRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                        No leave records yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    visibleLeaveRows.map((row) => {
+                      const isEditing = editingLeaveId === row.id;
+                      const source = isEditing && leaveEditDraft ? leaveEditDraft : row;
+                      return (
+                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                            {row.intern_name}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                            {isEditing ? (
+                              <input
+                                type="date"
+                                value={source.leave_start_date || ''}
+                                onChange={(e) => setLeaveEditDraft((d) => ({ ...d, leave_start_date: e.target.value }))}
+                                className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm"
+                              />
+                            ) : (
+                              formatMdy(row.leave_start_date)
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                            {isEditing ? (
+                              <input
+                                type="date"
+                                value={source.leave_end_date || ''}
+                                onChange={(e) => setLeaveEditDraft((d) => ({ ...d, leave_end_date: e.target.value }))}
+                                className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm"
+                              />
+                            ) : (
+                              formatMdy(row.leave_end_date)
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                            {isEditing ? (
+                              <select
+                                value={source.leave_type || 'whole'}
+                                onChange={(e) => setLeaveEditDraft((d) => ({ ...d, leave_type: e.target.value }))}
+                                className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm"
+                              >
+                                <option value="whole">Whole day</option>
+                                <option value="half">Half day</option>
+                              </select>
+                            ) : (
+                              row.leave_type === 'half' ? 'Half day' : 'Whole day'
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {calculateLeaveDuration(source.leave_start_date, source.leave_end_date, source.leave_type)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                            {isEditing ? (
+                              <input
+                                type="url"
+                                value={source.leave_form_link || ''}
+                                onChange={(e) => setLeaveEditDraft((d) => ({ ...d, leave_form_link: e.target.value }))}
+                                className="w-52 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm"
+                              />
+                            ) : row.leave_form_link ? (
+                              <a
+                                href={row.leave_form_link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[#6795BE] hover:underline"
+                              >
+                                Open link
+                              </a>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                            {row.signed_by || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                                row.status === 'approved'
+                                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-200'
+                                  : row.status === 'declined'
+                                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200'
+                                  : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200'
+                              }`}
+                            >
+                              {row.status || 'pending'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={source.note || ''}
+                                onChange={(e) => setLeaveEditDraft((d) => ({ ...d, note: e.target.value }))}
+                                className="w-40 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm"
+                              />
+                            ) : (
+                              row.note || '—'
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            {isEditing ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={saveEditLeaveRow}
+                                  className="px-2.5 py-1 rounded-md text-xs font-medium text-white"
+                                  style={{ backgroundColor: PRIMARY }}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEditLeaveRow}
+                                  className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                {canEditDeleteLeaveRow(row) && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => beginEditLeaveRow(row)}
+                                      className="px-2.5 py-1 rounded-md text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteLeaveRow(row.id)}
+                                      className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                    >
+                                      Delete
+                                    </button>
+                                  </>
+                                )}
+                                {canApproveLeaveRow(row) && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateLeaveStatus(row, 'approved')}
+                                      className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-green-200 dark:border-green-900/60 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-950/30"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateLeaveStatus(row, 'declined')}
+                                      className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-yellow-200 dark:border-yellow-900/60 text-yellow-700 dark:text-yellow-200 hover:bg-yellow-50 dark:hover:bg-yellow-950/30"
+                                    >
+                                      Decline
+                                    </button>
+                                  </>
+                                )}
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <Modal
+            open={leaveModalOpen}
+            onClose={() => {
+              setLeaveModalOpen(false);
+              resetLeaveForm();
+            }}
+            zIndexClassName="z-[2147483647]"
+          >
+            <div className="w-full max-w-3xl bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+                  Add leave record
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLeaveModalOpen(false);
+                    resetLeaveForm();
+                  }}
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Submitted by</label>
+                    <div className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950/40 text-gray-800 dark:text-gray-200 px-3 py-2 text-sm">
+                      {currentActorName}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Leave start date</label>
+                    <input
+                      type="date"
+                      value={leaveForm.leave_start_date}
+                      onChange={(e) => setLeaveForm((p) => ({ ...p, leave_start_date: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Leave end date</label>
+                    <input
+                      type="date"
+                      value={leaveForm.leave_end_date}
+                      onChange={(e) => setLeaveForm((p) => ({ ...p, leave_end_date: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Option</label>
+                    <select
+                      value={leaveForm.leave_type}
+                      onChange={(e) => setLeaveForm((p) => ({ ...p, leave_type: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                    >
+                      <option value="whole">Whole day</option>
+                      <option value="half">Half day</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Duration</label>
+                    <div className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950/40 text-gray-800 dark:text-gray-200 px-3 py-2 text-sm">
+                      {calculateLeaveDuration(leaveForm.leave_start_date, leaveForm.leave_end_date, leaveForm.leave_type)}
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Attached leave form (link)</label>
+                    <input
+                      type="url"
+                      value={leaveForm.leave_form_link}
+                      onChange={(e) => setLeaveForm((p) => ({ ...p, leave_form_link: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Note (optional)</label>
+                    <input
+                      type="text"
+                      value={leaveForm.note}
+                      onChange={(e) => setLeaveForm((p) => ({ ...p, note: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                      placeholder="Optional note"
+                    />
+                  </div>
+                </div>
+                <div className="mt-5 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLeaveModalOpen(false);
+                      resetLeaveForm();
+                    }}
+                    className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={addLeaveRow}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                    style={{ backgroundColor: PRIMARY }}
+                  >
+                    Add leave record
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Modal>
+
+          <Modal
+            open={leaveSampleModalOpen}
+            onClose={() => setLeaveSampleModalOpen(false)}
+            zIndexClassName="z-[2147483647]"
+          >
+            <div className="w-full max-w-xl bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+                  Sample leave form guide
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setLeaveSampleModalOpen(false)}
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-5 space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                <p className="font-medium">Leave Form Template:</p>
+                <p>
+                  <a
+                    href={LEAVE_TEMPLATE_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[#6795BE] hover:underline break-all"
+                  >
+                    {LEAVE_TEMPLATE_URL}
+                  </a>
+                </p>
+                <p className="font-medium">Instructions:</p>
+                <ol className="list-decimal pl-5 space-y-1">
+                  <li>Open the template link above.</li>
+                  <li>Create your own copy first.</li>
+                  <li>Edit only your copied file.</li>
+                  <li>Upload/share your completed copy, then paste that link in the leave record form.</li>
+                </ol>
+                <p className="font-medium">Include these details in your leave form copy:</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Intern full name and team</li>
+                  <li>Leave type (whole day / half day)</li>
+                  <li>Leave start and end date</li>
+                  <li>Reason for leave</li>
+                  <li>Approver signature section</li>
+                </ul>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Use this as a temporary template reference until a final standardized leave form is provided.
+                </p>
+              </div>
+            </div>
+          </Modal>
+        </div>
       ) : (
         <>
-      <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-        {!isTlVtlTrackerEditMode ? (
-          <button
-            type="button"
-            onClick={() => setIsTlVtlTrackerEditMode(true)}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-            style={{ backgroundColor: PRIMARY }}
-          >
-            Edit
-          </button>
-        ) : (
-          <>
-                <button
-                  type="button"
-                  onClick={addTlVtlTrackerRow}
-                  disabled={savingTlVtlTracker}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-60"
-                >
-                  {savingTlVtlTracker ? 'Adding...' : 'Add row'}
-                </button>
-            <button
-              type="button"
-              onClick={saveAllTlVtlTrackerRows}
-              disabled={savingTlVtlTracker}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
-              style={{ backgroundColor: PRIMARY }}
-            >
-              {savingTlVtlTracker ? 'Saving...' : 'Save'}
-            </button>
-                <button
-                  type="button"
-                  onClick={cancelTlVtlTrackerEdit}
-                  disabled={savingTlVtlTracker}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-60"
-                >
-                  Cancel
-                </button>
-          </>
-        )}
-      </div>
-
       <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           {tlVtlTrackerRows.length === 0 ? (
