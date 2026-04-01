@@ -227,9 +227,9 @@ export default function DashboardTicketCharts({ tickets, title = 'Analytics', da
 
     // Average completion time (closed tickets resolved within last `daysBack` days)
     const now = new Date();
-    const start = new Date(now);
-    start.setDate(start.getDate() - (daysBack - 1));
-    start.setHours(0, 0, 0, 0);
+    const completionStart = new Date(now);
+    completionStart.setDate(completionStart.getDate() - (daysBack - 1));
+    completionStart.setHours(0, 0, 0, 0);
 
     const completionDurationsMs = [];
     list.forEach((t) => {
@@ -239,7 +239,7 @@ export default function DashboardTicketCharts({ tickets, title = 'Analytics', da
       if (!createdAt) return;
       const resolvedAt = safeDate(t?.updated_at) || safeDate(t?.closed_at) || safeDate(t?.resolved_at);
       if (!resolvedAt) return;
-      if (resolvedAt < start) return;
+      if (resolvedAt < completionStart) return;
       completionDurationsMs.push(resolvedAt.getTime() - createdAt.getTime());
     });
 

@@ -46,7 +46,13 @@ function Cell({ allowed }) {
       </td>
     );
   }
-  return <td className="px-3 py-2 text-center" title="Not allowed" />;
+  return (
+    <td className="px-3 py-2 text-center" title="Not allowed">
+      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200 text-xs font-semibold" aria-label="Not allowed">
+        ✕
+      </span>
+    </td>
+  );
 }
 
 export default function RolePermissions() {
@@ -77,7 +83,7 @@ export default function RolePermissions() {
             Overview of permissions by role. Rows are capabilities; columns are roles.
           </p>
           <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            ✓ = allowed for that role. Blank = not allowed. Some permissions (e.g. WordPress tasks, resolve issues) may also depend on team assignment.
+            ✓ = allowed for that role. ✕ = not allowed. Some permissions (e.g. WordPress tasks, resolve issues) may also depend on team assignment.
           </p>
         </div>
       </div>

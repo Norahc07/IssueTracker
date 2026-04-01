@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { permissions, getRoleDisplayName, ROLES, TEAMS } from '../utils/rolePermissions.js';
+import { loadUiState, makeUiStateKey, saveUiState } from '../utils/uiState.js';
 import { queryCache } from '../utils/queryCache.js';
 import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 import { notifyUser } from '../utils/notifications.js';
@@ -338,12 +339,13 @@ function isClockedIn(log) {
   return last && !last.time_out;
 }
 
-/** Match user to attendance role filter: '' (all), 'tla', 'monitoring', 'pat1', 'tl', 'vtl'.
+/** Match user to attendance role filter: '' (all), 'intern', 'tla', 'monitoring', 'pat1', 'tl', 'vtl'.
  * TLA / Monitoring Team / PAT1 = that group (role or team); TL = team leads only; VTL = vice team leads only. */
 function userMatchesRoleFilter(user, filterValue) {
   if (!filterValue) return true;
   const role = user?.role;
   const team = user?.team;
+  if (filterValue === 'intern') return role === ROLES.INTERN;
   if (filterValue === 'tla') return role === ROLES.TLA || team === 'tla';
   if (filterValue === 'monitoring') return role === ROLES.MONITORING_TEAM || team === 'monitoring';
   if (filterValue === 'pat1') return role === ROLES.PAT1 || team === 'pat1';
@@ -447,6 +449,67 @@ export default function Attendance() {
   const [totalHoursTeamFilter, setTotalHoursTeamFilter] = useState('');
   const [scheduleRoleFilter, setScheduleRoleFilter] = useState('');
   const [logSpecificDate, setLogSpecificDate] = useState(''); // for logDateFilter === 'specific' (all-interns tab)
+
+  // Persist UI state across navigation within this session
+  useEffect(() => {
+    const key = makeUiStateKey({ userId: user?.id, scope: 'attendance' });
+    const cached = loadUiState(key);
+    if (!cached) return;
+
+    if (cached.attendanceTab) setAttendanceTab(cached.attendanceTab);
+    if (cached.logDateFilter) setLogDateFilter(cached.logDateFilter);
+    if (cached.logSpecificDate != null) setLogSpecificDate(cached.logSpecificDate);
+    if (cached.myLogDateFilter) setMyLogDateFilter(cached.myLogDateFilter);
+    if (cached.myLogSpecificDate != null) setMyLogSpecificDate(cached.myLogSpecificDate);
+
+    if (Number.isFinite(cached.pageMyLog)) setPageMyLog(cached.pageMyLog);
+    if (Number.isFinite(cached.pageAllInterns)) setPageAllInterns(cached.pageAllInterns);
+    if (Number.isFinite(cached.pageTotalHours)) setPageTotalHours(cached.pageTotalHours);
+    if (Number.isFinite(cached.pageSchedules)) setPageSchedules(cached.pageSchedules);
+
+    if (cached.allInternsRoleFilter != null) setAllInternsRoleFilter(cached.allInternsRoleFilter);
+    if (cached.allInternsLateFilter) setAllInternsLateFilter(cached.allInternsLateFilter);
+    if (cached.totalHoursRoleFilter != null) setTotalHoursRoleFilter(cached.totalHoursRoleFilter);
+    if (cached.totalHoursTeamFilter != null) setTotalHoursTeamFilter(cached.totalHoursTeamFilter);
+    if (cached.scheduleRoleFilter != null) setScheduleRoleFilter(cached.scheduleRoleFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    const key = makeUiStateKey({ userId: user?.id, scope: 'attendance' });
+    saveUiState(key, {
+      attendanceTab,
+      logDateFilter,
+      logSpecificDate,
+      myLogDateFilter,
+      myLogSpecificDate,
+      pageMyLog,
+      pageAllInterns,
+      pageTotalHours,
+      pageSchedules,
+      allInternsRoleFilter,
+      allInternsLateFilter,
+      totalHoursRoleFilter,
+      totalHoursTeamFilter,
+      scheduleRoleFilter,
+    });
+  }, [
+    user?.id,
+    attendanceTab,
+    logDateFilter,
+    logSpecificDate,
+    myLogDateFilter,
+    myLogSpecificDate,
+    pageMyLog,
+    pageAllInterns,
+    pageTotalHours,
+    pageSchedules,
+    allInternsRoleFilter,
+    allInternsLateFilter,
+    totalHoursRoleFilter,
+    totalHoursTeamFilter,
+    scheduleRoleFilter,
+  ]);
 
   // Import attendance modal
   const [showImportModal, setShowImportModal] = useState(false);
@@ -2329,6 +2392,7 @@ export default function Attendance() {
                         className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
                       >
                         <option value="">All roles</option>
+                        <option value="intern">Intern</option>
                         <option value="tla">Team Lead Assistant (TLA)</option>
                         <option value="monitoring">Monitoring Team</option>
                         <option value="pat1">PAT1</option>
@@ -2585,6 +2649,7 @@ export default function Attendance() {
                         className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
                       >
                         <option value="">All roles</option>
+                        <option value="intern">Intern</option>
                         <option value="tla">Team Lead Assistant (TLA)</option>
                         <option value="monitoring">Monitoring Team</option>
                         <option value="pat1">PAT1</option>

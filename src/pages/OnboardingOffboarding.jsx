@@ -200,6 +200,8 @@ export default function OnboardingOffboarding() {
     department: '',
     team: '',
     start_date: '',
+    hours: '',
+    school: '',
   });
 
   const [offboardingForm, setOffboardingForm] = useState({
@@ -386,6 +388,10 @@ export default function OnboardingOffboarding() {
 
   const allYears = useMemo(() => {
     const years = new Set();
+    const fixedYears = [new Date().getFullYear(), 2025, 2024, 2023];
+    fixedYears.forEach((y) => {
+      if (Number.isFinite(y) && y > 1900) years.add(y);
+    });
     onboarding.forEach((r) => {
       const y = getYear(r.onboarding_datetime);
       if (y) years.add(y);
@@ -394,7 +400,6 @@ export default function OnboardingOffboarding() {
       const y = getYear(r.actual_end_date);
       if (y) years.add(y);
     });
-    if (years.size === 0) years.add(new Date().getFullYear());
     return Array.from(years).sort((a, b) => b - a);
   }, [onboarding, offboarding]);
 
@@ -511,6 +516,8 @@ export default function OnboardingOffboarding() {
         department: '',
         team: '',
         start_date: '',
+        hours: '',
+        school: '',
       });
     } catch (err) {
       console.error('Terminate onboarding error:', err);
@@ -612,10 +619,53 @@ export default function OnboardingOffboarding() {
   const handleOnboardingSubmit = async (e) => {
     e.preventDefault();
     setOnboardingSubmitAttempted(true);
-    const { onboarding_date, onboarding_time, name, email, department, team, start_date } = onboardingForm;
+    const {
+      onboarding_date,
+      onboarding_time,
+      name,
+      email,
+      department,
+      team,
+      start_date,
+      hours,
+      school,
+    } = onboardingForm;
     if (!onboarding_date || !name.trim()) {
       toast.error('Onboarding date and name are required.');
       return;
+    }
+    const isCreating = !editingOnboardingId;
+    const existingOnboardingRow =
+      editingOnboardingId && Array.isArray(onboarding)
+        ? onboarding.find((r) => r?.id === editingOnboardingId) || null
+        : null;
+
+    const parsedHours = hours === '' ? null : Number(hours);
+    const schoolTrim = school?.trim() || '';
+
+    const hoursForPayload = !isCreating && hours === '' ? (existingOnboardingRow?.hours ?? null) : parsedHours;
+    const schoolForPayload = !isCreating && !schoolTrim ? (existingOnboardingRow?.school ?? null) : (schoolTrim || null);
+    const startDateForPayload = !isCreating && !start_date
+      ? (existingOnboardingRow?.start_date ?? null)
+      : (start_date || null);
+    if (isCreating) {
+      if (!start_date) {
+        toast.error('Start date is required.');
+        return;
+      }
+      if (hoursForPayload == null || Number.isNaN(hoursForPayload) || hoursForPayload <= 0) {
+        toast.error('Hours is required and must be a valid number greater than 0.');
+        return;
+      }
+      if (!schoolTrim) {
+        toast.error('School is required.');
+        return;
+      }
+    } else {
+      if (hours !== '' && (Number.isNaN(parsedHours) || parsedHours < 0)) {
+        toast.error('Hours must be a valid number.');
+        return;
+      }
     }
     try {
       const datetime = onboarding_time
@@ -628,7 +678,9 @@ export default function OnboardingOffboarding() {
         email: email?.trim() || null,
         department: department?.trim() || null,
         team: team?.trim() || null,
-        start_date: start_date || null,
+        start_date: startDateForPayload,
+        hours: hoursForPayload,
+        school: schoolForPayload,
       };
 
       let error;
@@ -650,6 +702,8 @@ export default function OnboardingOffboarding() {
         department: '',
         team: '',
         start_date: '',
+        hours: '',
+        school: '',
       });
       setEditingOnboardingId(null);
       setShowOnboardingModal(false);
@@ -1136,6 +1190,8 @@ export default function OnboardingOffboarding() {
                       department: '',
                       team: '',
                       start_date: '',
+                      hours: '',
+                      school: '',
                     });
                     setShowOnboardingModal(true);
                   }}
@@ -1181,6 +1237,8 @@ export default function OnboardingOffboarding() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Department</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Team</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Start date</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Hours</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">School</th>
                       {canManageRecords && (
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Actions</th>
                       )}
@@ -1215,6 +1273,12 @@ export default function OnboardingOffboarding() {
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {r?.start_date ? new Date(r.start_date).toLocaleDateString() : '—'}
                         </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                          {r?.hours != null && String(r.hours).trim() !== '' ? r.hours : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                          {r?.school && String(r.school).trim() !== '' ? r.school : '—'}
+                        </td>
                         {canManageRecords && (
                           <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 space-x-2">
                             {r && (
@@ -1234,6 +1298,8 @@ export default function OnboardingOffboarding() {
                                     department: r.department || '',
                                     team: r.team || mapUserTeamToOnboardingTeam(u?.team),
                                     start_date: r.start_date || '',
+                                    hours: r.hours != null ? String(r.hours) : '',
+                                    school: r.school || '',
                                   });
                                   setShowOnboardingModal(true);
                                 }}
@@ -1255,6 +1321,8 @@ export default function OnboardingOffboarding() {
                                     department: 'IT',
                                     team: mapUserTeamToOnboardingTeam(u.team),
                                     start_date: '',
+                                    hours: '',
+                                    school: '',
                                   });
                                   setShowOnboardingModal(true);
                                 }}
@@ -1269,7 +1337,7 @@ export default function OnboardingOffboarding() {
                     ))}
                     {displayedOnboarding.length === 0 && (
                       <tr>
-                        <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={canManageRecords ? 7 : 6}>
+                        <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={canManageRecords ? 9 : 8}>
                           No onboarding records for {activeYear}.
                         </td>
                       </tr>
@@ -2395,6 +2463,42 @@ export default function OnboardingOffboarding() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Hours</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="0.25"
+                    value={onboardingForm.hours}
+                    onChange={(e) => setOnboardingForm((f) => ({ ...f, hours: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
+                    placeholder="e.g. 120"
+                  />
+                  {onboardingSubmitAttempted &&
+                    !editingOnboardingId &&
+                    (!onboardingForm.hours ||
+                      Number.isNaN(Number(onboardingForm.hours)) ||
+                      Number(onboardingForm.hours) <= 0) && (
+                    <p className="mt-1 text-xs font-medium text-red-600">Required.</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">School</label>
+                  <input
+                    type="text"
+                    value={onboardingForm.school}
+                    onChange={(e) => setOnboardingForm((f) => ({ ...f, school: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
+                    placeholder="e.g. University of the Philippines"
+                  />
+                  {onboardingSubmitAttempted && !editingOnboardingId && !onboardingForm.school.trim() && (
+                    <p className="mt-1 text-xs font-medium text-red-600">Required.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Name</label>
                   <input
                     type="text"
@@ -2469,7 +2573,17 @@ export default function OnboardingOffboarding() {
                     type="submit"
                     className="px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm"
                     style={{ backgroundColor: PRIMARY }}
-                    disabled={terminatingOnboarding || !onboardingForm.onboarding_date || !onboardingForm.name.trim()}
+                    disabled={
+                      terminatingOnboarding ||
+                      !onboardingForm.onboarding_date ||
+                      !onboardingForm.name.trim() ||
+                      (!editingOnboardingId &&
+                        (!onboardingForm.start_date ||
+                          !onboardingForm.hours ||
+                          Number.isNaN(Number(onboardingForm.hours)) ||
+                          Number(onboardingForm.hours) <= 0 ||
+                          !onboardingForm.school.trim()))
+                    }
                   >
                     {editingOnboardingId ? 'Save changes' : 'Save onboarding'}
                   </button>

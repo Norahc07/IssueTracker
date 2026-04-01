@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import { TEAMS } from '../utils/rolePermissions.js';
 import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 import { taskStatusPill } from '../utils/uiPills.js';
+import { loadUiState, makeUiStateKey, saveUiState } from '../utils/uiState.js';
 
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -112,6 +113,44 @@ export default function MonitoringTasks({ embedded = false }) {
     target_end_1: '',
     target_end_2: '',
   });
+
+  // UI: which task categories are expanded (for dropdown-style view)
+  const [openCategories, setOpenCategories] = useState(() => new Set(MONITORING_TASK_CATEGORIES.map((c) => c.category)));
+
+  // Persist UI state across navigation within this session
+  useEffect(() => {
+    const key = makeUiStateKey({ userId: user?.id, scope: embedded ? 'monitoringTasks:embedded' : 'monitoringTasks' });
+    const cached = loadUiState(key);
+    if (!cached) return;
+    if (cached.selectedDate) setSelectedDate(cached.selectedDate);
+    if (cached.viewTab) setViewTab(cached.viewTab);
+    if (typeof cached.myTasksOnly === 'boolean') setMyTasksOnly(cached.myTasksOnly);
+    if (Array.isArray(cached.openCategories)) setOpenCategories(new Set(cached.openCategories));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, embedded]);
+
+  useEffect(() => {
+    const key = makeUiStateKey({ userId: user?.id, scope: embedded ? 'monitoringTasks:embedded' : 'monitoringTasks' });
+    saveUiState(key, {
+      selectedDate,
+      viewTab,
+      myTasksOnly,
+      openCategories: Array.from(openCategories),
+    });
+  }, [user?.id, embedded, selectedDate, viewTab, myTasksOnly, openCategories]);
+
+  const persistUiStateNow = (next) => {
+    const key = makeUiStateKey({
+      userId: user?.id,
+      scope: embedded ? 'monitoringTasks:embedded' : 'monitoringTasks',
+    });
+    saveUiState(key, {
+      selectedDate: next?.selectedDate ?? selectedDate,
+      viewTab: next?.viewTab ?? viewTab,
+      myTasksOnly: next?.myTasksOnly ?? myTasksOnly,
+      openCategories: next?.openCategories ?? Array.from(openCategories),
+    });
+  };
 
   // Verify access: Only Monitoring team or Admin
   const isMonitoringTeam = String(userTeam || '').toLowerCase().includes('monitoring');
@@ -415,7 +454,11 @@ export default function MonitoringTasks({ embedded = false }) {
           <PrettyDatePicker
             id="record-date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setSelectedDate(next);
+              persistUiStateNow({ selectedDate: next });
+            }}
             ariaLabel="Select record date"
             className="shadow-sm"
           />
@@ -426,7 +469,10 @@ export default function MonitoringTasks({ embedded = false }) {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => setViewTab('tasks')}
+            onClick={() => {
+              setViewTab('tasks');
+              persistUiStateNow({ viewTab: 'tasks' });
+            }}
             className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
               viewTab === 'tasks'
                 ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
@@ -438,7 +484,10 @@ export default function MonitoringTasks({ embedded = false }) {
           </button>
           <button
             type="button"
-            onClick={() => setViewTab('intern-records')}
+            onClick={() => {
+              setViewTab('intern-records');
+              persistUiStateNow({ viewTab: 'intern-records' });
+            }}
             className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
               viewTab === 'intern-records'
                 ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
@@ -455,7 +504,10 @@ export default function MonitoringTasks({ embedded = false }) {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setMyTasksOnly(false)}
+            onClick={() => {
+              setMyTasksOnly(false);
+              persistUiStateNow({ myTasksOnly: false });
+            }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               !myTasksOnly
                 ? 'text-white'
@@ -467,7 +519,10 @@ export default function MonitoringTasks({ embedded = false }) {
           </button>
           <button
             type="button"
-            onClick={() => setMyTasksOnly(true)}
+            onClick={() => {
+              setMyTasksOnly(true);
+              persistUiStateNow({ myTasksOnly: true });
+            }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               myTasksOnly
                 ? 'text-white'
@@ -494,23 +549,46 @@ export default function MonitoringTasks({ embedded = false }) {
               if (!hasMyTask) return null;
             }
 
+            const isOpen = openCategories.has(cat.category);
             return (
               <div key={catIdx} className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
-                <div className="bg-gray-50 dark:bg-gray-950/40 px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{cat.category}</h2>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
-                    <thead>
-                      <tr className="bg-white dark:bg-gray-900 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        <th className="px-4 py-3 text-left w-1/2">Task Description</th>
-                        {!myTasksOnly && <th className="px-4 py-3 text-left w-48">Assigned To</th>}
-                        <th className="px-4 py-3 text-left w-40">Status</th>
-                        <th className="px-4 py-3 text-left">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900">
-                      {cat.tasks.map((taskName, tIdx) => {
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenCategories((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(cat.category)) next.delete(cat.category);
+                      else next.add(cat.category);
+                      // Persist immediately (avoid missing the save effect if user navigates away quickly)
+                      persistUiStateNow({ openCategories: Array.from(next) });
+                      return next;
+                    });
+                  }}
+                  className="w-full bg-gray-50 dark:bg-gray-950/40 px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between text-left"
+                >
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{cat.category}</h2>
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {cat.tasks.length} task{cat.tasks.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <span className="ml-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-300 text-xs">
+                    {isOpen ? '−' : '+'}
+                  </span>
+                </button>
+                {isOpen && (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                      <thead>
+                        <tr className="bg-white dark:bg-gray-900 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          <th className="px-4 py-3 text-left w-1/2">Task Description</th>
+                          {!myTasksOnly && <th className="px-4 py-3 text-left w-48">Assigned To</th>}
+                          <th className="px-4 py-3 text-left w-40">Status</th>
+                          <th className="px-4 py-3 text-left">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900">
+                        {cat.tasks.map((taskName, tIdx) => {
                         const taskRec = tasksData.find(t => t.task_name === taskName) || {};
                         const isMyTask = taskRec.assigned_to === user?.id;
                         
@@ -595,6 +673,7 @@ export default function MonitoringTasks({ embedded = false }) {
                     </tbody>
                   </table>
                 </div>
+                )}
               </div>
             );
           })}

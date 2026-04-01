@@ -37,6 +37,7 @@ export default function SidebarLayout() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationDetail, setNotificationDetail] = useState(null);
   const [autoJobRunning, setAutoJobRunning] = useState(false);
   const [theme, setTheme] = useState(() => getStoredTheme());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -102,6 +103,25 @@ export default function SidebarLayout() {
     } catch (e) {
       console.warn('Notifications mark read error:', e);
     }
+  };
+
+  const markNotificationAsRead = async (notificationId) => {
+    if (!supabase || !notificationId) return;
+    const existing = notifications.find((n) => n.id === notificationId);
+    if (existing?.read_at) return;
+    const nowIso = new Date().toISOString();
+    try {
+      await supabase.from('notifications').update({ read_at: nowIso }).eq('id', notificationId);
+      setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read_at: nowIso } : n)));
+    } catch (e) {
+      console.warn('Notifications mark single read error:', e);
+    }
+  };
+
+  const openNotificationDetail = async (n) => {
+    if (!n) return;
+    setNotificationDetail(n);
+    if (!n.read_at) await markNotificationAsRead(n.id);
   };
 
   const getSegments = (log) => {
@@ -544,7 +564,10 @@ export default function SidebarLayout() {
               </div>
               <button
                 type="button"
-                onClick={() => setNotificationsOpen(false)}
+                onClick={() => {
+                  setNotificationsOpen(false);
+                  setNotificationDetail(null);
+                }}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                 aria-label="Close notifications"
               >
@@ -553,32 +576,34 @@ export default function SidebarLayout() {
             </div>
 
             <div className="px-5 py-4 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={loadNotifications}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  >
-                    Refresh
-                  </button>
-                  <button
-                    type="button"
-                    onClick={markAllAsRead}
-                    disabled={!notifications.some((n) => !n.read_at)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60"
-                  >
-                    Mark all as read
-                  </button>
-                </div>
+              {!notificationDetail && (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={loadNotifications}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    >
+                      Refresh
+                    </button>
+                    <button
+                      type="button"
+                      onClick={markAllAsRead}
+                      disabled={!notifications.some((n) => !n.read_at)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60"
+                    >
+                      Mark all as read
+                    </button>
+                  </div>
 
-                {canSendReminders && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Reminders are sent automatically at 6:30 PM; missed clock-outs auto close at 12:00 AM and notify Monitoring TL/VTL.
-                    {autoJobRunning ? ' (running…)': ''}
-                  </span>
-                )}
-              </div>
+                  {canSendReminders && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Reminders are sent automatically at 6:30 PM; missed clock-outs auto close at 12:00 AM and notify Monitoring TL/VTL.
+                      {autoJobRunning ? ' (running…)': ''}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
                 {notificationsLoading ? (
@@ -586,22 +611,79 @@ export default function SidebarLayout() {
                 ) : notifications.length === 0 ? (
                   <div className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">No notifications yet.</div>
                 ) : (
-                  <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {notifications.map((n) => (
-                      <li key={n.id} className={`px-4 py-3 ${n.read_at ? 'bg-white dark:bg-gray-900' : 'bg-blue-50/40 dark:bg-blue-950/30'}`}>
+                  <>
+                    {/* Detail view */}
+                    {notificationDetail && (
+                      <div className="p-4 space-y-3">
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{n.title}</p>
-                            {n.body && <p className="mt-0.5 text-xs text-gray-700 dark:text-gray-200 whitespace-pre-line">{n.body}</p>}
-                            <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                              {n.created_at ? new Date(n.created_at).toLocaleString() : '—'}
-                              {n.read_at ? ' • Read' : ' • Unread'}
-                            </p>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setNotificationDetail(null)}
+                            className="text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md px-2 py-1"
+                          >
+                            ← Back
+                          </button>
+                          <span className={`text-[11px] font-medium px-2 py-1 rounded-full ${notificationDetail.read_at ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300' : 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-200'}`}>
+                            {notificationDetail.read_at ? 'Read' : 'Unread'}
+                          </span>
                         </div>
-                      </li>
-                    ))}
-                  </ul>
+
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {notificationDetail.title || '—'}
+                          </p>
+                          {notificationDetail.body && (
+                            <pre className="text-xs text-gray-700 dark:text-gray-200 whitespace-pre-wrap leading-5">
+                              {notificationDetail.body}
+                            </pre>
+                          )}
+                        </div>
+
+                        <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-1">
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                            Created: {notificationDetail.created_at ? new Date(notificationDetail.created_at).toLocaleString() : '—'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* List view */}
+                    {!notificationDetail && (
+                      <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                        {notifications.map((n) => (
+                          <li
+                            key={n.id}
+                            className={`px-4 py-3 cursor-pointer ${n.read_at ? 'bg-white dark:bg-gray-900' : 'bg-blue-50/40 dark:bg-blue-950/30'} hover:bg-gray-50 dark:hover:bg-gray-900`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => openNotificationDetail(n)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') openNotificationDetail(n);
+                            }}
+                            aria-label={`Open notification: ${n.title || 'notification'}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{n.title}</p>
+                                {n.body && (
+                                  <p className="mt-0.5 text-xs text-gray-700 dark:text-gray-200 whitespace-pre-line">
+                                    {n.body}
+                                  </p>
+                                )}
+                                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                  {n.created_at ? new Date(n.created_at).toLocaleString() : '—'}
+                                  {n.read_at ? ' • Read' : ' • Unread'}
+                                </p>
+                              </div>
+                              <div className="text-gray-400 dark:text-gray-500 text-xs font-medium">
+                                View
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
                 )}
               </div>
             </div>
