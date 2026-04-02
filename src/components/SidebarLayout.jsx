@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import DailyReportReminder from './DailyReportReminder.jsx';
+import AppBreadcrumbs from './AppBreadcrumbs.jsx';
 import { useSupabase } from '../context/supabase.jsx';
 import { getRoleDisplayName, getRoleColor, getRoleDescription, permissions } from '../utils/rolePermissions.js';
 import { createNotifications } from '../utils/notifications.js';
@@ -27,6 +28,20 @@ function Icon({ path, className = 'w-5 h-5' }) {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={path} />
     </svg>
   );
+}
+
+/** High-contrast active nav: white panel + amber left bar (expanded) or solid pill (collapsed). */
+function sidebarNavLinkClass(active, collapsed) {
+  if (collapsed) {
+    return active
+      ? 'flex min-w-0 items-center justify-center rounded-xl px-2 py-2.5 text-sm font-semibold bg-white text-[#1a3a52] shadow-lg ring-2 ring-amber-200/90'
+      : 'flex min-w-0 items-center justify-center rounded-xl px-2 py-2.5 text-sm font-medium text-white hover:bg-white/15';
+  }
+  const row = 'flex min-w-0 items-center gap-3 rounded-lg py-2.5 pl-2 pr-3 text-sm border-l-[5px]';
+  if (active) {
+    return `${row} font-semibold bg-white text-[#1a3a52] shadow-md border-l-amber-300 ring-1 ring-black/10`;
+  }
+  return `${row} font-medium text-white border-l-transparent hover:bg-white/20 hover:text-white`;
 }
 
 /** Human-readable team label (TLA, Monitoring, HR, etc.) */
@@ -542,9 +557,7 @@ export default function SidebarLayout() {
                 key={item.to}
                 to={to}
                 title={item.label}
-                className={`flex min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  active ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-                } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
+                className={`${sidebarNavLinkClass(active, isSidebarCollapsed)} transition-colors`}
               >
                 <Icon path={item.icon} className="h-5 w-5 flex-shrink-0" />
                 {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
@@ -555,18 +568,14 @@ export default function SidebarLayout() {
             <>
               <Link
                 to="/superadmin/overview"
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  location.pathname === '/superadmin/overview' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-                } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
+                className={`${sidebarNavLinkClass(location.pathname === '/superadmin/overview', isSidebarCollapsed)} transition-colors`}
               >
                 <Icon path="M3 3h18M3 9h18M3 15h18M3 21h18" className="h-5 w-5 flex-shrink-0" />
                 {!isSidebarCollapsed && <span>OJT Overview</span>}
               </Link>
               <Link
                 to="/user-management"
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  location.pathname === '/user-management' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-                } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
+                className={`${sidebarNavLinkClass(location.pathname === '/user-management', isSidebarCollapsed)} transition-colors`}
               >
                 <Icon path="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" className="h-5 w-5 flex-shrink-0" />
                 {!isSidebarCollapsed && <span>User Management</span>}
@@ -576,9 +585,7 @@ export default function SidebarLayout() {
           {(userRole !== 'superadmin' && (userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl')) && (
             <Link
               to="/user-management"
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                location.pathname === '/user-management' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-              } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
+              className={`${sidebarNavLinkClass(location.pathname === '/user-management', isSidebarCollapsed)} transition-colors`}
             >
               <Icon path="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" className="h-5 w-5 flex-shrink-0" />
               {!isSidebarCollapsed && <span>User Management</span>}
@@ -587,9 +594,7 @@ export default function SidebarLayout() {
           {(userRole === 'admin' || userRole === 'tla') && (
             <Link
               to="/role-permissions"
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                location.pathname === '/role-permissions' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-              } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
+              className={`${sidebarNavLinkClass(location.pathname === '/role-permissions', isSidebarCollapsed)} transition-colors`}
             >
               <Icon path="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" className="h-5 w-5 flex-shrink-0" />
               {!isSidebarCollapsed && <span>Permissions</span>}
@@ -598,9 +603,7 @@ export default function SidebarLayout() {
           {(userRole === 'admin' || userRole === 'tla' || userRole === 'tl' || userRole === 'vtl') && (
             <Link
               to="/daily-report/manage"
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                location.pathname === '/daily-report/manage' ? 'bg-white/30 text-white shadow-sm ring-1 ring-white/25' : 'text-white/90 hover:bg-white/20 hover:text-white'
-              } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
+              className={`${sidebarNavLinkClass(location.pathname === '/daily-report/manage', isSidebarCollapsed)} transition-colors`}
             >
               <Icon path="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.5a2 2 0 012 2v5.5a2 2 0 01-2 2z" className="h-5 w-5 flex-shrink-0" />
               {!isSidebarCollapsed && <span>Manage Daily Report</span>}
@@ -785,6 +788,7 @@ export default function SidebarLayout() {
         )}
 
         <main className="flex-1 p-4 sm:p-6 text-gray-900 dark:text-gray-100">
+          <AppBreadcrumbs />
           <Outlet />
         </main>
       </div>

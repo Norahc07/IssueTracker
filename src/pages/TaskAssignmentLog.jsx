@@ -153,6 +153,31 @@ const canManageDomainsForTla = (userRole, userTeam) => {
   return false;
 };
 
+// Some domain fields can come back as strings (e.g., "false") depending on storage / migration.
+// Normalize to a real boolean so checkboxes don't render as checked by accident.
+const coerceBoolean = (raw) => {
+  if (raw === true) return true;
+  if (raw === false || raw == null) return false;
+  if (raw === 1) return true;
+  const s = String(raw).trim().toLowerCase();
+  if (s === 'true' || s === 't' || s === 'yes' || s === 'y') return true;
+  if (s === 'false' || s === 'f' || s === 'no' || s === 'n' || s === '0' || s === '') return false;
+  return Boolean(raw);
+};
+
+// Supabase values may come as boolean or as strings (legacy); normalize to real boolean.
+const toBool = (v) => {
+  if (v === true) return true;
+  if (v === false) return false;
+  if (v === 1) return true;
+  if (v === 0) return false;
+  if (v == null) return false;
+  const s = String(v).trim().toLowerCase();
+  // Only treat common boolean-ish values as truthy.
+  // (Legacy "done" values should not affect reCAPTCHA / Backup checkboxes.)
+  return s === 'true' || s === '1' || s === 'yes' || s === 'y';
+};
+
 const scanningLabel = (raw) => {
   if (!raw) return '';
   const key = String(raw).trim().toLowerCase();
@@ -342,6 +367,7 @@ export default function TaskAssignmentLog() {
   const [savingNewDomainDrawer, setSavingNewDomainDrawer] = useState(false);
   const [newDomainDrawerDraft, setNewDomainDrawerDraft] = useState(null);
   const [defaultAccounts, setDefaultAccounts] = useState({ intern: { username: '', password: '' }, sg: { username: '', password: '' } });
+  const [showNewDomainDrawerPassword, setShowNewDomainDrawerPassword] = useState(false); // Mask new_password by default
 
   // Reset table edit when modal opens
   useEffect(() => {
@@ -755,6 +781,7 @@ export default function TaskAssignmentLog() {
     setNewDomainDrawerDomain(domain);
     setIsEditingNewDomainDrawer(false);
     setSavingNewDomainDrawer(false);
+    setShowNewDomainDrawerPassword(false);
     setNewDomainDrawerDraft({
       wp_username: domain.wp_username || '',
       new_password: domain.new_password || '',
@@ -763,8 +790,8 @@ export default function TaskAssignmentLog() {
       scanning_date: domain.scanning_date || '',
       scanning_plugin: domain.scanning_plugin || '',
       scanning_2fa: domain.scanning_2fa || '',
-      recaptcha: !!domain.recaptcha,
-      backup: !!domain.backup,
+      recaptcha: toBool(domain.recaptcha),
+      backup: toBool(domain.backup),
       url: domain.url || '',
       country: domain.country || '',
     });
@@ -776,6 +803,7 @@ export default function TaskAssignmentLog() {
     setIsEditingNewDomainDrawer(false);
     setSavingNewDomainDrawer(false);
     setNewDomainDrawerDraft(null);
+    setShowNewDomainDrawerPassword(false);
   };
 
   const saveNewDomainDrawer = async () => {
@@ -4418,7 +4446,7 @@ export default function TaskAssignmentLog() {
                           View old password history
                         </button>
 
-                        {userRole === 'admin' && (
+                        {canManageDomainsForTla(userRole, userTeam) && (
                           <div className="flex items-center gap-2">
                             {!isEditingNewDomainDrawer ? (
                               <button
@@ -4469,20 +4497,66 @@ export default function TaskAssignmentLog() {
                           ].map((f) => (
                             <div key={f.key} className="space-y-1">
                               <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{f.label}</label>
-                              {isEditingNewDomainDrawer && userRole === 'admin' ? (
-                                <input
-                                  type={f.type}
-                                  value={newDomainDrawerDraft?.[f.key] ?? ''}
-                                  onChange={(e) =>
-                                    setNewDomainDrawerDraft((p) => ({ ...(p || {}), [f.key]: e.target.value }))
-                                  }
-                                  placeholder={f.placeholder}
-                                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
-                                />
+                              {isEditingNewDomainDrawer && canManageDomainsForTla(userRole, userTeam) ? (
+                                f.key === 'new_password' ? (
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type={showNewDomainDrawerPassword ? 'text' : 'password'}
+                                      value={newDomainDrawerDraft?.[f.key] ?? ''}
+                                      onChange={(e) =>
+                                        setNewDomainDrawerDraft((p) => ({ ...(p || {}), [f.key]: e.target.value }))
+                                      }
+                                      placeholder={f.placeholder}
+                                      className="flex-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowNewDomainDrawerPassword((v) => !v)}
+                                      className="shrink-0 px-2 py-1 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                    >
+                                      {showNewDomainDrawerPassword ? 'Hide' : 'Show'}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <input
+                                    type={f.type}
+                                    value={newDomainDrawerDraft?.[f.key] ?? ''}
+                                    onChange={(e) =>
+                                      setNewDomainDrawerDraft((p) => ({ ...(p || {}), [f.key]: e.target.value }))
+                                    }
+                                    placeholder={f.placeholder}
+                                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                                  />
+                                )
                               ) : (
-                                <div className="text-sm text-gray-900 dark:text-gray-100 break-all">
-                                  {newDomainDrawerDomain?.[f.key] || '—'}
-                                </div>
+                                f.key === 'new_password' ? (
+                                  (() => {
+                                    const raw = newDomainDrawerDomain?.[f.key];
+                                    const str = String(raw || '');
+                                    const masked = str ? '•'.repeat(Math.min(12, Math.max(6, str.length))) : '—';
+                                    const display = showNewDomainDrawerPassword ? str : masked;
+                                    return (
+                                      <div className="flex items-center gap-2">
+                                        <div className="text-sm text-gray-900 dark:text-gray-100 break-all flex-1">
+                                          {display}
+                                        </div>
+                                        {str && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setShowNewDomainDrawerPassword((v) => !v)}
+                                            className="shrink-0 px-2 py-1 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                          >
+                                            {showNewDomainDrawerPassword ? 'Hide' : 'Show'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })()
+                                ) : (
+                                  <div className="text-sm text-gray-900 dark:text-gray-100 break-all">
+                                    {newDomainDrawerDomain?.[f.key] || '—'}
+                                  </div>
+                                )
                               )}
                             </div>
                           ))}
@@ -4529,7 +4603,7 @@ export default function TaskAssignmentLog() {
                         <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1">
                             <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">Date</label>
-                            {isEditingNewDomainDrawer && userRole === 'admin' ? (
+                            {isEditingNewDomainDrawer && canManageDomainsForTla(userRole, userTeam) ? (
                               <PrettyDatePicker
                                 value={newDomainDrawerDraft?.scanning_done_date || ''}
                                 onChange={(e) =>
@@ -4562,7 +4636,7 @@ export default function TaskAssignmentLog() {
                           ).map((f) => (
                             <div key={f.key} className="space-y-1">
                               <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{f.label}</label>
-                              {isEditingNewDomainDrawer && userRole === 'admin' ? (
+                              {isEditingNewDomainDrawer && canManageDomainsForTla(userRole, userTeam) ? (
                                 <select
                                   value={newDomainDrawerDraft?.[f.key] ?? ''}
                                   onChange={(e) =>
@@ -4594,8 +4668,10 @@ export default function TaskAssignmentLog() {
                               <label key={c.key} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                                 <input
                                   type="checkbox"
-                                  checked={!!(isEditingNewDomainDrawer ? newDomainDrawerDraft?.[c.key] : newDomainDrawerDomain?.[c.key])}
-                                  disabled={!isEditingNewDomainDrawer || userRole !== 'admin'}
+                                  checked={toBool(
+                                    isEditingNewDomainDrawer ? newDomainDrawerDraft?.[c.key] : newDomainDrawerDomain?.[c.key]
+                                  )}
+                                  disabled={!isEditingNewDomainDrawer || !canManageDomainsForTla(userRole, userTeam)}
                                   onChange={(e) =>
                                     setNewDomainDrawerDraft((p) => ({ ...(p || {}), [c.key]: e.target.checked }))
                                   }

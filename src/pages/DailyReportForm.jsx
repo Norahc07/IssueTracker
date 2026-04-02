@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
-import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 import { createNotifications, getUserIdsByScope, scopeFromUserProfile } from '../utils/notifications.js';
 
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
+
+/** Local time: editable until 17:00 (5:00 PM). */
+function isBeforeFivePMCutoff() {
+  return new Date().getHours() < 17;
+}
 
 const SECTION_HEADINGS = [
   'Attendance',
@@ -33,29 +37,24 @@ export default function DailyReportForm() {
   const [timeOut, setTimeOut] = useState('');
   const [answers, setAnswers] = useState({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  /** True only after user clicks Edit for today's report (before 5 PM). */
+  const [formUnlocked, setFormUnlocked] = useState(false);
+  const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
     (async () => {
       setLoading(true);
       try {
-        const [qRes, sRes, logsRes] = await Promise.all([
+        const [qRes, logsRes] = await Promise.all([
           supabase.from('daily_report_questions').select('id, sort_order, question_text, required').order('sort_order'),
-          supabase.from('daily_report_submissions').select('*').eq('user_id', user.id).eq('report_date', todayStr()).maybeSingle(),
           supabase
             .from('daily_report_submissions')
-            .select('user_id, report_date, submitted_at, time_in, time_out, answers')
+            .select('id, user_id, report_date, submitted_at, time_in, time_out, answers')
             .eq('user_id', user.id)
             .order('report_date', { ascending: false }),
         ]);
         if (qRes.data) setQuestions(qRes.data);
-        if (sRes.data) {
-          setExisting(sRes.data);
-          setReportDate(sRes.data.report_date || todayStr());
-          setTimeIn(sRes.data.time_in ? String(sRes.data.time_in).slice(0, 5) : '');
-          setTimeOut(sRes.data.time_out ? String(sRes.data.time_out).slice(0, 5) : '');
-          setAnswers(sRes.data.answers || {});
-        }
         setLogs(logsRes.data || []);
       } catch (e) {
         toast.error('Failed to load form');
@@ -65,14 +64,58 @@ export default function DailyReportForm() {
     })();
   }, [user?.id, supabase]);
 
+  useEffect(() => {
+    if (!user || !supabase) return;
+    setFormUnlocked(false);
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('daily_report_submissions')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('report_date', reportDate)
+          .maybeSingle();
+        if (data) {
+          setExisting(data);
+          setTimeIn(data.time_in ? String(data.time_in).slice(0, 5) : '');
+          setTimeOut(data.time_out ? String(data.time_out).slice(0, 5) : '');
+          setAnswers(data.answers || {});
+        } else {
+          setExisting(null);
+          setTimeIn('');
+          setTimeOut('');
+          setAnswers({});
+        }
+      } catch (e) {
+        console.warn('Daily report load for date:', e);
+      }
+    })();
+  }, [user?.id, supabase, reportDate]);
+
+  useEffect(() => {
+    if (activeTab === 'form') setReportDate(todayStr());
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'log') setFormUnlocked(false);
+  }, [activeTab]);
+
   const handleAnswer = (questionId, value) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const refreshLogs = async () => {
+    if (!user || !supabase) return;
+    const { data } = await supabase
+      .from('daily_report_submissions')
+      .select('id, user_id, report_date, submitted_at, time_in, time_out, answers')
+      .eq('user_id', user.id)
+      .order('report_date', { ascending: false });
+    setLogs(Array.isArray(data) ? data : []);
+  };
+
+  const submitNow = async () => {
     if (!user) return;
-    setSubmitAttempted(true);
     if (!isFormValid) return;
     setSaving(true);
     try {
@@ -83,15 +126,37 @@ export default function DailyReportForm() {
         time_out: timeOut || null,
         answers,
       };
+      const isUpdate = !!existing?.id;
+      let savedRow = null;
       if (existing?.id) {
-        await supabase.from('daily_report_submissions').update(payload).eq('id', existing.id);
-        toast.success('Report updated.');
+        const { data, error } = await supabase
+          .from('daily_report_submissions')
+          .update(payload)
+          .eq('id', existing.id)
+          .select()
+          .single();
+        if (error) throw error;
+        savedRow = data;
+        toast.success('Changes saved.');
       } else {
-        await supabase.from('daily_report_submissions').upsert(payload, { onConflict: 'user_id,report_date' });
+        const { data, error } = await supabase
+          .from('daily_report_submissions')
+          .upsert(payload, { onConflict: 'user_id,report_date' })
+          .select()
+          .single();
+        if (error) throw error;
+        savedRow = data;
         toast.success('Report submitted.');
       }
-      setExisting({ ...existing, ...payload });
+      if (savedRow) {
+        setExisting(savedRow);
+        setTimeIn(savedRow.time_in ? String(savedRow.time_in).slice(0, 5) : '');
+        setTimeOut(savedRow.time_out ? String(savedRow.time_out).slice(0, 5) : '');
+        setAnswers(savedRow.answers || {});
+      }
+      setFormUnlocked(false);
       setSubmitAttempted(false);
+      await refreshLogs();
 
       // System notification: route by submitter scope (TLA vs Monitoring vs PAT1) + Admin
       try {
@@ -99,7 +164,6 @@ export default function DailyReportForm() {
         const scope = scopeFromUserProfile(me) || 'tla';
         const recipientIds = await getUserIdsByScope(supabase, scope);
         const displayName = user?.user_metadata?.full_name || user?.email || 'User';
-        const isUpdate = !!existing?.id;
         await createNotifications(
           supabase,
           recipientIds.map((id) => ({
@@ -120,6 +184,29 @@ export default function DailyReportForm() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!user) return;
+    if (confirmSubmitOpen) return;
+    const t = todayStr();
+    if (
+      existing?.id &&
+      (String(reportDate) !== t || !formUnlocked || !isBeforeFivePMCutoff())
+    ) {
+      return;
+    }
+    setSubmitAttempted(true);
+    if (!isFormValid) return;
+
+    const isFirstTimeSubmit = !existing?.id;
+    if (isFirstTimeSubmit) {
+      setConfirmSubmitOpen(true);
+      return;
+    }
+
+    await submitNow();
   };
 
   const displayName = user?.user_metadata?.full_name || user?.email || '';
@@ -144,8 +231,19 @@ export default function DailyReportForm() {
   const q1 = questions[0];
   const sections2to7 = questions.slice(1, 7);
   const today = todayStr();
-  const hasSubmittedToday = !!existing && String(existing.report_date) === today;
   const selectedLog = detailIndex != null ? logs[detailIndex] : null;
+  const hasSubmission = !!existing?.id;
+  const isReportForToday = String(reportDate) === today;
+  const beforeCutoff = isBeforeFivePMCutoff();
+  const canUnlockTodayEdit = hasSubmission && isReportForToday && beforeCutoff;
+  const isReadOnly =
+    hasSubmission && (!isReportForToday || !formUnlocked || !beforeCutoff);
+  const showPrimarySave = !isReadOnly;
+  const primaryButtonLabel = saving
+    ? 'Saving…'
+    : hasSubmission && formUnlocked && beforeCutoff
+      ? 'Save changes'
+      : 'Submit report';
 
   const requiredQuestions = Array.isArray(questions) ? questions.filter((q) => q?.required) : [];
   const requiredMissingById = (() => {
@@ -207,15 +305,20 @@ export default function DailyReportForm() {
         </button>
       </div>
 
-      {/* Form tab */}
+      {/* Form tab — date is always today; past reports are view-only under My Daily Report log */}
       {activeTab === 'form' && (
         <>
-          {hasSubmittedToday ? (
-            <div className="rounded-lg border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-200 mb-6">
-              You have already submitted your daily documentation report for today. Come back tomorrow to submit a new one.
+          {hasSubmission && isReadOnly && isReportForToday && beforeCutoff && (
+            <div className="rounded-lg border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-200 mb-4">
+              Submitted for today. Use <span className="font-semibold">Edit</span> (before 5:00 PM) if you need to fix a mistake.
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-8 mb-8">
+          )}
+          {hasSubmission && isReadOnly && isReportForToday && !beforeCutoff && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-950/40 dark:text-gray-200 mb-4">
+              Today&apos;s report is locked after 5:00 PM. For corrections, contact your TL/VTL or admin.
+            </div>
+          )}
+          <form onSubmit={handleSubmit} className="space-y-8 mb-8">
         {submitAttempted && !isFormValid && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
             Please complete all required fields before submitting.
@@ -234,15 +337,10 @@ export default function DailyReportForm() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
-            <div className="w-full">
-              <PrettyDatePicker
-                id="daily-report-date"
-                value={reportDate}
-                onChange={(e) => setReportDate(e.target.value)}
-                ariaLabel="Select report date"
-                className="w-full"
-              />
-            </div>
+            <p className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+              {reportDate}
+              <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">Always today — use My Daily Report log to review past days.</span>
+            </p>
           </div>
         </div>
 
@@ -258,7 +356,10 @@ export default function DailyReportForm() {
                 type="time"
                 value={timeIn}
                 onChange={(e) => setTimeIn(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-900 dark:border-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                readOnly={isReadOnly}
+                className={`w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-900 dark:border-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent ${
+                  isReadOnly ? 'opacity-90 cursor-not-allowed bg-gray-50 dark:bg-gray-950/40' : ''
+                }`}
               />
             </div>
             <div>
@@ -267,7 +368,10 @@ export default function DailyReportForm() {
                 type="time"
                 value={timeOut}
                 onChange={(e) => setTimeOut(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-900 dark:border-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                readOnly={isReadOnly}
+                className={`w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-900 dark:border-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent ${
+                  isReadOnly ? 'opacity-90 cursor-not-allowed bg-gray-50 dark:bg-gray-950/40' : ''
+                }`}
               />
             </div>
           </div>
@@ -275,7 +379,8 @@ export default function DailyReportForm() {
             <button
               type="button"
               onClick={fillFromAttendance}
-              className="text-sm font-medium hover:underline mb-2 text-gray-700 dark:text-gray-200"
+              disabled={isReadOnly}
+              className="text-sm font-medium hover:underline mb-2 text-gray-700 dark:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
               style={{ color: PRIMARY }}
             >
               Fill time in/out from attendance
@@ -287,9 +392,12 @@ export default function DailyReportForm() {
               <textarea
                 value={answers[q1.id] ?? ''}
                 onChange={(e) => handleAnswer(q1.id, e.target.value)}
+                readOnly={isReadOnly}
                 required={q1.required}
                 rows={2}
-                className="w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-900 dark:border-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none"
+                className={`w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-900 dark:border-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none ${
+                  isReadOnly ? 'opacity-90 cursor-not-allowed bg-gray-50 dark:bg-gray-950/40' : ''
+                }`}
                 placeholder={q1.question_text}
               />
               {q1.required && submitAttempted && requiredMissingById[q1.id] && (
@@ -309,9 +417,12 @@ export default function DailyReportForm() {
             <textarea
               value={answers[q.id] ?? ''}
               onChange={(e) => handleAnswer(q.id, e.target.value)}
+              readOnly={isReadOnly}
               required={q.required}
               rows={4}
-              className="w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-900 dark:border-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none"
+              className={`w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-900 dark:border-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none ${
+                isReadOnly ? 'opacity-90 cursor-not-allowed bg-gray-50 dark:bg-gray-950/40' : ''
+              }`}
               placeholder="Your answer..."
             />
             {q.required && submitAttempted && requiredMissingById[q.id] && (
@@ -329,25 +440,38 @@ export default function DailyReportForm() {
                 <textarea
                   value={answers._fallback ?? ''}
                   onChange={(e) => setAnswers((prev) => ({ ...prev, _fallback: e.target.value }))}
+                  readOnly={isReadOnly}
                   rows={4}
-                  className="w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-900 dark:border-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none"
+                  className={`w-full rounded-lg border border-gray-300 bg-white dark:bg-gray-900 dark:border-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent resize-none ${
+                    isReadOnly ? 'opacity-90 cursor-not-allowed bg-gray-50 dark:bg-gray-950/40' : ''
+                  }`}
                   placeholder="List all completed tasks in bullet form."
                 />
               </section>
             )}
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-              <button
-                type="submit"
-                disabled={saving || !isFormValid}
-                className="px-6 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
-                style={{ backgroundColor: PRIMARY }}
-              >
-                {saving ? 'Saving…' : existing ? 'Update report' : 'Submit report'}
-              </button>
+            <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-800">
+              {canUnlockTodayEdit && isReadOnly && (
+                <button
+                  type="button"
+                  onClick={() => setFormUnlocked(true)}
+                  className="px-5 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  Edit
+                </button>
+              )}
+              {showPrimarySave && (
+                <button
+                  type="submit"
+                  disabled={saving || !isFormValid || confirmSubmitOpen}
+                  className="px-6 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  {primaryButtonLabel}
+                </button>
+              )}
             </div>
           </form>
-          )}
         </>
       )}
 
@@ -390,17 +514,31 @@ export default function DailyReportForm() {
                           : '—'}
                       </td>
                       <td className="px-4 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDetailIndex(index);
-                            setShowDetail(true);
-                          }}
-                          className="px-3 py-1.5 rounded-lg text-sm font-medium text-white"
-                          style={{ backgroundColor: PRIMARY }}
-                        >
-                          View
-                        </button>
+                        <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDetailIndex(index);
+                              setShowDetail(true);
+                            }}
+                            className="px-3 py-1.5 rounded-lg text-sm font-medium text-white"
+                            style={{ backgroundColor: PRIMARY }}
+                          >
+                            View
+                          </button>
+                          {String(row.report_date) === todayStr() && isBeforeFivePMCutoff() && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveTab('form');
+                                setFormUnlocked(true);
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -426,16 +564,32 @@ export default function DailyReportForm() {
                     : '—'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDetail(false);
-                  setDetailIndex(null);
-                }}
-                className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
-              >
-                Close
-              </button>
+              <div className="shrink-0 flex flex-wrap items-center gap-2">
+                {String(selectedLog.report_date) === todayStr() && isBeforeFivePMCutoff() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDetail(false);
+                      setDetailIndex(null);
+                      setActiveTab('form');
+                      setFormUnlocked(true);
+                    }}
+                    className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    Edit
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDetail(false);
+                    setDetailIndex(null);
+                  }}
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
             </div>
 
             <div className="p-5 space-y-6 max-h-[75vh] overflow-y-auto">
@@ -482,6 +636,51 @@ export default function DailyReportForm() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm submit modal (first-time submit only) */}
+      {confirmSubmitOpen && (
+        <div className="fixed inset-0 z-[10003] bg-black/60 backdrop-blur-sm p-4 flex items-center justify-center">
+          <div className="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Confirm submission</h3>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                  Are you sure? After submission, you can&apos;t cancel it. You may still edit before 5:00 PM using <span className="font-medium">Edit</span> if applicable.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmSubmitOpen(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none"
+                aria-label="Close confirmation"
+              >
+                ×
+              </button>
+            </div>
+            <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmSubmitOpen(false)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setConfirmSubmitOpen(false);
+                  await submitNow();
+                }}
+                disabled={saving}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                style={{ backgroundColor: PRIMARY }}
+              >
+                {saving ? 'Submitting…' : 'Yes, submit report'}
+              </button>
             </div>
           </div>
         </div>

@@ -106,6 +106,25 @@ export default function OrganizedTickets() {
     const priorityRank = { critical: 3, high: 2, normal: 1, low: 0 };
     const statusRank = { open: 1, 'in-progress': 2, closed: 3 };
 
+    const normalizeTicketStatus = (raw) => {
+      const s = String(raw || '').toLowerCase().trim();
+      if (s === 'open' || s === 'to-do' || s === 'todo' || s === 'not started') return 'open';
+      if (s === 'in-progress' || s === 'in progress' || s === 'review') return 'in-progress';
+      if (s === 'closed' || s === 'completed' || s === 'done' || s === 'cancelled' || s === 'canceled')
+        return 'closed';
+      return s || null;
+    };
+
+    const getTime = (raw) => {
+      const t = raw ? new Date(raw).getTime() : NaN;
+      return Number.isFinite(t) ? t : NaN;
+    };
+
+    const isCompleted = (ticket) => {
+      const ns = normalizeTicketStatus(ticket?.status);
+      return ns === 'closed';
+    };
+
     return list.sort((a, b) => {
       const [field, dir] = sortField.split('_'); // e.g. 'created_desc'
       const mul = dir === 'asc' ? 1 : -1;
@@ -119,8 +138,31 @@ export default function OrganizedTickets() {
       if (field === 'priority') {
         const pa = priorityRank[(a.priority || '').toLowerCase()] ?? -1;
         const pb = priorityRank[(b.priority || '').toLowerCase()] ?? -1;
-        if (pa === pb) return 0;
-        return (pa - pb) * mul;
+        if (pa !== pb) return (pa - pb) * mul;
+
+        // Same priority: show incomplete before completed regardless of recency.
+        const aDone = isCompleted(a);
+        const bDone = isCompleted(b);
+        if (aDone !== bDone) return aDone ? 1 : -1; // incomplete first
+
+        // Optional secondary sort:
+        // - For incomplete tickets: oldest first so unresolved items stay visible.
+        // - For completed tickets: keep a reasonable deterministic order (newest first).
+        const aCreated = getTime(a?.created_at);
+        const bCreated = getTime(b?.created_at);
+        const aUpdated = getTime(a?.updated_at);
+        const bUpdated = getTime(b?.updated_at);
+
+        if (!aDone && !bDone) {
+          const da = Number.isFinite(aCreated) ? aCreated : 0;
+          const db = Number.isFinite(bCreated) ? bCreated : 0;
+          return da - db; // oldest first
+        }
+
+        // Completed: newest first (prefer updated_at when available)
+        const da = Number.isFinite(aUpdated) ? aUpdated : Number.isFinite(aCreated) ? aCreated : 0;
+        const db = Number.isFinite(bUpdated) ? bUpdated : Number.isFinite(bCreated) ? bCreated : 0;
+        return db - da;
       }
 
       if (field === 'status') {

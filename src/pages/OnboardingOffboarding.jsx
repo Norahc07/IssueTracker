@@ -9,6 +9,27 @@ import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 
 const PRIMARY = '#6795BE';
 
+/** User-facing message from Supabase/PostgREST write errors (RLS, constraints, missing columns). */
+function formatSupabaseWriteError(err) {
+  if (!err) return 'Failed to save onboarding record.';
+  const msg = err.message || String(err);
+  const parts = [msg];
+  if (err.details && String(err.details).trim() && err.details !== msg) {
+    parts.push(String(err.details).trim());
+  }
+  if (err.hint && String(err.hint).trim()) {
+    parts.push(String(err.hint).trim());
+  }
+  const out = parts.join(' — ');
+  if (err.code === '42501' || /row-level security/i.test(msg)) {
+    return `${out} If this is unexpected, check Supabase RLS policies for onboarding_records.`;
+  }
+  if (err.code === '23505' || /duplicate key|unique constraint/i.test(msg)) {
+    return `${out} If this is an email conflict, use a different email or edit the existing onboarding row.`;
+  }
+  return out || 'Failed to save onboarding record.';
+}
+
 const REQUIREMENTS_META = [
   {
     key: 'endorsement',
@@ -125,6 +146,16 @@ function getYear(d) {
   return dt.getFullYear();
 }
 
+/** Cohort filter: user must have an onboarding record dated in `year`, and not be offboarded in that year tab. */
+function userBelongsToOnboardingYear(user, year, onboardingByEmail, offboardedEmailSet) {
+  const email = (user?.email || '').trim().toLowerCase();
+  if (!email) return false;
+  if (offboardedEmailSet?.has?.(email)) return false;
+  const ob = onboardingByEmail.get(email);
+  if (!ob?.onboarding_datetime) return false;
+  return getYear(ob.onboarding_datetime) === year;
+}
+
 function splitName(fullName) {
   if (!fullName) return { firstName: '', lastName: '' };
   const parts = fullName.trim().split(/\s+/);
@@ -236,6 +267,14 @@ export default function OnboardingOffboarding() {
     email_certificates: null,
     one_drive: null,
   });
+
+  // When a requirement is already submitted and pending verification, users can choose to replace the file.
+  // This toggles the per-row file picker visibility and the correct action button label.
+  const [requirementsReplaceMode, setRequirementsReplaceMode] = useState({}); // { [metaKey]: boolean }
+  const [offboardingRequirementsReplaceMode, setOffboardingRequirementsReplaceMode] = useState({}); // { [metaKey]: boolean }
+
+  const [requirementsSubmitting, setRequirementsSubmitting] = useState(false);
+  const [offboardingRequirementsSubmitting, setOffboardingRequirementsSubmitting] = useState(false);
 
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [showOffboardingModal, setShowOffboardingModal] = useState(false);
@@ -539,8 +578,12 @@ export default function OnboardingOffboarding() {
     const isOffboarded = email && offboardedEmailSet.has(email);
     if (isOffboarded) return false;
 
-    const year = r?.onboarding_datetime ? getYear(r.onboarding_datetime) : activeYear;
-    return year === activeYear;
+    if (r?.onboarding_datetime) {
+      return getYear(r.onboarding_datetime) === activeYear;
+    }
+    // Account exists but no onboarding row yet: only show on the current calendar year tab (avoid listing under every historical year).
+    const currentCalendarYear = new Date().getFullYear();
+    return activeYear === currentCalendarYear;
   });
 
   const filteredOffboarding = offboarding.filter((r) => getYear(r.actual_end_date) === activeYear);
@@ -700,17 +743,34 @@ export default function OnboardingOffboarding() {
         return;
       }
     }
+
+    if (isCreating && !(department || '').trim()) {
+      toast.error('Department is required.');
+      return;
+    }
+
+    const deptTrim = (department || '').trim() || null;
+    const teamTrim = (team || '').trim();
+    if (deptTrim === 'IT' && !teamTrim) {
+      toast.error('For IT department, select a team (TLA, PAT1, or Monitoring).');
+      return;
+    }
+
     try {
       const datetime = onboarding_time
         ? new Date(`${onboarding_date}T${onboarding_time}`)
         : new Date(`${onboarding_date}T00:00:00`);
+      if (Number.isNaN(datetime.getTime())) {
+        toast.error('Invalid onboarding date or time. Please pick the date again.');
+        return;
+      }
 
       const payload = {
         onboarding_datetime: datetime.toISOString(),
         name: name.trim(),
         email: email?.trim() || null,
-        department: department?.trim() || null,
-        team: team?.trim() || null,
+        department: deptTrim,
+        team: deptTrim === 'IT' ? teamTrim : null,
         start_date: startDateForPayload,
         hours: hoursForPayload,
         school: schoolForPayload,
@@ -744,8 +804,8 @@ export default function OnboardingOffboarding() {
       queryCache.invalidate('onboarding:records');
       await fetchData(true);
     } catch (err) {
-      console.error('Onboarding insert error:', err);
-      toast.error(err?.message || 'Failed to add onboarding record.');
+      console.error('Onboarding save error:', err);
+      toast.error(formatSupabaseWriteError(err));
     }
   };
 
@@ -875,6 +935,7 @@ export default function OnboardingOffboarding() {
       toast.error('Could not determine your name from your account. Please contact admin.');
       return;
     }
+    setRequirementsSubmitting(true);
     try {
       let rowId = currentUserRequirements?.id || null;
       if (currentUserRequirements) {
@@ -924,6 +985,7 @@ export default function OnboardingOffboarding() {
         }
       }
       toast.success('Requirements saved. Status is pending verification.');
+      setRequirementsReplaceMode({});
       setRequirementsFiles({
         endorsement: null,
         school_id: null,
@@ -937,6 +999,8 @@ export default function OnboardingOffboarding() {
     } catch (err) {
       console.error('Requirements submit error:', err);
       toast.error(err?.message || 'Failed to submit requirements.');
+    } finally {
+      setRequirementsSubmitting(false);
     }
   };
 
@@ -957,6 +1021,7 @@ export default function OnboardingOffboarding() {
       toast.error('Could not determine your name from your account. Please contact admin.');
       return;
     }
+    setOffboardingRequirementsSubmitting(true);
     try {
       let rowId = currentUserOffboardingRequirements?.id || null;
       if (currentUserOffboardingRequirements) {
@@ -1005,6 +1070,7 @@ export default function OnboardingOffboarding() {
         }
       }
       toast.success('Offboarding requirements saved. Status is pending verification.');
+      setOffboardingRequirementsReplaceMode({});
       setOffboardingRequirementsFiles({
         tla_signature: null,
         it_manager_signature: null,
@@ -1016,24 +1082,44 @@ export default function OnboardingOffboarding() {
     } catch (err) {
       console.error('Offboarding requirements submit error:', err);
       toast.error(err?.message || 'Failed to submit offboarding requirements.');
+    } finally {
+      setOffboardingRequirementsSubmitting(false);
     }
   };
 
   const requirementsTrackerRows = useMemo(() => {
     if (!canManageRequirements) return [];
     if (!internUsers || internUsers.length === 0) return [];
-    return internUsers.map((u) => {
-      const req = requirements.find((r) => r.intern_id === u.id) || null;
-      const email = (u.email || '').trim().toLowerCase();
-      const on = email ? onboardingByEmail.get(email) || null : null;
-      return { user: u, req, on };
-    });
-  }, [internUsers, requirements, onboardingByEmail, canManageRequirements]);
+    return internUsers
+      .filter((u) => userBelongsToOnboardingYear(u, activeYear, onboardingByEmail, offboardedEmailSet))
+      .map((u) => {
+        const req = requirements.find((r) => r.intern_id === u.id) || null;
+        const email = (u.email || '').trim().toLowerCase();
+        const on = email ? onboardingByEmail.get(email) || null : null;
+        return { user: u, req, on };
+      });
+  }, [
+    internUsers,
+    requirements,
+    onboardingByEmail,
+    canManageRequirements,
+    activeYear,
+    offboardedEmailSet,
+  ]);
+
+  const onboardingCohortUsersForYear = useMemo(() => {
+    if (!internUsers?.length) return [];
+    return internUsers.filter((u) =>
+      userBelongsToOnboardingYear(u, activeYear, onboardingByEmail, offboardedEmailSet)
+    );
+  }, [internUsers, activeYear, onboardingByEmail, offboardedEmailSet]);
 
   const offboardingRequirementsTrackerRows = useMemo(() => {
     if (!canManageRequirements) return [];
     if (!offboarding || offboarding.length === 0) return [];
-    return offboarding.map((off) => {
+    return offboarding
+      .filter((off) => getYear(off.actual_end_date) === activeYear)
+      .map((off) => {
       const email = (off.email || '').trim().toLowerCase();
       const userMatch =
         (email &&
@@ -1049,7 +1135,7 @@ export default function OnboardingOffboarding() {
         null;
       return { user: userMatch, req, off };
     });
-  }, [offboarding, internUsers, offboardingRequirements, canManageRequirements]);
+  }, [offboarding, internUsers, offboardingRequirements, canManageRequirements, activeYear]);
 
   const [showTerminateOnboardingModal, setShowTerminateOnboardingModal] = useState(false);
   const [terminatingOnboarding, setTerminatingOnboarding] = useState(false);
@@ -1383,9 +1469,26 @@ export default function OnboardingOffboarding() {
 
           {onboardingInnerTab === 'internStatus' && (
             <div className="space-y-3">
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Presence for accounts whose <span className="font-medium">onboarding year</span> is {activeYear} (same cohort as Requirements tracker).
+                <span className="block mt-1.5 text-[11px]">
+                  <span className="inline-flex items-center gap-1 mr-3">
+                    <span className="h-2 w-2 rounded-full bg-green-500" aria-hidden />
+                    Online
+                  </span>
+                  <span className="inline-flex items-center gap-1 mr-3">
+                    <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
+                    Inactive
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-red-600 dark:bg-red-500" aria-hidden />
+                    Offline
+                  </span>
+                </span>
+              </p>
               {(() => {
                 const statusCounts = { online: 0, inactive: 0, offline: 0 };
-                internUsers.forEach((u) => {
+                onboardingCohortUsersForYear.forEach((u) => {
                   const s = getStatus(u.id);
                   if (s === 'online') statusCounts.online += 1;
                   else if (s === 'inactive') statusCounts.inactive += 1;
@@ -1397,7 +1500,7 @@ export default function OnboardingOffboarding() {
                     {' · '}
                     <span className="font-medium text-amber-600 dark:text-amber-400">{statusCounts.inactive} inactive</span>
                     {' · '}
-                    <span className="font-medium text-gray-500 dark:text-gray-400">{statusCounts.offline} offline</span>
+                    <span className="font-medium text-red-600 dark:text-red-400">{statusCounts.offline} offline</span>
                   </p>
                 );
               })()}
@@ -1413,43 +1516,48 @@ export default function OnboardingOffboarding() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                    {internUsers.map((u) => {
+                    {onboardingCohortUsersForYear.map((u) => {
                       const status = getStatus(u.id);
                       const emailKey = (u.email || '').trim().toLowerCase();
                       const ob = onboardingByEmail.get(emailKey);
                       const displayName = (u.full_name || ob?.name || u.email || '—').trim() || '—';
                       const department = ob?.department || '—';
                       const team = formatTeamLabel(u.team || ob?.team) || '—';
+                      const rowBorder =
+                        status === 'online'
+                          ? 'border-l-4 border-l-green-500'
+                          : status === 'inactive'
+                            ? 'border-l-4 border-l-amber-500'
+                            : 'border-l-4 border-l-red-500';
+                      const badgeClass =
+                        status === 'online'
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900/45 dark:text-green-200'
+                          : status === 'inactive'
+                            ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/45 dark:text-amber-200'
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/45 dark:text-red-200';
+                      const dotClass =
+                        status === 'online'
+                          ? 'bg-green-500'
+                          : status === 'inactive'
+                            ? 'bg-amber-500'
+                            : 'bg-red-600 dark:bg-red-500';
+
                       return (
-                        <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <tr
+                          key={u.id}
+                          className={`hover:bg-gray-50 dark:hover:bg-gray-800/60 ${rowBorder}`}
+                        >
                           <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{displayName}</td>
                           <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{u.email || '—'}</td>
                           <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{department}</td>
                           <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{team}</td>
                           <td className="px-4 py-3 text-sm">
                             <span
-                              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium"
-                              style={{
-                                backgroundColor:
-                                  status === 'online'
-                                    ? 'rgba(34, 197, 94, 0.15)'
-                                    : status === 'inactive'
-                                      ? 'rgba(234, 179, 8, 0.2)'
-                                      : 'rgba(156, 163, 175, 0.2)',
-                                color:
-                                  status === 'online'
-                                    ? '#15803d'
-                                    : status === 'inactive'
-                                      ? '#a16207'
-                                      : '#6b7280',
-                              }}
+                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}
                             >
                               <span
-                                className="h-1.5 w-1.5 rounded-full flex-shrink-0"
-                                style={{
-                                  backgroundColor:
-                                    status === 'online' ? '#22c55e' : status === 'inactive' ? '#eab308' : '#9ca3af',
-                                }}
+                                className={`h-2 w-2 rounded-full flex-shrink-0 ring-2 ring-white/50 dark:ring-black/20 ${dotClass}`}
+                                aria-hidden
                               />
                               {status === 'online' && 'Online'}
                               {status === 'inactive' && 'Inactive'}
@@ -1459,10 +1567,10 @@ export default function OnboardingOffboarding() {
                         </tr>
                       );
                     })}
-                    {internUsers.length === 0 && (
+                    {onboardingCohortUsersForYear.length === 0 && (
                       <tr>
                         <td className="px-4 py-4 text-sm text-gray-500 text-center" colSpan={5}>
-                          No intern users found.
+                          No accounts with onboarding in {activeYear}.
                         </td>
                       </tr>
                     )}
@@ -1624,6 +1732,9 @@ export default function OnboardingOffboarding() {
                     if (hasFile) {
                       statusLabel = req?.status === 'verified' ? 'Verified' : 'Pending verification';
                     }
+                    const isVerified = !!(req && req.status === 'verified');
+                    const isPendingVerification = !!(hasFile && !isVerified);
+                    const inReplaceMode = !!requirementsReplaceMode?.[meta.key];
                     return (
                       <tr key={meta.key} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
                         <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
@@ -1636,33 +1747,106 @@ export default function OnboardingOffboarding() {
                           {statusLabel}
                         </td>
                         <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="file"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0] || null;
-                                setRequirementsFiles((prev) => ({
-                                  ...prev,
-                                  [meta.key]: file,
-                                }));
-                              }}
-                              className="block w-full text-xs text-gray-700 dark:text-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 dark:file:bg-gray-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700"
-                            />
-                            <button
-                              type="button"
-                              className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60"
-                              style={{ backgroundColor: PRIMARY }}
-                              onClick={async () => {
-                                const file = requirementsFiles[meta.key];
-                                if (!file) {
-                                  toast.error('Please choose a file before submitting.');
-                                  return;
-                                }
-                                await handleRequirementsSubmit();
-                              }}
-                            >
-                              Submit
-                            </button>
+                          <div className="flex flex-col gap-2">
+                            {/* First-time submit */}
+                            {!hasFile && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="file"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0] || null;
+                                    setRequirementsFiles((prev) => ({
+                                      ...prev,
+                                      [meta.key]: file,
+                                    }));
+                                  }}
+                                  className="block w-full text-xs text-gray-700 dark:text-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 dark:file:bg-gray-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={requirementsSubmitting}
+                                  className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                                  style={{ backgroundColor: PRIMARY }}
+                                  onClick={async () => {
+                                    const file = requirementsFiles[meta.key];
+                                    if (!file) {
+                                      toast.error('Please choose a file before submitting.');
+                                      return;
+                                    }
+                                    await handleRequirementsSubmit();
+                                  }}
+                                >
+                                  {requirementsSubmitting ? 'Submitting…' : 'Submit'}
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Pending verification: show “Resubmit” -> reveal file picker */}
+                            {isPendingVerification && !inReplaceMode && (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={requirementsSubmitting}
+                                  className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                                  style={{ backgroundColor: PRIMARY }}
+                                  onClick={() => {
+                                    setRequirementsReplaceMode((prev) => ({ ...prev, [meta.key]: true }));
+                                  }}
+                                >
+                                  Resubmit / Replace file
+                                </button>
+                              </div>
+                            )}
+
+                            {isPendingVerification && inReplaceMode && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="file"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0] || null;
+                                    setRequirementsFiles((prev) => ({
+                                      ...prev,
+                                      [meta.key]: file,
+                                    }));
+                                  }}
+                                  className="block w-full text-xs text-gray-700 dark:text-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 dark:file:bg-gray-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={requirementsSubmitting}
+                                  className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                                  style={{ backgroundColor: PRIMARY }}
+                                  onClick={async () => {
+                                    const file = requirementsFiles[meta.key];
+                                    if (!file) {
+                                      toast.error('Please choose a replacement file.');
+                                      return;
+                                    }
+                                    const ok = window.confirm(
+                                      `Replace your pending ${meta.label} submission? This will mark it as pending verification again.`
+                                    );
+                                    if (!ok) return;
+                                    await handleRequirementsSubmit();
+                                  }}
+                                >
+                                  {requirementsSubmitting ? 'Replacing…' : 'Replace & Resubmit'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={requirementsSubmitting}
+                                  className="px-2 py-1 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                                  onClick={() => {
+                                    setRequirementsReplaceMode((prev) => ({ ...prev, [meta.key]: false }));
+                                    setRequirementsFiles((prev) => ({ ...prev, [meta.key]: null }));
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Verified: lock */}
+                            {isVerified && <div className="text-xs text-gray-500 dark:text-gray-400">—</div>}
                           </div>
                           {req && req[meta.pathField] && (
                             <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -1698,7 +1882,28 @@ export default function OnboardingOffboarding() {
             <div className="p-4 border-b border-gray-200 dark:border-gray-800">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Requirements tracker (staff view)</h3>
               <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                Admin and TL/VTL of the TLA team can verify intern requirements here.
+                Admin and TL/VTL of the TLA team can verify intern requirements here. Only people whose{' '}
+                <span className="font-medium">onboarding record year</span> matches <span className="font-medium">{activeYear}</span>{' '}
+                (selected year tab above) are listed.
+              </p>
+              <p className="mt-2 text-[11px] text-gray-600 dark:text-gray-400">
+                <span className="font-medium text-gray-700 dark:text-gray-300">Status colors:</span>{' '}
+                <span className="inline-flex items-center gap-1 mr-3">
+                  <span className="h-2 w-2 rounded-full bg-slate-500" aria-hidden />
+                  No submission
+                </span>
+                <span className="inline-flex items-center gap-1 mr-3">
+                  <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
+                  Incomplete
+                </span>
+                <span className="inline-flex items-center gap-1 mr-3">
+                  <span className="h-2 w-2 rounded-full bg-blue-500" aria-hidden />
+                  Pending verification
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-green-500" aria-hidden />
+                  Complete
+                </span>
               </p>
             </div>
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
@@ -1713,8 +1918,63 @@ export default function OnboardingOffboarding() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                {requirementsTrackerRows.map(({ user: u, req, on }) => (
-                  <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                {requirementsTrackerRows.map(({ user: u, req, on }) => {
+                  const hasRow = !!req;
+                  const total = REQUIREMENTS_META.length;
+                  const submittedCount = hasRow
+                    ? REQUIREMENTS_META.filter(
+                        (meta) => req[meta.pathField] || req[meta.flagField]
+                      ).length
+                    : 0;
+                  const allSubmitted = hasRow && submittedCount === total;
+
+                  let label = 'No submission';
+                  /** @type {'none' | 'incomplete' | 'pending' | 'complete'} */
+                  let statusKey = 'none';
+                  if (!hasRow || submittedCount === 0) {
+                    label = 'No submission';
+                    statusKey = 'none';
+                  } else if (!allSubmitted) {
+                    label = 'Incomplete';
+                    statusKey = 'incomplete';
+                  } else if (req.status === 'verified') {
+                    label = 'Complete';
+                    statusKey = 'complete';
+                  } else {
+                    label = 'Submitted (Pending verification)';
+                    statusKey = 'pending';
+                  }
+
+                  const reqStatusStyles = {
+                    none: {
+                      rowBorder: 'border-l-4 border-l-slate-400',
+                      badge:
+                        'bg-slate-100 text-slate-800 dark:bg-slate-800/55 dark:text-slate-200',
+                      dot: 'bg-slate-500',
+                    },
+                    incomplete: {
+                      rowBorder: 'border-l-4 border-l-amber-500',
+                      badge:
+                        'bg-amber-100 text-amber-900 dark:bg-amber-900/45 dark:text-amber-200',
+                      dot: 'bg-amber-500',
+                    },
+                    pending: {
+                      rowBorder: 'border-l-4 border-l-blue-500',
+                      badge:
+                        'bg-blue-100 text-blue-900 dark:bg-blue-900/45 dark:text-blue-200',
+                      dot: 'bg-blue-500',
+                    },
+                    complete: {
+                      rowBorder: 'border-l-4 border-l-green-500',
+                      badge:
+                        'bg-green-100 text-green-800 dark:bg-green-900/45 dark:text-green-200',
+                      dot: 'bg-green-500',
+                    },
+                  };
+                  const st = reqStatusStyles[statusKey];
+
+                  return (
+                  <tr key={u.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/60 ${st.rowBorder}`}>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{(on?.name || u.full_name || req?.name || '').trim() || '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{u.email || req?.email || on?.email || '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
@@ -1724,38 +1984,15 @@ export default function OnboardingOffboarding() {
                       {formatTeamLabel(req?.team || on?.team || u.team) || '—'}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">
-                      {(() => {
-                        const hasRow = !!req;
-                        const total = REQUIREMENTS_META.length;
-                        const submittedCount = hasRow
-                          ? REQUIREMENTS_META.filter(
-                              (meta) => req[meta.pathField] || req[meta.flagField]
-                            ).length
-                          : 0;
-                        const allSubmitted = hasRow && submittedCount === total;
-
-                        let label = 'No submission';
-                        let cls = 'bg-yellow-50 text-yellow-700';
-
-                        if (!hasRow || submittedCount === 0) {
-                          label = 'No submission';
-                        } else if (!allSubmitted) {
-                          label = 'Incomplete';
-                        } else if (req.status === 'verified') {
-                          label = 'Complete';
-                          cls = 'bg-green-50 text-green-700';
-                        } else {
-                          label = 'Submitted (Pending verification)';
-                        }
-
-                        return (
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}
-                          >
-                            {label}
-                          </span>
-                        );
-                      })()}
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${st.badge}`}
+                      >
+                        <span
+                          className={`h-2 w-2 rounded-full flex-shrink-0 ring-2 ring-white/50 dark:ring-black/20 ${st.dot}`}
+                          aria-hidden
+                        />
+                        {label}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 space-x-2">
                       <button
@@ -1769,11 +2006,12 @@ export default function OnboardingOffboarding() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {requirementsTrackerRows.length === 0 && (
                   <tr>
                     <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={15}>
-                      No intern records found.
+                      No onboarding cohort for {activeYear}.
                     </td>
                   </tr>
                 )}
@@ -1822,6 +2060,9 @@ export default function OnboardingOffboarding() {
                     if (hasFile) {
                       statusLabel = req?.status === 'verified' ? 'Verified' : 'Pending verification';
                     }
+                    const isVerified = !!(req && req.status === 'verified');
+                    const isPendingVerification = !!(hasFile && !isVerified);
+                    const inReplaceMode = !!offboardingRequirementsReplaceMode?.[meta.key];
                     return (
                       <tr key={meta.key} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
                         <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
@@ -1834,33 +2075,103 @@ export default function OnboardingOffboarding() {
                           {statusLabel}
                         </td>
                         <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="file"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0] || null;
-                                setOffboardingRequirementsFiles((prev) => ({
-                                  ...prev,
-                                  [meta.key]: file,
-                                }));
-                              }}
-                              className="block w-full text-xs text-gray-700 dark:text-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 dark:file:bg-gray-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700"
-                            />
-                            <button
-                              type="button"
-                              className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60"
-                              style={{ backgroundColor: PRIMARY }}
-                              onClick={async () => {
-                                const file = offboardingRequirementsFiles[meta.key];
-                                if (!file) {
-                                  toast.error('Please choose a file before submitting.');
-                                  return;
-                                }
-                                await handleOffboardingRequirementsSubmit();
-                              }}
-                            >
-                              Submit
-                            </button>
+                          <div className="flex flex-col gap-2">
+                            {!hasFile && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="file"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0] || null;
+                                    setOffboardingRequirementsFiles((prev) => ({
+                                      ...prev,
+                                      [meta.key]: file,
+                                    }));
+                                  }}
+                                  className="block w-full text-xs text-gray-700 dark:text-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 dark:file:bg-gray-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={offboardingRequirementsSubmitting}
+                                  className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                                  style={{ backgroundColor: PRIMARY }}
+                                  onClick={async () => {
+                                    const file = offboardingRequirementsFiles[meta.key];
+                                    if (!file) {
+                                      toast.error('Please choose a file before submitting.');
+                                      return;
+                                    }
+                                    await handleOffboardingRequirementsSubmit();
+                                  }}
+                                >
+                                  {offboardingRequirementsSubmitting ? 'Submitting…' : 'Submit'}
+                                </button>
+                              </div>
+                            )}
+
+                            {isPendingVerification && !inReplaceMode && (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={offboardingRequirementsSubmitting}
+                                  className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                                  style={{ backgroundColor: PRIMARY }}
+                                  onClick={() => {
+                                    setOffboardingRequirementsReplaceMode((prev) => ({ ...prev, [meta.key]: true }));
+                                  }}
+                                >
+                                  Resubmit / Replace file
+                                </button>
+                              </div>
+                            )}
+
+                            {isPendingVerification && inReplaceMode && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="file"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0] || null;
+                                    setOffboardingRequirementsFiles((prev) => ({
+                                      ...prev,
+                                      [meta.key]: file,
+                                    }));
+                                  }}
+                                  className="block w-full text-xs text-gray-700 dark:text-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 dark:file:bg-gray-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={offboardingRequirementsSubmitting}
+                                  className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                                  style={{ backgroundColor: PRIMARY }}
+                                  onClick={async () => {
+                                    const file = offboardingRequirementsFiles[meta.key];
+                                    if (!file) {
+                                      toast.error('Please choose a replacement file.');
+                                      return;
+                                    }
+                                    const ok = window.confirm(
+                                      `Replace your pending ${meta.label} submission? This will mark it as pending verification again.`
+                                    );
+                                    if (!ok) return;
+                                    await handleOffboardingRequirementsSubmit();
+                                  }}
+                                >
+                                  {offboardingRequirementsSubmitting ? 'Replacing…' : 'Replace & Resubmit'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={offboardingRequirementsSubmitting}
+                                  className="px-2 py-1 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                                  onClick={() => {
+                                    setOffboardingRequirementsReplaceMode((prev) => ({ ...prev, [meta.key]: false }));
+                                    setOffboardingRequirementsFiles((prev) => ({ ...prev, [meta.key]: null }));
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            )}
+
+                            {isVerified && <div className="text-xs text-gray-500 dark:text-gray-400">—</div>}
                           </div>
                           {req && req[meta.pathField] && (
                             <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -1893,7 +2204,8 @@ export default function OnboardingOffboarding() {
             <div className="p-4 border-b border-gray-200 dark:border-gray-800">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Requirements tracker (staff view)</h3>
               <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                Admin and TL/VTL of the TLA team can verify offboarding requirements here.
+                Admin and TL/VTL of the TLA team can verify offboarding requirements here. Rows are limited to{' '}
+                <span className="font-medium">offboarding records whose end date falls in {activeYear}</span>.
               </p>
             </div>
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
@@ -1972,7 +2284,7 @@ export default function OnboardingOffboarding() {
                 {offboardingRequirementsTrackerRows.length === 0 && (
                   <tr>
                     <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={15}>
-                      No intern records found.
+                      No offboarding records ending in {activeYear}.
                     </td>
                   </tr>
                 )}
@@ -1985,24 +2297,24 @@ export default function OnboardingOffboarding() {
       {/* Onboarding requirements detail modal */}
       {viewOnboardingRequirementsRow && (
         <Modal open={!!viewOnboardingRequirementsRow} onClose={() => setViewOnboardingRequirementsRow(null)}>
-          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-gray-200 max-h-[90vh] flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+          <div className="w-full max-w-3xl bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold text-gray-900">Onboarding requirements</h2>
-                <p className="mt-1 text-xs text-gray-600">
+                <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Onboarding requirements</h2>
+                <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
                   Review submitted onboarding requirements for this intern/TL/VTL.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setViewOnboardingRequirementsRow(null)}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl leading-none"
                 aria-label="Close"
               >
                 ×
               </button>
             </div>
-            <div className="px-6 py-4 space-y-4 overflow-y-auto">
+            <div className="px-6 py-4 space-y-4 overflow-y-auto dark:text-gray-100">
               {(() => {
                 const { user: u, req, on } = viewOnboardingRequirementsRow;
                 const displayName = (on?.name || u?.full_name || req?.name || '').trim() || '—';
@@ -2011,27 +2323,29 @@ export default function OnboardingOffboarding() {
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                       <div>
-                        <div className="text-xs font-medium text-gray-500">Name</div>
-                        <div className="text-gray-900">{displayName}</div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Name</div>
+                        <div className="text-gray-900 dark:text-gray-100">{displayName}</div>
                       </div>
                       <div>
-                        <div className="text-xs font-medium text-gray-500">Email</div>
-                        <div className="text-gray-900">{u?.email || req?.email || on?.email || '—'}</div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Email</div>
+                        <div className="text-gray-900 dark:text-gray-100">{u?.email || req?.email || on?.email || '—'}</div>
                       </div>
                       <div>
-                        <div className="text-xs font-medium text-gray-500">Department</div>
-                        <div className="text-gray-900">{req?.department || on?.department || '—'}</div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Department</div>
+                        <div className="text-gray-900 dark:text-gray-100">{req?.department || on?.department || '—'}</div>
                       </div>
                       <div>
-                        <div className="text-xs font-medium text-gray-500">Team</div>
-                        <div className="text-gray-900">{formatTeamLabel(req?.team || on?.team || u?.team) || '—'}</div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Team</div>
+                        <div className="text-gray-900 dark:text-gray-100">{formatTeamLabel(req?.team || on?.team || u?.team) || '—'}</div>
                       </div>
                       <div>
-                        <div className="text-xs font-medium text-gray-500">Overall status</div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Overall status</div>
                         <div className="mt-0.5">
                           <span
                             className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                              overallStatus === 'Verified' ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'
+                              overallStatus === 'Verified'
+                                ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-200'
+                                : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200'
                             }`}
                           >
                             {overallStatus}
@@ -2041,17 +2355,17 @@ export default function OnboardingOffboarding() {
                     </div>
 
                     <div className="mt-3">
-                      <table className="min-w-full table-auto divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden text-sm">
-                        <thead className="bg-gray-50">
+                      <table className="min-w-full table-auto divide-y divide-gray-200 dark:divide-gray-800 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden text-sm">
+                        <thead className="bg-gray-50 dark:bg-gray-800/60">
                           <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Requirement</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Verified by</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Verified at</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Requirement</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Verified by</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Verified at</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Action</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                           {REQUIREMENTS_META.map((meta) => {
                             const hasFile = req && (req[meta.pathField] || req[meta.flagField]);
                             let statusLabel = 'Not submitted';
@@ -2063,12 +2377,12 @@ export default function OnboardingOffboarding() {
                             return (
                               <tr key={meta.key}>
                                 <td className="px-4 py-2 align-top">
-                                  <div className="font-medium text-gray-900">{meta.label}</div>
+                                  <div className="font-medium text-gray-900 dark:text-gray-100">{meta.label}</div>
                                   {meta.description && (
-                                    <div className="text-xs text-gray-500">{meta.description}</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">{meta.description}</div>
                                   )}
                                 </td>
-                                <td className="px-4 py-2 text-gray-700">
+                                <td className="px-4 py-2 text-gray-700 dark:text-gray-200">
                                   <div className="flex items-center gap-2">
                                     <span>{statusLabel}</span>
                                     {canViewFile && (
@@ -2098,15 +2412,15 @@ export default function OnboardingOffboarding() {
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-4 py-2 text-xs text-gray-600">
+                                <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                                   {hasFile && req?.verified_by ? onboardingVerifiedByName || '—' : '—'}
                                 </td>
-                                <td className="px-4 py-2 text-xs text-gray-600">
+                                <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                                   {hasFile && req?.verified_at
                                     ? new Date(req.verified_at).toLocaleString()
                                     : '—'}
                                 </td>
-                                <td className="px-4 py-2 text-xs text-gray-600">
+                                <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                                   {req && req.status !== 'verified' && hasFile ? (
                                     <button
                                       type="button"
@@ -2137,7 +2451,7 @@ export default function OnboardingOffboarding() {
                                       Verify
                                     </button>
                                   ) : (
-                                    <span className="text-gray-400">—</span>
+                                    <span className="text-gray-400 dark:text-gray-500">—</span>
                                   )}
                                 </td>
                               </tr>
@@ -2150,11 +2464,11 @@ export default function OnboardingOffboarding() {
                 );
               })()}
             </div>
-            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+            <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setViewOnboardingRequirementsRow(null)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 dark:text-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700"
               >
                 Close
               </button>
@@ -2483,7 +2797,14 @@ export default function OnboardingOffboarding() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Department</label>
                   <select
                     value={onboardingForm.department}
-                    onChange={(e) => setOnboardingForm((f) => ({ ...f, department: e.target.value }))}
+                    onChange={(e) => {
+                      const nextDept = e.target.value;
+                      setOnboardingForm((f) => ({
+                        ...f,
+                        department: nextDept,
+                        team: nextDept === 'IT' ? f.team : '',
+                      }));
+                    }}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
                   >
                     <option value="">Select department</option>
@@ -2570,6 +2891,9 @@ export default function OnboardingOffboarding() {
                     <option value="PAT1">PAT1</option>
                     <option value="Monitoring">Monitoring Team</option>
                   </select>
+                  {onboardingSubmitAttempted && !onboardingForm.team.trim() && (
+                    <p className="mt-1 text-xs font-medium text-red-600">Required for IT.</p>
+                  )}
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     Team is only needed for IT; HR and Marketing are treated as HR/Marketing Interns automatically.
                   </p>
@@ -2610,8 +2934,10 @@ export default function OnboardingOffboarding() {
                       terminatingOnboarding ||
                       !onboardingForm.onboarding_date ||
                       !onboardingForm.name.trim() ||
+                      (onboardingForm.department === 'IT' && !onboardingForm.team.trim()) ||
                       (!editingOnboardingId &&
-                        (!onboardingForm.start_date ||
+                        (!onboardingForm.department?.trim() ||
+                          !onboardingForm.start_date ||
                           !onboardingForm.hours ||
                           Number.isNaN(Number(onboardingForm.hours)) ||
                           Number(onboardingForm.hours) <= 0 ||

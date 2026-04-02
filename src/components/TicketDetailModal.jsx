@@ -1,39 +1,143 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
-import { permissions } from '../utils/rolePermissions.js';
+import { getRoleDisplayName, permissions } from '../utils/rolePermissions.js';
 import { ticketPriorityPill, ticketStatusLabel, ticketStatusPill } from '../utils/uiPills.js';
 
+function normalizeRoleKey(role) {
+  return String(role || 'intern')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function matchAssigneeTextToUserId(assignedText, users) {
+  if (!assignedText || !String(assignedText).trim()) return '';
+  const raw = String(assignedText).trim();
+  const lower = raw.toLowerCase();
+  for (const u of users) {
+    const fn = (u.full_name || '').trim();
+    const em = (u.email || '').trim().toLowerCase();
+    if (em && lower === em) return u.id;
+    if (fn && fn.toLowerCase() === lower) return u.id;
+  }
+  return '';
+}
+
+function displayNameForUser(u) {
+  if (!u) return '';
+  return (u.full_name || '').trim() || (u.email || '').trim() || '';
+}
+
+function assigneeGroupLabel(roleKey) {
+  if (roleKey === 'monitoring') return getRoleDisplayName('monitoring_team');
+  return getRoleDisplayName(roleKey);
+}
+
 export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate }) {
-  const { supabase, user, userRole } = useSupabase();
-  const [loading, setLoading] = useState(false);
+  const { supabase, userRole } = useSupabase();
   const [assigning, setAssigning] = useState(false);
   const [starting, setStarting] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [assignedTo, setAssignedTo] = useState(ticket?.assigned_to || '');
+  const [assignableUsers, setAssignableUsers] = useState([]);
+  const [assignUsersLoading, setAssignUsersLoading] = useState(false);
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState('');
   const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
-    if (isOpen && ticket) {
-      setAssignedTo(ticket.assigned_to || '');
-      setImageError(false);
+    if (!isOpen || !ticket) return;
+    setImageError(false);
+  }, [isOpen, ticket?.id]);
+
+  useEffect(() => {
+    if (!isOpen || !supabase) return;
+    let cancelled = false;
+    setAssignUsersLoading(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, email, full_name, role, team')
+        .order('full_name', { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        console.warn('TicketDetailModal: users fetch error', error);
+        setAssignableUsers([]);
+      } else {
+        setAssignableUsers(Array.isArray(data) ? data : []);
+      }
+      setAssignUsersLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, supabase]);
+
+  useEffect(() => {
+    if (!isOpen || !ticket) return;
+    const id = matchAssigneeTextToUserId(ticket.assigned_to, assignableUsers);
+    setSelectedAssigneeId(id);
+  }, [isOpen, ticket?.id, ticket?.assigned_to, assignableUsers]);
+
+  const assigneeGroups = useMemo(() => {
+    const roleOrder = [
+      'superadmin',
+      'admin',
+      'tla',
+      'lead',
+      'tl',
+      'vtl',
+      'monitoring_team',
+      'monitoring',
+      'pat1',
+      'intern',
+    ];
+    const byRole = new Map();
+    for (const u of assignableUsers) {
+      const r = normalizeRoleKey(u.role);
+      if (!byRole.has(r)) byRole.set(r, []);
+      byRole.get(r).push(u);
     }
-  }, [isOpen, ticket?.id, ticket?.assigned_to]);
+    for (const list of byRole.values()) {
+      list.sort((a, b) =>
+        displayNameForUser(a).localeCompare(displayNameForUser(b), undefined, { sensitivity: 'base' })
+      );
+    }
+    const seen = new Set();
+    const out = [];
+    for (const r of roleOrder) {
+      if (byRole.has(r)) {
+        out.push({ roleKey: r, users: byRole.get(r) });
+        seen.add(r);
+      }
+    }
+    for (const r of [...byRole.keys()].sort()) {
+      if (!seen.has(r)) out.push({ roleKey: r, users: byRole.get(r) });
+    }
+    return out;
+  }, [assignableUsers]);
+
+  const resolvedAssigneeDisplay = useMemo(() => {
+    if (selectedAssigneeId) {
+      const u = assignableUsers.find((x) => String(x.id) === String(selectedAssigneeId));
+      if (u) return displayNameForUser(u);
+    }
+    return (ticket?.assigned_to || '').trim();
+  }, [selectedAssigneeId, assignableUsers, ticket?.assigned_to]);
+
+  const legacyAssigneeUnknown =
+    !!(ticket?.assigned_to && String(ticket.assigned_to).trim() && !selectedAssigneeId && assignableUsers.length > 0);
 
   const handleAssign = async () => {
-    if (!assignedTo.trim()) {
-      toast.error('Please enter a name to assign');
-      return;
-    }
-
     setAssigning(true);
     try {
-      const assignmentName = assignedTo.trim();
-      
-      // Update the ticket with the assigned name (as text, not requiring user ID)
-      // The assigned_to field should accept any text value for naming purposes
+      let assignmentName = null;
+      if (selectedAssigneeId) {
+        const u = assignableUsers.find((x) => String(x.id) === String(selectedAssigneeId));
+        assignmentName = u ? displayNameForUser(u) || null : null;
+      }
+
       const { data, error } = await supabase
         .from('tickets')
         .update({ assigned_to: assignmentName })
@@ -42,12 +146,10 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
 
       if (error) {
         console.error('Assignment error details:', error);
-        // Log full error for debugging
-        console.error('Full error object:', JSON.stringify(error, null, 2));
-        
-        // Check if it's a constraint error
         if (error.code === '23503' || error.message?.includes('foreign key')) {
-          toast.error('Database constraint error. The assigned_to field may need to be configured as a text field in the database.');
+          toast.error(
+            'Database constraint error. The assigned_to field may need to be configured as a text field in the database.'
+          );
         } else if (error.message) {
           toast.error(`Failed to assign ticket: ${error.message}`);
         } else {
@@ -56,8 +158,11 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
         return;
       }
 
-      toast.success(`Ticket assigned to ${assignmentName} successfully`);
-      // Update local ticket state
+      if (assignmentName) {
+        toast.success(`Ticket assigned to ${assignmentName}`);
+      } else {
+        toast.success('Assignment cleared');
+      }
       if (data && data[0]) {
         ticket.assigned_to = data[0].assigned_to;
       } else {
@@ -98,8 +203,7 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
   };
 
   const handleStart = async () => {
-    const currentAssignedTo = assignedTo || ticket.assigned_to;
-    if (!currentAssignedTo) {
+    if (!resolvedAssigneeDisplay) {
       toast.error('Please assign the ticket to someone first');
       return;
     }
@@ -153,7 +257,7 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
 
   if (!isOpen || !ticket) return null;
 
-  const currentAssignedTo = assignedTo || ticket.assigned_to;
+  const currentAssignedTo = resolvedAssigneeDisplay;
   const canAssign = permissions.canAssignTickets(userRole);
   const canStart = canAssign && ticket.status === 'open' && currentAssignedTo;
   const canComplete = (canAssign || currentAssignedTo) && ticket.status === 'in-progress';
@@ -215,25 +319,46 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
               {/* Assignment Section */}
               {(canAssign || canResolve) && (
                 <div className="bg-gray-50 dark:bg-gray-950/40 rounded-lg p-4 border border-gray-200 dark:border-gray-800">
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                    Assign To
+                  <label htmlFor="ticket-assignee-select" className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+                    Assign to (staff)
                   </label>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <input
-                      type="text"
-                      value={assignedTo}
-                      onChange={(e) => setAssignedTo(e.target.value)}
-                      placeholder="Enter assignee name..."
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100"
-                    />
-                    <button
-                      onClick={handleAssign}
-                      disabled={assigning || !assignedTo.trim()}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                    Choose a user by role. The ticket stores their display name (same as before for reporting).
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-stretch">
+                    <select
+                      id="ticket-assignee-select"
+                      value={selectedAssigneeId}
+                      onChange={(e) => setSelectedAssigneeId(e.target.value)}
+                      disabled={assignUsersLoading || assigning}
+                      className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 disabled:opacity-60"
                     >
-                      {assigning ? 'Assigning...' : 'Assign'}
+                      <option value="">{assignUsersLoading ? 'Loading users…' : 'Unassigned'}</option>
+                      {assigneeGroups.map(({ roleKey, users: groupUsers }) => (
+                        <optgroup key={roleKey} label={assigneeGroupLabel(roleKey)}>
+                          {groupUsers.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {(u.full_name || '').trim() || 'Unnamed'}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleAssign}
+                      disabled={assigning || assignUsersLoading}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium shrink-0"
+                    >
+                      {assigning ? 'Saving…' : 'Save assignment'}
                     </button>
                   </div>
+                  {legacyAssigneeUnknown && (
+                    <p className="mt-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md px-2 py-1.5">
+                      Stored assignee &quot;{ticket.assigned_to}&quot; does not match a user in the directory. Pick someone
+                      above to replace it, or save as Unassigned to clear.
+                    </p>
+                  )}
                   {currentAssignedTo && (
                     <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
                       Currently assigned to: <span className="font-medium">{currentAssignedTo}</span>

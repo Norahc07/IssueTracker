@@ -1281,6 +1281,10 @@ export default function Attendance() {
   const handleSaveLateReason = async (e) => {
     e?.preventDefault?.();
     if (!supabase || !lateReasonModalLog || savingLateReason) return;
+    if (user?.id && lateReasonModalLog.user_id === user.id) {
+      toast.error('Use “Submit for approval” for your own late reason.');
+      return;
+    }
     if (lateReasonModalLog.fromClockIn && !String(lateReasonText || '').trim()) {
       toast.error('Reason is required when you are marked late from clock-in.');
       return;
@@ -1297,7 +1301,7 @@ export default function Attendance() {
       await fetchPageData();
       setLateReasonModalLog(null);
       setLateReasonText('');
-      toast.success('Reason saved.');
+      toast.success('Late reason saved to attendance record.');
     } catch (err) {
       toast.error(err?.message || 'Failed to save reason.');
     } finally {
@@ -1308,6 +1312,7 @@ export default function Attendance() {
   const handleSubmitLateRequest = async (e) => {
     e?.preventDefault?.();
     if (!supabase || !user?.id || !lateReasonModalLog || savingLateReason) return;
+    if (lateReasonModalLog.user_id !== user.id) return;
     const reason = (lateReasonText || '').trim();
     if (!reason) {
       toast.error('Please enter a reason.');
@@ -1315,7 +1320,8 @@ export default function Attendance() {
     }
     setSavingLateReason(true);
     try {
-      const { error } = await supabase
+      const nowIso = new Date().toISOString();
+      const { error: reqErr } = await supabase
         .from('late_requests')
         .upsert(
           {
@@ -1328,11 +1334,19 @@ export default function Attendance() {
           },
           { onConflict: 'user_id,log_date' }
         );
-      if (error) throw error;
+      if (reqErr) throw reqErr;
+      const { error: logErr } = await supabase
+        .from('attendance_logs')
+        .update({ late_reason: reason, updated_at: nowIso })
+        .eq('user_id', lateReasonModalLog.user_id)
+        .eq('log_date', lateReasonModalLog.log_date);
+      if (logErr) throw logErr;
       setLateReasonModalLog(null);
       setLateReasonText('');
-      toast.success('Late reason submitted for approval.');
-      loadMyLateRequests();
+      toast.success('Late reason submitted for approval. Supervisors can review it in pending requests.');
+      queryCache.invalidate('attendance');
+      await fetchPageData();
+      await loadMyLateRequests();
       if (canManageSchedules) loadLateRequests();
     } catch (err) {
       toast.error(err?.message || 'Failed to submit.');
@@ -1440,6 +1454,26 @@ export default function Attendance() {
   useEffect(() => {
     if (supabase && canManageSchedules) loadLateRequests();
   }, [supabase, canManageSchedules]);
+
+  const lateReasonModalCtx = useMemo(() => {
+    if (!lateReasonModalLog) return null;
+    const isSupervisorEditingOther = !!(user?.id && lateReasonModalLog.user_id !== user.id);
+    const lateReq =
+      !isSupervisorEditingOther && user?.id
+        ? myLateRequests.find(
+            (r) => r.log_date === lateReasonModalLog.log_date && r.user_id === lateReasonModalLog.user_id
+          )
+        : null;
+    const internReadOnlyReason =
+      !isSupervisorEditingOther &&
+      !lateReasonModalLog.fromClockIn &&
+      lateReq &&
+      (lateReq.status === 'pending' || lateReq.status === 'approved');
+    const internCanSubmit =
+      !isSupervisorEditingOther &&
+      (lateReasonModalLog.fromClockIn || !lateReq || lateReq.status === 'rejected');
+    return { isSupervisorEditingOther, lateReq, internReadOnlyReason, internCanSubmit };
+  }, [lateReasonModalLog, user?.id, myLateRequests]);
 
   // Load intern's own DTR requests history
   useEffect(() => {
@@ -2147,7 +2181,18 @@ export default function Attendance() {
                             const isTodayRow = log.log_date === today && log.user_id === user?.id && isClockedIn(log);
                             const dayTotalSec = getLogRenderedSeconds(log) + (isTodayRow ? currentSegmentSeconds : 0);
                             const hasRendered = (log.total_rendered_seconds != null || log.rendered_seconds != null || log.rendered_minutes != null) || isTodayRow;
-                            const pendingRequest = myLateRequests.find((r) => r.log_date === log.log_date);
+                            const pendingRequest = myLateRequests.find(
+                              (r) => r.log_date === log.log_date && r.user_id === log.user_id
+                            );
+                            const lateReqStatus = pendingRequest?.status;
+                            const reasonActionLabel =
+                              lateReqStatus === 'pending' || lateReqStatus === 'approved'
+                                ? 'View'
+                                : lateReqStatus === 'rejected'
+                                  ? 'Update reason'
+                                  : log.late_reason
+                                    ? 'Submit for approval'
+                                    : 'Add reason';
                             const clockInMinutes = firstInLog ? (() => {
                               const d = new Date(firstInLog);
                               if (Number.isNaN(d.getTime())) return null;
@@ -2174,23 +2219,40 @@ export default function Attendance() {
                                 </td>
                                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
                                   {log.is_late ? (
-                                    log.late_reason ? (
-                                      <span className="text-gray-700 dark:text-gray-200">{log.late_reason}</span>
-                                    ) : pendingRequest?.status === 'pending' ? (
-                                      <span className="text-amber-600 text-xs">Pending approval</span>
-                                    ) : pendingRequest?.status === 'rejected' ? (
-                                      <span className="text-red-600 text-xs">Rejected</span>
-                                    ) : null
-                                  ) : '—'}
-                                  {log.is_late && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenLateReasonModal(log)}
-                                      className="ml-1.5 text-xs font-medium"
-                                      style={{ color: PRIMARY }}
-                                    >
-                                      {log.late_reason || pendingRequest ? 'Edit' : 'Add reason'}
-                                    </button>
+                                    <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                                      {log.late_reason ? (
+                                        <span className="text-gray-700 dark:text-gray-200">{log.late_reason}</span>
+                                      ) : lateReqStatus === 'pending' ? (
+                                        <span className="text-amber-600 text-xs">Pending approval</span>
+                                      ) : lateReqStatus === 'rejected' ? (
+                                        <span className="text-red-600 text-xs">Rejected</span>
+                                      ) : null}
+                                      {lateReqStatus === 'pending' && log.late_reason && (
+                                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+                                          Pending approval
+                                        </span>
+                                      )}
+                                      {lateReqStatus === 'approved' && (
+                                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-green-100 text-green-800 dark:bg-green-900/45 dark:text-green-100">
+                                          Approved
+                                        </span>
+                                      )}
+                                      {lateReqStatus === 'rejected' && log.late_reason && (
+                                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-100">
+                                          Rejected
+                                        </span>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenLateReasonModal(log)}
+                                        className="text-xs font-medium"
+                                        style={{ color: PRIMARY }}
+                                      >
+                                        {reasonActionLabel}
+                                      </button>
+                                    </span>
+                                  ) : (
+                                    '—'
                                   )}
                                 </td>
                               </tr>
@@ -2473,6 +2535,9 @@ export default function Attendance() {
                             })() : null;
                             const scheduledInMinutes = parseTimeHHMMToMinutesOrNull(u?.scheduled_time_in) ?? null;
                             const startStatus = getLateStartStatus({ clockInMinutes, scheduledInMinutes, isLateFlag: log.is_late });
+                            const managerPendingLate = lateRequests.find(
+                              (r) => r.user_id === log.user_id && r.log_date === log.log_date
+                            );
                             return (
                               <tr key={log.id ?? `${log.user_id}-${log.log_date}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
                                 <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{getUserDisplayName(u)}</td>
@@ -2499,19 +2564,24 @@ export default function Attendance() {
                                 </td>
                                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
                                   {log.is_late ? (
-                                    <>
+                                    <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
                                       {log.late_reason && <span className="text-gray-700 dark:text-gray-200">{log.late_reason}</span>}
+                                      {managerPendingLate && (
+                                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+                                          Pending approval
+                                        </span>
+                                      )}
                                       {canManageSchedules && (
                                         <button
                                           type="button"
                                           onClick={() => handleOpenLateReasonModal(log)}
-                                          className={log.late_reason ? 'ml-1.5 text-xs font-medium' : 'text-xs font-medium'}
+                                          className="text-xs font-medium"
                                           style={{ color: PRIMARY }}
                                         >
-                                          {log.late_reason ? 'Edit' : 'Add reason'}
+                                          {log.late_reason ? 'Edit record' : 'Add reason'}
                                         </button>
                                       )}
-                                    </>
+                                    </span>
                                   ) : '—'}
                                 </td>
                               </tr>
@@ -2989,25 +3059,45 @@ export default function Attendance() {
         )}
 
       {lateReasonModalLog &&
+        lateReasonModalCtx &&
         createPortal(
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60">
             <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl max-w-md w-full mx-4 border border-gray-200 dark:border-gray-800">
               <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Late attendance reason</h2>
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                    {lateReasonModalCtx.isSupervisorEditingOther
+                      ? 'Late reason (supervisor)'
+                      : 'Late attendance reason'}
+                  </h2>
                   <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                     {formatDateMonthDayYear(lateReasonModalLog.log_date)}
                     {lateReasonModalLog.user_id !== user?.id && usersById[lateReasonModalLog.user_id] && (
                       <> • {usersById[lateReasonModalLog.user_id].full_name || usersById[lateReasonModalLog.user_id].email}</>
                     )}
                   </p>
+                  {!lateReasonModalCtx.isSupervisorEditingOther && lateReasonModalCtx.lateReq?.status === 'pending' && (
+                    <span className="mt-2 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+                      Pending approval
+                    </span>
+                  )}
+                  {!lateReasonModalCtx.isSupervisorEditingOther && lateReasonModalCtx.lateReq?.status === 'approved' && (
+                    <span className="mt-2 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900/45 dark:text-green-100">
+                      Approved
+                    </span>
+                  )}
+                  {!lateReasonModalCtx.isSupervisorEditingOther && lateReasonModalCtx.lateReq?.status === 'rejected' && (
+                    <span className="mt-2 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-100">
+                      Rejected — you can update and submit again
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
                   onClick={() => {
                     if (savingLateReason) return;
                     if (lateReasonModalLog.fromClockIn && !String(lateReasonText || '').trim()) {
-                      toast.error('Please provide a reason before skipping.');
+                      toast.error('Please provide a reason before closing, or use Skip.');
                       return;
                     }
                     setLateReasonModalLog(null);
@@ -3019,9 +3109,21 @@ export default function Attendance() {
                 </button>
               </div>
               <div className="px-5 py-4 space-y-4">
+                {lateReasonModalCtx.isSupervisorEditingOther && (
+                  <p className="text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-950/50 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2">
+                    You are editing this record as a supervisor. Changes save directly to the attendance log (no approval workflow).
+                  </p>
+                )}
+                {!lateReasonModalCtx.isSupervisorEditingOther && !lateReasonModalLog.fromClockIn && (
+                  <p className="text-xs text-gray-600 dark:text-gray-400 bg-blue-50/80 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-lg px-3 py-2">
+                    Submit your reason for approval. It will appear on your attendance record and be reviewed by Monitoring TL/VTL or Admin. There is no separate
+                    &quot;save draft&quot; — use <span className="font-medium">Submit for approval</span> when you are ready.
+                  </p>
+                )}
                 {lateReasonModalLog.fromClockIn && (
                   <p className="text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-lg px-3 py-2">
-                    You were marked late. Please provide a reason for your record. It will be saved to your attendance log and visible to your supervisor.
+                    You were marked late. Enter a reason and <span className="font-semibold">submit for approval</span> so it is recorded and sent for review. Use
+                    Skip only if you will add a reason later from your attendance table.
                   </p>
                 )}
                 <div>
@@ -3030,7 +3132,10 @@ export default function Attendance() {
                     rows={3}
                     value={lateReasonText}
                     onChange={(e) => setLateReasonText(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE]"
+                    readOnly={lateReasonModalCtx.internReadOnlyReason || savingLateReason}
+                    className={`w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] ${
+                      lateReasonModalCtx.internReadOnlyReason ? 'opacity-90 cursor-not-allowed bg-gray-50 dark:bg-gray-950/40' : ''
+                    }`}
                     placeholder="e.g. Traffic, medical appointment, public transport delay"
                   />
                 </div>
@@ -3041,17 +3146,20 @@ export default function Attendance() {
                     disabled={savingLateReason || (lateReasonModalLog.fromClockIn && !String(lateReasonText || '').trim())}
                     className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {lateReasonModalLog.fromClockIn ? 'Skip' : 'Cancel'}
+                    {lateReasonModalLog.fromClockIn ? 'Skip for now' : lateReasonModalCtx.internReadOnlyReason ? 'Close' : 'Cancel'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveLateReason}
-                    disabled={savingLateReason || (lateReasonModalLog.fromClockIn && !String(lateReasonText || '').trim())}
-                    className="px-4 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {savingLateReason ? 'Saving…' : 'Save reason'}
-                  </button>
-                  {lateReasonModalLog.user_id === user?.id && !lateReasonModalLog.fromClockIn && (
+                  {lateReasonModalCtx.isSupervisorEditingOther && (
+                    <button
+                      type="button"
+                      onClick={handleSaveLateReason}
+                      disabled={savingLateReason || (lateReasonModalLog.fromClockIn && !String(lateReasonText || '').trim())}
+                      className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+                      style={{ backgroundColor: PRIMARY }}
+                    >
+                      {savingLateReason ? 'Saving…' : 'Save to attendance record'}
+                    </button>
+                  )}
+                  {!lateReasonModalCtx.isSupervisorEditingOther && lateReasonModalCtx.internCanSubmit && (
                     <button
                       type="button"
                       onClick={handleSubmitLateRequest}
