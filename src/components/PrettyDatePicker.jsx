@@ -14,6 +14,8 @@ export default function PrettyDatePicker({
   ariaLabel,
   placeholder = 'Select date',
   disabled = false,
+  min,
+  max,
   className = '',
 }) {
   const hasValue = !!(value && String(value).trim());
@@ -50,6 +52,8 @@ export default function PrettyDatePicker({
         onChange={onChange}
         onClick={(e) => e.currentTarget.showPicker && e.currentTarget.showPicker()}
         disabled={disabled}
+        min={min}
+        max={max}
         aria-label={ariaLabel || 'Select date'}
         className={`absolute inset-0 w-full h-full opacity-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
       />

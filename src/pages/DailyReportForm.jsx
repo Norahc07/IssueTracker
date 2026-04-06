@@ -6,9 +6,11 @@ import { createNotifications, getUserIdsByScope, scopeFromUserProfile } from '..
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
-/** Local time: editable until 17:00 (5:00 PM). */
-function isBeforeFivePMCutoff() {
-  return new Date().getHours() < 17;
+/** Local time: submissions/edits allowed until 17:30 (5:30 PM). */
+function isBeforeFiveThirtyPMCutoff() {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  return mins < (17 * 60 + 30);
 }
 
 const SECTION_HEADINGS = [
@@ -116,6 +118,15 @@ export default function DailyReportForm() {
 
   const submitNow = async () => {
     if (!user) return;
+    const today = todayStr();
+    if (String(reportDate || '') !== today) {
+      toast.error('Daily report submission is restricted to today only.');
+      return;
+    }
+    if (!isBeforeFiveThirtyPMCutoff()) {
+      toast.error('Submission/editing is only allowed until 5:30 PM.');
+      return;
+    }
     if (!isFormValid) return;
     setSaving(true);
     try {
@@ -193,8 +204,16 @@ export default function DailyReportForm() {
     const t = todayStr();
     if (
       existing?.id &&
-      (String(reportDate) !== t || !formUnlocked || !isBeforeFivePMCutoff())
+      (String(reportDate) !== t || !formUnlocked || !isBeforeFiveThirtyPMCutoff())
     ) {
+      return;
+    }
+    if (String(reportDate || '') !== t) {
+      toast.error('Daily report submission is restricted to today only.');
+      return;
+    }
+    if (!isBeforeFiveThirtyPMCutoff()) {
+      toast.error('Submission/editing is only allowed until 5:30 PM.');
       return;
     }
     setSubmitAttempted(true);
@@ -234,7 +253,7 @@ export default function DailyReportForm() {
   const selectedLog = detailIndex != null ? logs[detailIndex] : null;
   const hasSubmission = !!existing?.id;
   const isReportForToday = String(reportDate) === today;
-  const beforeCutoff = isBeforeFivePMCutoff();
+  const beforeCutoff = isBeforeFiveThirtyPMCutoff();
   const canUnlockTodayEdit = hasSubmission && isReportForToday && beforeCutoff;
   const isReadOnly =
     hasSubmission && (!isReportForToday || !formUnlocked || !beforeCutoff);
@@ -256,6 +275,8 @@ export default function DailyReportForm() {
   })();
   const isFormValid = (() => {
     if (!String(reportDate || '').trim()) return false;
+    if (String(reportDate || '') !== today) return false;
+    if (!beforeCutoff && !isReadOnly) return false;
     if (requiredQuestions.length === 0) return true;
     return Object.keys(requiredMissingById).length === 0;
   })();
@@ -310,12 +331,17 @@ export default function DailyReportForm() {
         <>
           {hasSubmission && isReadOnly && isReportForToday && beforeCutoff && (
             <div className="rounded-lg border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-200 mb-4">
-              Submitted for today. Use <span className="font-semibold">Edit</span> (before 5:00 PM) if you need to fix a mistake.
+              Submitted for today. Use <span className="font-semibold">Edit</span> (before 5:30 PM) if you need to fix a mistake.
             </div>
           )}
           {hasSubmission && isReadOnly && isReportForToday && !beforeCutoff && (
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-950/40 dark:text-gray-200 mb-4">
-              Today&apos;s report is locked after 5:00 PM. For corrections, contact your TL/VTL or admin.
+              Today&apos;s report is locked after 5:30 PM. For corrections, contact your TL/VTL or admin.
+            </div>
+          )}
+          {!beforeCutoff && !hasSubmission && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 mb-4">
+              Daily report submission is only allowed on the same day until 5:30 PM.
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-8 mb-8">
@@ -338,8 +364,10 @@ export default function DailyReportForm() {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
             <p className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
-              {reportDate}
-              <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">Always today — use My Daily Report log to review past days.</span>
+              {today}
+              <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Same-day submission only (until 5:30 PM). Past/future dates are not allowed.
+              </span>
             </p>
           </div>
         </div>
@@ -526,10 +554,11 @@ export default function DailyReportForm() {
                           >
                             View
                           </button>
-                          {String(row.report_date) === todayStr() && isBeforeFivePMCutoff() && (
+                          {String(row.report_date) === todayStr() && isBeforeFiveThirtyPMCutoff() && (
                             <button
                               type="button"
                               onClick={() => {
+                                setReportDate(String(row.report_date || todayStr()));
                                 setActiveTab('form');
                                 setFormUnlocked(true);
                               }}
@@ -565,12 +594,13 @@ export default function DailyReportForm() {
                 </p>
               </div>
               <div className="shrink-0 flex flex-wrap items-center gap-2">
-                {String(selectedLog.report_date) === todayStr() && isBeforeFivePMCutoff() && (
+                {String(selectedLog.report_date) === todayStr() && isBeforeFiveThirtyPMCutoff() && (
                   <button
                     type="button"
                     onClick={() => {
                       setShowDetail(false);
                       setDetailIndex(null);
+                      setReportDate(String(selectedLog.report_date || todayStr()));
                       setActiveTab('form');
                       setFormUnlocked(true);
                     }}
@@ -649,7 +679,7 @@ export default function DailyReportForm() {
               <div className="min-w-0">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Confirm submission</h3>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                  Are you sure? After submission, you can&apos;t cancel it. You may still edit before 5:00 PM using <span className="font-medium">Edit</span> if applicable.
+                  Are you sure? After submission, you can&apos;t cancel it. You may still edit before 5:30 PM using <span className="font-medium">Edit</span> if applicable.
                 </p>
               </div>
               <button
