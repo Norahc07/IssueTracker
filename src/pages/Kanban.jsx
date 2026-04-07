@@ -1,5 +1,5 @@
 // client/src/pages/Kanban.jsx
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, useDroppable } from '@dnd-kit/core';
+import { DndContext, closestCenter, rectIntersection, KeyboardSensor, PointerSensor, useSensor, useSensors, useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable, sortableKeyboardCoordinates, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useSupabase } from '../context/supabase.jsx';
@@ -12,6 +12,46 @@ import { ticketPriorityPill, ticketStatusLabel, ticketStatusPill } from '../util
 import { getStoredTheme } from '../utils/theme.js';
 
 const PRIMARY = '#6795BE';
+
+const PRIORITY_ORDER = ['critical', 'high', 'normal', 'low'];
+const PRIORITY_RANK = { critical: 3, high: 2, normal: 1, low: 0 };
+
+function normalizePriority(raw) {
+  const p = String(raw || '').trim().toLowerCase();
+  if (PRIORITY_ORDER.includes(p)) return p;
+  if (p === 'medium') return 'normal';
+  return 'normal';
+}
+
+function getTimeOrZero(raw) {
+  const t = raw ? new Date(raw).getTime() : NaN;
+  return Number.isFinite(t) ? t : 0;
+}
+
+function normalizeStatus(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'open' || s === 'to-do' || s === 'todo' || s === 'not started') return 'open';
+  if (s === 'in-progress' || s === 'in progress' || s === 'review') return 'in-progress';
+  if (s === 'closed' || s === 'completed' || s === 'done' || s === 'cancelled' || s === 'canceled') return 'closed';
+  return s || 'open';
+}
+
+function yyyymmFromDate(value) {
+  const d = value ? new Date(value) : null;
+  if (!d || Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+function formatMonthYear(yyyymm) {
+  const v = String(yyyymm || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(v)) return v || '—';
+  const [y, m] = v.split('-').map((x) => Number(x));
+  const d = new Date(y, Math.max(0, (m || 1) - 1), 1);
+  if (Number.isNaN(d.getTime())) return v;
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
 
 function SortableItem({ id, ticket, onTicketClick }) {
   const {
@@ -106,13 +146,7 @@ function KanbanColumn({ column, tickets, onTicketClick }) {
     id: column.id,
   });
 
-  const columnTickets = tickets.filter((t) =>
-    column.status === 'open'
-      ? t.status === 'open'
-      : column.status === 'in-progress'
-      ? t.status === 'in-progress'
-      : t.status === 'closed'
-  );
+  const columnTickets = tickets.filter((t) => normalizeStatus(t.status) === column.status);
 
   return (
     <div
@@ -156,6 +190,8 @@ const Kanban = () => {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [pendingMove, setPendingMove] = useState(null); // { ticketId, fromStatus, toStatus }
   const [confirmMoving, setConfirmMoving] = useState(false);
+  const [priorityFilter, setPriorityFilter] = useState('all'); // all | critical | high | normal | low
+  const [completedMonthFilter, setCompletedMonthFilter] = useState('all'); // all | YYYY-MM
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try {
       if (typeof document !== 'undefined') {
@@ -256,13 +292,8 @@ const Kanban = () => {
     }
 
     // Reorder within same column (or overall list) if status didn't change
-    setTickets((items) => {
-      const oldIndex = items.findIndex((item) => item.id === activeId);
-      const newIndex = items.findIndex((item) => item.id === overId);
-
-      if (oldIndex === -1 || newIndex === -1) return items;
-      return arrayMove(items, oldIndex, newIndex);
-    });
+    // Board uses auto-sort by urgency/date; disable manual same-column ordering.
+    return;
   };
 
   const columns = [
@@ -270,6 +301,61 @@ const Kanban = () => {
     { id: 'in-progress', title: 'In Progress', status: 'in-progress', color: 'blue' },
     { id: 'done', title: 'Completed', status: 'closed', color: 'gray' },
   ];
+
+  const completedMonthOptions = (() => {
+    const closed = (Array.isArray(tickets) ? tickets : []).filter((t) => normalizeStatus(t.status) === 'closed');
+    const months = new Set();
+    closed.forEach((t) => {
+      const m = yyyymmFromDate(t.updated_at || t.closed_at || t.resolved_at);
+      if (m) months.add(m);
+    });
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  })();
+
+  const displayedTickets = (() => {
+    const list = Array.isArray(tickets) ? tickets : [];
+    const filtered = priorityFilter === 'all'
+      ? list
+      : list.filter((t) => normalizePriority(t.priority) === priorityFilter);
+
+    const open = [];
+    const inProgress = [];
+    const closed = [];
+    filtered.forEach((t) => {
+      const s = normalizeStatus(t.status);
+      if (s === 'open') open.push(t);
+      else if (s === 'in-progress') inProgress.push(t);
+      else if (s === 'closed') closed.push(t);
+    });
+
+    // Completed month filter
+    const closedFiltered = completedMonthFilter === 'all'
+      ? closed
+      : closed.filter((t) => yyyymmFromDate(t.updated_at || t.closed_at || t.resolved_at) === completedMonthFilter);
+
+    const sortIncomplete = (a, b) => {
+      const pa = PRIORITY_RANK[normalizePriority(a.priority)] ?? 0;
+      const pb = PRIORITY_RANK[normalizePriority(b.priority)] ?? 0;
+      if (pa !== pb) return pb - pa; // high -> low
+      const da = getTimeOrZero(a.created_at);
+      const db = getTimeOrZero(b.created_at);
+      if (da !== db) return da - db; // oldest first
+      return String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
+    };
+    const sortCompleted = (a, b) => {
+      const da = getTimeOrZero(a.updated_at || a.closed_at || a.resolved_at || a.created_at);
+      const db = getTimeOrZero(b.updated_at || b.closed_at || b.resolved_at || b.created_at);
+      if (da !== db) return db - da; // newest first
+      const pa = PRIORITY_RANK[normalizePriority(a.priority)] ?? 0;
+      const pb = PRIORITY_RANK[normalizePriority(b.priority)] ?? 0;
+      return pb - pa;
+    };
+
+    open.sort(sortIncomplete);
+    inProgress.sort(sortIncomplete);
+    closedFiltered.sort(sortCompleted);
+    return [...open, ...inProgress, ...closedFiltered];
+  })();
 
   const statusLabel = (status) => ticketStatusLabel(status);
 
@@ -307,14 +393,48 @@ const Kanban = () => {
 
   return (
     <div className="w-full">
-      <div className="mb-4 sm:mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>Kanban Board</h1>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Drag and drop tickets to organize your workflow</p>
+      <div className="mb-4 sm:mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>Kanban Board</h1>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Tickets are auto-sorted by urgency and date. Drag between columns to update status.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 justify-start lg:justify-end">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-300">Urgency</label>
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs sm:text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+            >
+              <option value="all">All</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="normal">Normal</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-300">Completed</label>
+            <select
+              value={completedMonthFilter}
+              onChange={(e) => setCompletedMonthFilter(e.target.value)}
+              className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs sm:text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[#6795BE]"
+            >
+              <option value="all">All months</option>
+              {completedMonthOptions.map((m) => (
+                  <option key={m} value={m}>{formatMonthYear(m)}</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
       
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        // Use rectangle-based collision so empty columns are easy drop targets
+        collisionDetection={rectIntersection}
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-3 sm:gap-6 overflow-x-auto pb-4 -mx-4 sm:mx-0 px-4 sm:px-0">
@@ -322,7 +442,7 @@ const Kanban = () => {
             <KanbanColumn
               key={column.id}
               column={column}
-              tickets={tickets}
+              tickets={displayedTickets}
               onTicketClick={setSelectedTicket}
             />
           ))}

@@ -137,7 +137,7 @@ export const permissions = {
 
   canUpdateTaskStatus: (userRole, taskAssignedTo, userId) => {
     // Can update if assigned to them, or if they're admin/tla/tl/vtl
-    if (taskAssignedTo === userId) return true;
+    if (taskAssignedTo && userId && String(taskAssignedTo) === String(userId)) return true;
     return isAnyRole(userRole, [ROLES.ADMIN, ROLES.TLA, ROLES.TL, ROLES.VTL]);
   },
 

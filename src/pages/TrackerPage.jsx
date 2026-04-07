@@ -58,6 +58,17 @@ export default function TrackerPage() {
   const [tlVtlTrackerRows, setTlVtlTrackerRows] = useState([]);
   const [savingTlVtlTracker, setSavingTlVtlTracker] = useState(false);
   const [isTlVtlTrackerEditMode, setIsTlVtlTrackerEditMode] = useState(false);
+  const newTlVtlDraftId = () => {
+    try {
+      // Prefer uuid when available (modern browsers)
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return `tmp-${crypto.randomUUID()}`;
+      }
+    } catch {
+      // ignore
+    }
+    return `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  };
 
   // Intern records (TLA POV)
   const [recordsLoading, setRecordsLoading] = useState(false);
@@ -297,28 +308,19 @@ export default function TrackerPage() {
     }
   };
 
-  const addTlVtlTrackerRow = async () => {
-    setSavingTlVtlTracker(true);
-    try {
-      const { data, error } = await supabase
-        .from('tl_vtl_tracker')
-        .insert({
-          department: 'IT',
-          team: 'Team Lead Assistant',
-          name: '',
-          role: 'Team Leader',
-          updated_at: new Date().toISOString(),
-        })
-        .select('*')
-        .single();
-      if (error) throw error;
-      setTlVtlTrackerRows((prev) => [...prev, data]);
-      toast.success('Row added');
-    } catch (err) {
-      toast.error(err?.message || 'Failed to add row');
-    } finally {
-      setSavingTlVtlTracker(false);
-    }
+  const addTlVtlTrackerRow = () => {
+    // Important: do NOT insert to DB on "Add row" — only insert on explicit Save.
+    // This ensures Cancel fully discards unsaved rows.
+    const draft = {
+      id: newTlVtlDraftId(),
+      department: 'IT',
+      team: 'Team Lead Assistant',
+      name: '',
+      role: 'Team Leader',
+      _isDraft: true,
+    };
+    setTlVtlTrackerRows((prev) => [...prev, draft]);
+    toast.success('Draft row added (not saved yet)');
   };
 
   const normalizeUserTeamFromTracker = (teamLabel) => {
@@ -345,17 +347,29 @@ export default function TrackerPage() {
       for (const row of tlVtlTrackerRows) {
         const nowIso = new Date().toISOString();
 
-        const { error } = await supabase
-          .from('tl_vtl_tracker')
-          .update({
-            department: row.department || 'IT',
-            team: row.team || 'Team Lead Assistant',
-            name: (row.name || '').trim(),
-            role: row.role || 'Team Leader',
-            updated_at: nowIso,
-          })
-          .eq('id', row.id);
-        if (error) throw error;
+        const payload = {
+          department: row.department || 'IT',
+          team: row.team || 'Team Lead Assistant',
+          name: (row.name || '').trim(),
+          role: row.role || 'Team Leader',
+          updated_at: nowIso,
+        };
+
+        // Insert drafts; update existing rows
+        if (row?._isDraft) {
+          const { error } = await supabase
+            .from('tl_vtl_tracker')
+            .insert({ ...payload, created_at: nowIso })
+            .select('id')
+            .single();
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from('tl_vtl_tracker')
+            .update(payload)
+            .eq('id', row.id);
+          if (error) throw error;
+        }
 
         const targetRole = mapTrackerRoleToUserRole(row.role);
         const trimmedName = (row.name || '').trim();
@@ -381,6 +395,7 @@ export default function TrackerPage() {
       }
       toast.success('Changes saved and promotions applied');
       setIsTlVtlTrackerEditMode(false);
+      await fetchTlVtlTracker();
     } catch (err) {
       toast.error(err?.message || 'Failed to save');
     } finally {
@@ -394,6 +409,14 @@ export default function TrackerPage() {
   };
 
   const deleteTlVtlTrackerRow = async (id) => {
+    // If it's a local draft row, just remove it locally.
+    const localRow = tlVtlTrackerRows.find((r) => r?.id === id);
+    if (localRow?._isDraft) {
+      setTlVtlTrackerRows((prev) => prev.filter((r) => r.id !== id));
+      toast.success('Draft row discarded');
+      return;
+    }
+
     setSavingTlVtlTracker(true);
     try {
       const { error } = await supabase.from('tl_vtl_tracker').delete().eq('id', id);
