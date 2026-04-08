@@ -425,8 +425,17 @@ export default function Attendance() {
   const [scheduleModalMode, setScheduleModalMode] = useState('self');
   const [setScheduleForm, setSetScheduleForm] = useState({
     user_id: '',
-    scheduled_time_in: '09:00',
-    scheduled_time_out: '18:00',
+    // Per-day schedule (Mon–Fri); values are 'HH:MM'
+    mon_time_in: '09:00',
+    mon_time_out: '18:00',
+    tue_time_in: '09:00',
+    tue_time_out: '18:00',
+    wed_time_in: '09:00',
+    wed_time_out: '18:00',
+    thu_time_in: '09:00',
+    thu_time_out: '18:00',
+    fri_time_in: '09:00',
+    fri_time_out: '18:00',
     total_ojt_hours_required: 400,
     current_rendered_hours: 0,
   });
@@ -1808,12 +1817,26 @@ export default function Attendance() {
     const m = mode || 'self';
     setScheduleModalMode(m);
 
+    const makeDefaultDaySchedule = (baseIn, baseOut) => ({
+      mon_time_in: baseIn,
+      mon_time_out: baseOut,
+      tue_time_in: baseIn,
+      tue_time_out: baseOut,
+      wed_time_in: baseIn,
+      wed_time_out: baseOut,
+      thu_time_in: baseIn,
+      thu_time_out: baseOut,
+      fri_time_in: baseIn,
+      fri_time_out: baseOut,
+    });
+
     if (m === 'self') {
       const importedMin = Number(mySchedule?.imported_rendered_minutes) || 0;
+      const baseIn = formatTime(mySchedule?.scheduled_time_in) || '09:00';
+      const baseOut = formatTime(mySchedule?.scheduled_time_out) || '18:00';
       setSetScheduleForm({
         user_id: user?.id || '',
-        scheduled_time_in: formatTime(mySchedule?.scheduled_time_in) || '09:00',
-        scheduled_time_out: formatTime(mySchedule?.scheduled_time_out) || '18:00',
+        ...makeDefaultDaySchedule(baseIn, baseOut),
         total_ojt_hours_required: mySchedule?.total_ojt_hours_required ?? 400,
         current_rendered_hours: canManageSchedules ? (importedMin / 60).toFixed(2) : 0,
       });
@@ -1824,18 +1847,18 @@ export default function Attendance() {
     // manage
     if (targetUser) {
       const importedMin = Number(targetUser.imported_rendered_minutes) || 0;
+      const baseIn = formatTime(targetUser.scheduled_time_in) || '09:00';
+      const baseOut = formatTime(targetUser.scheduled_time_out) || '18:00';
       setSetScheduleForm({
         user_id: targetUser.id,
-        scheduled_time_in: formatTime(targetUser.scheduled_time_in) || '09:00',
-        scheduled_time_out: formatTime(targetUser.scheduled_time_out) || '18:00',
+        ...makeDefaultDaySchedule(baseIn, baseOut),
         total_ojt_hours_required: targetUser.total_ojt_hours_required ?? 400,
         current_rendered_hours: (importedMin / 60).toFixed(2),
       });
     } else {
       setSetScheduleForm({
         user_id: '',
-        scheduled_time_in: '09:00',
-        scheduled_time_out: '18:00',
+        ...makeDefaultDaySchedule('09:00', '18:00'),
         total_ojt_hours_required: 400,
         current_rendered_hours: '0',
       });
@@ -1845,7 +1868,21 @@ export default function Attendance() {
 
   const handleSaveSchedule = async (e) => {
     e.preventDefault();
-    const { user_id, scheduled_time_in, scheduled_time_out, total_ojt_hours_required, current_rendered_hours } = setScheduleForm;
+    const {
+      user_id,
+      mon_time_in,
+      mon_time_out,
+      tue_time_in,
+      tue_time_out,
+      wed_time_in,
+      wed_time_out,
+      thu_time_in,
+      thu_time_out,
+      fri_time_in,
+      fri_time_out,
+      total_ojt_hours_required,
+      current_rendered_hours,
+    } = setScheduleForm;
     if (!user_id) {
       toast.error('Select an intern.');
       return;
@@ -1861,9 +1898,19 @@ export default function Attendance() {
       };
       const includeImported = scheduleModalMode === 'manage' || (scheduleModalMode === 'self' && canManageSchedules);
       const importedMinutes = includeImported ? Math.round((parseFloat(current_rendered_hours) || 0) * 60) : undefined;
+
       const payload = {
-        scheduled_time_in: toTime(scheduled_time_in),
-        scheduled_time_out: toTime(scheduled_time_out),
+        // Keep legacy single schedule fields based on Monday, for backward compatibility.
+        scheduled_time_in: toTime(mon_time_in),
+        scheduled_time_out: toTime(mon_time_out),
+        // Store per-day schedule in JSON for flexible use by attendance logic.
+        schedule_by_day: {
+          mon: { in: toTime(mon_time_in), out: toTime(mon_time_out) },
+          tue: { in: toTime(tue_time_in), out: toTime(tue_time_out) },
+          wed: { in: toTime(wed_time_in), out: toTime(wed_time_out) },
+          thu: { in: toTime(thu_time_in), out: toTime(thu_time_out) },
+          fri: { in: toTime(fri_time_in), out: toTime(fri_time_out) },
+        },
         total_ojt_hours_required: Number(total_ojt_hours_required) || 400,
         schedule_configured_at: new Date().toISOString(),
       };
@@ -3447,25 +3494,56 @@ export default function Attendance() {
                     </select>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Time In</label>
-                    <input
-                      type="time"
-                      value={setScheduleForm.scheduled_time_in}
-                      onChange={(e) => setSetScheduleForm((f) => ({ ...f, scheduled_time_in: e.target.value }))}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Schedule (per day)</label>
+                  <div className="rounded-lg border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Day</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Time In</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Time Out</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          { key: 'mon', label: 'Monday' },
+                          { key: 'tue', label: 'Tuesday' },
+                          { key: 'wed', label: 'Wednesday' },
+                          { key: 'thu', label: 'Thursday' },
+                          { key: 'fri', label: 'Friday' },
+                        ].map((d) => (
+                          <tr key={d.key} className="border-t border-gray-200">
+                            <td className="px-3 py-2 text-gray-900">{d.label}</td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="time"
+                                value={setScheduleForm[`${d.key}_time_in`] || ''}
+                                onChange={(e) =>
+                                  setSetScheduleForm((f) => ({ ...f, [`${d.key}_time_in`]: e.target.value }))
+                                }
+                                className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="time"
+                                value={setScheduleForm[`${d.key}_time_out`] || ''}
+                                onChange={(e) =>
+                                  setSetScheduleForm((f) => ({ ...f, [`${d.key}_time_out`]: e.target.value }))
+                                }
+                                className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Time Out</label>
-                    <input
-                      type="time"
-                      value={setScheduleForm.scheduled_time_out}
-                      onChange={(e) => setSetScheduleForm((f) => ({ ...f, scheduled_time_out: e.target.value }))}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    />
-                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Configure different in/out times for each weekday. The Monday schedule is also used as the default for
+                    systems that only support a single time in/out.
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Total OJT hours required</label>

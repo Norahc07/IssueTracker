@@ -58,6 +58,9 @@ export default function TrackerPage() {
   const [tlVtlTrackerRows, setTlVtlTrackerRows] = useState([]);
   const [savingTlVtlTracker, setSavingTlVtlTracker] = useState(false);
   const [isTlVtlTrackerEditMode, setIsTlVtlTrackerEditMode] = useState(false);
+  const [tlVtlTrackerPendingDeletes, setTlVtlTrackerPendingDeletes] = useState([]); // ids to delete on Save (not Cancel)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmTargetId, setDeleteConfirmTargetId] = useState(null);
   const newTlVtlDraftId = () => {
     try {
       // Prefer uuid when available (modern browsers)
@@ -344,6 +347,16 @@ export default function TrackerPage() {
   const saveAllTlVtlTrackerRows = async () => {
     setSavingTlVtlTracker(true);
     try {
+      // Delete rows that were "removed" during edit mode.
+      // Actual deletion is only applied on Save (Cancel should restore).
+      if (tlVtlTrackerPendingDeletes.length > 0) {
+        const { error } = await supabase
+          .from('tl_vtl_tracker')
+          .delete()
+          .in('id', tlVtlTrackerPendingDeletes);
+        if (error) throw error;
+      }
+
       for (const row of tlVtlTrackerRows) {
         const nowIso = new Date().toISOString();
 
@@ -395,6 +408,7 @@ export default function TrackerPage() {
       }
       toast.success('Changes saved and promotions applied');
       setIsTlVtlTrackerEditMode(false);
+      setTlVtlTrackerPendingDeletes([]);
       await fetchTlVtlTracker();
     } catch (err) {
       toast.error(err?.message || 'Failed to save');
@@ -406,28 +420,37 @@ export default function TrackerPage() {
   const cancelTlVtlTrackerEdit = () => {
     fetchTlVtlTracker();
     setIsTlVtlTrackerEditMode(false);
+    setTlVtlTrackerPendingDeletes([]);
+    setDeleteConfirmOpen(false);
+    setDeleteConfirmTargetId(null);
   };
 
-  const deleteTlVtlTrackerRow = async (id) => {
-    // If it's a local draft row, just remove it locally.
+  const openDeleteConfirmTlVtlTrackerRow = (id) => {
+    setDeleteConfirmTargetId(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteTlVtlTrackerRow = () => {
+    const id = deleteConfirmTargetId;
+    if (!id) return;
+
     const localRow = tlVtlTrackerRows.find((r) => r?.id === id);
+
+    // Close modal immediately; actual "Save" happens later.
+    setDeleteConfirmOpen(false);
+    setDeleteConfirmTargetId(null);
+
+    // Draft rows were never inserted into DB; discard locally.
     if (localRow?._isDraft) {
       setTlVtlTrackerRows((prev) => prev.filter((r) => r.id !== id));
       toast.success('Draft row discarded');
       return;
     }
 
-    setSavingTlVtlTracker(true);
-    try {
-      const { error } = await supabase.from('tl_vtl_tracker').delete().eq('id', id);
-      if (error) throw error;
-      setTlVtlTrackerRows((prev) => prev.filter((r) => r.id !== id));
-      toast.success('Row removed');
-    } catch (err) {
-      toast.error(err?.message || 'Failed to delete');
-    } finally {
-      setSavingTlVtlTracker(false);
-    }
+    // Existing rows: remove from UI now, but only delete from DB on "Save".
+    setTlVtlTrackerRows((prev) => prev.filter((r) => r.id !== id));
+    setTlVtlTrackerPendingDeletes((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    toast.success('Row removed (pending Save)');
   };
 
   const resetLeaveForm = () => {
@@ -686,7 +709,12 @@ export default function TrackerPage() {
             {!isTlVtlTrackerEditMode ? (
               <button
                 type="button"
-                onClick={() => setIsTlVtlTrackerEditMode(true)}
+                onClick={() => {
+                  setIsTlVtlTrackerEditMode(true);
+                  setTlVtlTrackerPendingDeletes([]);
+                  setDeleteConfirmOpen(false);
+                  setDeleteConfirmTargetId(null);
+                }}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-white"
                 style={{ backgroundColor: PRIMARY }}
               >
@@ -697,7 +725,7 @@ export default function TrackerPage() {
                 <button
                   type="button"
                   onClick={addTlVtlTrackerRow}
-                  disabled={savingTlVtlTracker}
+                  disabled={savingTlVtlTracker || deleteConfirmOpen}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-60"
                 >
                   {savingTlVtlTracker ? 'Adding...' : 'Add row'}
@@ -705,7 +733,7 @@ export default function TrackerPage() {
                 <button
                   type="button"
                   onClick={saveAllTlVtlTrackerRows}
-                  disabled={savingTlVtlTracker}
+                  disabled={savingTlVtlTracker || deleteConfirmOpen}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
                   style={{ backgroundColor: PRIMARY }}
                 >
@@ -1340,7 +1368,7 @@ export default function TrackerPage() {
                         <td className="px-4 py-2">
                           <button
                             type="button"
-                            onClick={() => deleteTlVtlTrackerRow(row.id)}
+                            onClick={() => openDeleteConfirmTlVtlTrackerRow(row.id)}
                             disabled={savingTlVtlTracker}
                             className="p-1.5 rounded text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
                             title="Delete row"
@@ -1367,6 +1395,53 @@ export default function TrackerPage() {
         </div>
       </div>
         </>
+      )}
+      {deleteConfirmOpen && (
+        <Modal open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} zIndexClassName="z-[2147483647]">
+          <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-3">
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+                Delete row?
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setDeleteConfirmTargetId(null);
+                }}
+                className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-5">
+              <p className="text-sm text-gray-700 dark:text-gray-200">
+                This row will be removed from the list immediately, but it will only be permanently deleted when you click <span className="font-semibold">Save</span>.
+                If you click <span className="font-semibold">Cancel</span>, the row will be restored.
+              </p>
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteConfirmOpen(false);
+                    setDeleteConfirmTargetId(null);
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteTlVtlTrackerRow}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

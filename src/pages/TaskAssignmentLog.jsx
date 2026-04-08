@@ -245,7 +245,9 @@ const buildCorporateCoursePayload = (draft, row, userId) => {
   const courseType = sanitizeCourseType(raw);
   const status = statusToDb(draft?.status ?? row?.status);
   return {
-    course_title: ((draft?.course_title ?? row?.course_title ?? '').trim() || 'New course'),
+    // Do not auto-fill a default title here. UI + handlers already require a title for creation.
+    // This prevents accidental "New course" rows when an empty draft is inserted.
+    course_title: ((draft?.course_title ?? row?.course_title ?? '').trim() || ''),
     course_type: courseType,
     status,
     updated_by: userId ?? null,
@@ -259,7 +261,9 @@ const buildDomainCoursePayload = (draft, row, userId) => {
   const courseType = sanitizeCourseType(raw);
   const status = statusToDb(draft?.status ?? row?.status);
   return {
-    course_title: ((draft?.course_title ?? row?.course_title ?? '').trim() || 'New course'),
+    // Do not auto-fill a default title here. UI + handlers already require a title for creation.
+    // This prevents accidental "New course" rows when an empty draft is inserted.
+    course_title: ((draft?.course_title ?? row?.course_title ?? '').trim() || ''),
     course_type: courseType,
     status,
     updated_by: userId ?? null,
@@ -870,6 +874,10 @@ export default function TaskAssignmentLog() {
       // Fix legacy empty titles for the affected domains.
       const hasBlankTitles = list.some((r) => !String(r?.course_title || '').trim());
       if (hasBlankTitles) {
+        // If any blank rows were recently inserted as accidental drafts, delete them instead of converting.
+        const CLEANUP_RECENT_BLANK_MS = 15 * 60 * 1000; // 15 minutes
+        const nowMs = Date.now();
+
         const { data: domainRow, error: domainErr } = await supabase
           .from('domains')
           .select('country')
@@ -878,20 +886,47 @@ export default function TaskAssignmentLog() {
 
         const country = String(domainRow?.country || '').trim();
         if (!domainErr && COURSE_TITLE_BLANK_FIX_COUNTRIES.includes(country)) {
-          const idsToFix = list.filter((r) => !String(r?.course_title || '').trim()).map((r) => r.id);
+          const blankRows = list.filter((r) => !String(r?.course_title || '').trim());
+          const idsToDelete = blankRows
+            .filter((r) => {
+              const updatedAtMs = new Date(r?.updated_at || '').getTime();
+              const updatedByMatches = user?.id ? String(r?.updated_by || '') === String(user.id) : false;
+              const isRecent = Number.isFinite(updatedAtMs) && nowMs - updatedAtMs <= CLEANUP_RECENT_BLANK_MS;
+              return isRecent && updatedByMatches;
+            })
+            .map((r) => r.id);
+
+          const idsToFix = blankRows
+            .filter((r) => !(idsToDelete || []).includes(r.id))
+            .map((r) => r.id);
+
+          if (idsToDelete.length > 0) {
+            try {
+              const { error: delErr } = await supabase
+                .from('course_list_domain_items')
+                .delete()
+                .in('id', idsToDelete);
+              if (delErr) throw delErr;
+            } catch (e) {
+              console.warn('course_list_domain_items recent blank title cleanup error:', e);
+            }
+          }
+
           const updatedAtIso = new Date().toISOString();
           const payload = { course_title: DEFAULT_COURSE_TITLE_FALLBACK, updated_at: updatedAtIso };
 
           try {
-            await Promise.all(
-              idsToFix.map(async (id) => {
-                const { error: updErr } = await supabase
-                  .from('course_list_domain_items')
-                  .update(payload)
-                  .eq('id', id);
-                if (updErr) throw updErr;
-              })
-            );
+            if (idsToFix.length > 0) {
+              await Promise.all(
+                idsToFix.map(async (id) => {
+                  const { error: updErr } = await supabase
+                    .from('course_list_domain_items')
+                    .update(payload)
+                    .eq('id', id);
+                  if (updErr) throw updErr;
+                })
+              );
+            }
             const { data: refetched, error: refetchErr } = await supabase
               .from('course_list_domain_items')
               .select('*')
@@ -938,6 +973,10 @@ export default function TaskAssignmentLog() {
       // Fix legacy empty titles for the affected domains.
       const hasBlankTitles = list.some((r) => !String(r?.course_title || '').trim());
       if (hasBlankTitles) {
+        // If any blank rows were recently inserted as accidental drafts, delete them instead of converting.
+        const CLEANUP_RECENT_BLANK_MS = 15 * 60 * 1000; // 15 minutes
+        const nowMs = Date.now();
+
         const { data: domainRow, error: domainErr } = await supabase
           .from('domains')
           .select('country')
@@ -946,20 +985,47 @@ export default function TaskAssignmentLog() {
 
         const country = String(domainRow?.country || '').trim();
         if (!domainErr && COURSE_TITLE_BLANK_FIX_COUNTRIES.includes(country)) {
-          const idsToFix = list.filter((r) => !String(r?.course_title || '').trim()).map((r) => r.id);
+          const blankRows = list.filter((r) => !String(r?.course_title || '').trim());
+          const idsToDelete = blankRows
+            .filter((r) => {
+              const updatedAtMs = new Date(r?.updated_at || '').getTime();
+              const updatedByMatches = user?.id ? String(r?.updated_by || '') === String(user.id) : false;
+              const isRecent = Number.isFinite(updatedAtMs) && nowMs - updatedAtMs <= CLEANUP_RECENT_BLANK_MS;
+              return isRecent && updatedByMatches;
+            })
+            .map((r) => r.id);
+
+          const idsToFix = blankRows
+            .filter((r) => !(idsToDelete || []).includes(r.id))
+            .map((r) => r.id);
+
+          if (idsToDelete.length > 0) {
+            try {
+              const { error: delErr } = await supabase
+                .from('corporate_course_items')
+                .delete()
+                .in('id', idsToDelete);
+              if (delErr) throw delErr;
+            } catch (e) {
+              console.warn('corporate_course_items recent blank title cleanup error:', e);
+            }
+          }
+
           const updatedAtIso = new Date().toISOString();
           const payload = { course_title: DEFAULT_COURSE_TITLE_FALLBACK, updated_at: updatedAtIso };
 
           try {
-            await Promise.all(
-              idsToFix.map(async (id) => {
-                const { error: updErr } = await supabase
-                  .from('corporate_course_items')
-                  .update(payload)
-                  .eq('id', id);
-                if (updErr) throw updErr;
-              })
-            );
+            if (idsToFix.length > 0) {
+              await Promise.all(
+                idsToFix.map(async (id) => {
+                  const { error: updErr } = await supabase
+                    .from('corporate_course_items')
+                    .update(payload)
+                    .eq('id', id);
+                  if (updErr) throw updErr;
+                })
+              );
+            }
             const { data: refetched, error: refetchErr } = await supabase
               .from('corporate_course_items')
               .select('*')
@@ -1399,6 +1465,11 @@ export default function TaskAssignmentLog() {
       if (error) throw error;
       queryCache.invalidate('tasks');
       fetchTasks(true);
+      setTaskEditDrafts((prev) => {
+        const next = { ...(prev || {}) };
+        delete next[task.id];
+        return next;
+      });
       setSelectedTask(null);
       toast.success('Task deleted');
     } catch (error) {
@@ -2206,7 +2277,7 @@ export default function TaskAssignmentLog() {
                   </button>
                 )
               )}
-              {permissions.canCreateTasks(userRole) && (
+              {!isEditingAllTasks && permissions.canCreateTasks(userRole) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -2345,6 +2416,15 @@ export default function TaskAssignmentLog() {
                               >
                                 View
                               </button>
+                              {isEditingAllTasks && permissions.canDeleteTasks(userRole) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTask(task)}
+                                  className="text-xs font-medium min-w-[4rem] px-2.5 py-1.5 rounded-lg text-red-600 dark:text-red-300 border border-red-200 dark:border-red-900/60 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                                >
+                                  Delete
+                                </button>
+                              )}
                               {canClaimTask(userRole, userTeam) && (
                                 task.assigned_to ? (
                                   String(task.assigned_to) === String(user?.id) ? (

@@ -12,6 +12,14 @@ import { useSearchParams } from 'react-router-dom';
 const PRIMARY = '#6795BE';
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
+const INTERN_DESIGNATION_OPTIONS = [
+  'Intern - Team Lead Assistant',
+  'Intern - Monitoring Team',
+  'Intern - PAT1',
+  'Intern - HR',
+  'Intern - Marketing',
+];
+
 const SECTION_HEADINGS = [
   'Attendance',
   'Tasks Accomplished',
@@ -2223,17 +2231,26 @@ export default function DailyReportManage() {
                         </td>
                         <td className="px-4 py-2">
                           {isEditingTeamReport ? (
-                            <input
-                              type="text"
-                              value={row.designation || ''}
-                              onChange={(e) => {
-                                const updated = [...(teamReport.interns_remaining_hours || [])];
-                                updated[idx] = { ...updated[idx], designation: e.target.value };
-                                setTeamReport((prev) => ({ ...prev, interns_remaining_hours: updated }));
-                              }}
-                              className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
-                              placeholder="e.g., Intern / Team Member"
-                            />
+                          <select
+                            value={row.designation || ''}
+                            onChange={(e) => {
+                              const updated = [...(teamReport.interns_remaining_hours || [])];
+                              updated[idx] = { ...updated[idx], designation: e.target.value };
+                              setTeamReport((prev) => ({ ...prev, interns_remaining_hours: updated }));
+                            }}
+                            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
+                          >
+                            <option value="">Select designation</option>
+                            {INTERN_DESIGNATION_OPTIONS.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                            {row.designation &&
+                              !INTERN_DESIGNATION_OPTIONS.includes(row.designation) && (
+                                <option value={row.designation}>{row.designation}</option>
+                              )}
+                          </select>
                           ) : (
                             <p className="text-sm text-gray-900 dark:text-gray-100 py-1">{row.designation || '—'}</p>
                           )}

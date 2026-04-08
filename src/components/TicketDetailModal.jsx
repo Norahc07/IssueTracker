@@ -146,9 +146,15 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
 
       if (error) {
         console.error('Assignment error details:', error);
-        if (error.code === '23503' || error.message?.includes('foreign key')) {
+        const msg = String(error.message || '').toLowerCase();
+        if (error.code === '23503' || msg.includes('foreign key')) {
           toast.error(
             'Database constraint error. The assigned_to field may need to be configured as a text field in the database.'
+          );
+        } else if (msg.includes("could not find") && msg.includes("'assigned_to'") && msg.includes('tickets')) {
+          toast.error(
+            "Ticket assignment failed because the 'assigned_to' column does not exist in the tickets table. " +
+              'Ask an admin to run supabase/tickets_add_assigned_to_column.sql in Supabase, then try again.'
           );
         } else if (error.message) {
           toast.error(`Failed to assign ticket: ${error.message}`);
