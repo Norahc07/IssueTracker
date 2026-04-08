@@ -13,6 +13,7 @@ const PRIMARY = '#6795BE';
 function formatSupabaseWriteError(err) {
   if (!err) return 'Failed to save onboarding record.';
   const msg = err.message || String(err);
+  const msgLower = String(msg || '').toLowerCase();
   const parts = [msg];
   if (err.details && String(err.details).trim() && err.details !== msg) {
     parts.push(String(err.details).trim());
@@ -27,8 +28,46 @@ function formatSupabaseWriteError(err) {
   if (err.code === '23505' || /duplicate key|unique constraint/i.test(msg)) {
     return `${out} If this is an email conflict, use a different email or edit the existing onboarding row.`;
   }
+  // Friendly backend guidance when older DB schema is missing onboarding fields.
+  if (
+    /could not find/.test(msgLower) &&
+    /onboarding_records/.test(msgLower) &&
+    /'hours'|'school'|'start_date'|'team'|'department'/.test(msgLower)
+  ) {
+    return `${out} Please run supabase/onboarding_records_ensure_columns.sql in Supabase SQL Editor, then retry.`;
+  }
+  if (
+    /could not find/.test(msgLower) &&
+    /offboarding_records/.test(msgLower) &&
+    /'intern_name'|'handled_by'|'team'|'notes'|'tla_signature'|'it_manager_signature'|'coc_cll_creation'|'email_certificates'|'one_drive'|'status'/.test(
+      msgLower
+    )
+  ) {
+    return `${out} Please run supabase/offboarding_records_ensure_columns.sql in Supabase SQL Editor, then retry.`;
+  }
   return out || 'Failed to save onboarding record.';
 }
+
+const OFFBOARDING_COC_ONEDRIVE_LINK =
+  'https://ssgcgroup-my.sharepoint.com/personal/erick_umonics_sg/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Ferick%5Fumonics%5Fsg%2FDocuments%2FKnowles%20Files%2FKnowles%20Intern%27s%20Files%2FICF%2C%20Letter%2C%20and%20List%20of%20Interns%20with%20COC%20%26%20Letter%2FCOC%20%26%20Letters&ga=1';
+const OFFBOARDING_EMAIL_STRUCTURE_LINK =
+  'https://docs.google.com/document/d/1qrZFo7rpt-m9WPRW2HWv3rlztOoBu8Z0Z7zvf1AHZkw/edit?tab=t.v4pduu1my6hn';
+
+const toBool = (v) => {
+  if (typeof v === 'boolean') return v;
+  const s = String(v ?? '').trim().toLowerCase();
+  return s === 'true' || s === '1' || s === 'yes' || s === 'y';
+};
+
+const offboardingStatusFromRow = (r) => {
+  const done =
+    toBool(r?.tla_signature) &&
+    toBool(r?.it_manager_signature) &&
+    toBool(r?.coc_cll_creation) &&
+    toBool(r?.email_certificates) &&
+    toBool(r?.one_drive);
+  return done ? 'Completed' : 'In Progress';
+};
 
 const REQUIREMENTS_META = [
   {
@@ -146,6 +185,17 @@ function getYear(d) {
   return dt.getFullYear();
 }
 
+function formatMonthDayYear(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return '—';
+  return dt.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 /** Cohort filter: user must have an onboarding record dated in `year`, and not be offboarded in that year tab. */
 function userBelongsToOnboardingYear(user, year, onboardingByEmail, offboardedEmailSet) {
   const email = (user?.email || '').trim().toLowerCase();
@@ -154,15 +204,6 @@ function userBelongsToOnboardingYear(user, year, onboardingByEmail, offboardedEm
   const ob = onboardingByEmail.get(email);
   if (!ob?.onboarding_datetime) return false;
   return getYear(ob.onboarding_datetime) === year;
-}
-
-function splitName(fullName) {
-  if (!fullName) return { firstName: '', lastName: '' };
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length === 1) return { firstName: parts[0], lastName: '' };
-  const lastName = parts[parts.length - 1];
-  const firstName = parts.slice(0, -1).join(' ');
-  return { firstName, lastName };
 }
 
 function formatTeamLabel(raw) {
@@ -215,12 +256,10 @@ export default function OnboardingOffboarding() {
       : 'records'
   ); // 'records' | 'requirements' | 'requirementsTracker' | 'internStatus'
   const [offboardingInnerTab, setOffboardingInnerTab] = useState(
-    offboardingInnerParam === 'requirements'
-      ? 'requirements'
-      : offboardingInnerParam === 'requirementsTracker'
+    offboardingInnerParam === 'requirementsTracker'
       ? 'requirementsTracker'
       : 'records'
-  ); // 'records' | 'requirements' | 'requirementsTracker'
+  ); // 'records' | 'requirementsTracker'
   const [userTeam, setUserTeam] = useState(null);
 
   const [onboardingForm, setOnboardingForm] = useState({
@@ -242,6 +281,15 @@ export default function OnboardingOffboarding() {
     actual_end_date: '',
     hours: '',
     email: '',
+  });
+  const [editingOffboardingRow, setEditingOffboardingRow] = useState(null);
+  const [offboardingEditDraft, setOffboardingEditDraft] = useState({
+    tla_signature: false,
+    it_manager_signature: false,
+    coc_cll_creation: false,
+    email_certificates: false,
+    one_drive: false,
+    notes: '',
   });
 
   const [requirementsForm, setRequirementsForm] = useState({
@@ -291,7 +339,7 @@ export default function OnboardingOffboarding() {
   const [onboardingSearch, setOnboardingSearch] = useState('');
   const [offboardingSearch, setOffboardingSearch] = useState('');
   const [onboardingSort, setOnboardingSort] = useState('date_desc'); // date_desc | date_asc | name_asc | name_desc | email_asc | email_desc | team_asc
-  const [offboardingSort, setOffboardingSort] = useState('date_desc'); // date_desc | date_asc | last_asc | last_desc | email_asc | email_desc | hours_desc | hours_asc
+  const [offboardingSort, setOffboardingSort] = useState('date_desc'); // date_desc | date_asc | intern_asc | intern_desc | handled_by_asc | handled_by_desc | email_asc | email_desc | status_asc | status_desc
 
   const isTlaTeam = userTeam && String(userTeam).toLowerCase() === 'tla';
 
@@ -316,10 +364,9 @@ export default function OnboardingOffboarding() {
 
   const offboardingTabs = useMemo(() => {
     const tabs = [{ id: 'records', label: 'Records' }];
-    if (canSubmitRequirements) tabs.push({ id: 'requirements', label: 'Requirements' });
     if (canManageRequirements) tabs.push({ id: 'requirementsTracker', label: 'Requirements tracker' });
     return tabs;
-  }, [canSubmitRequirements, canManageRequirements]);
+  }, [canManageRequirements]);
 
   useEffect(() => {
     fetchData();
@@ -408,7 +455,14 @@ export default function OnboardingOffboarding() {
       }
 
       const onList = Array.isArray(onData) ? onData : [];
-      const offList = Array.isArray(offData) ? offData : [];
+      const offList = (Array.isArray(offData) ? offData : []).map((r) => ({
+        ...r,
+        tla_signature: toBool(r?.tla_signature),
+        it_manager_signature: toBool(r?.it_manager_signature),
+        coc_cll_creation: toBool(r?.coc_cll_creation),
+        email_certificates: toBool(r?.email_certificates),
+        one_drive: toBool(r?.one_drive),
+      }));
       const reqList = Array.isArray(reqData) ? reqData : [];
       const offReqList = Array.isArray(offReqData) ? offReqData : [];
       setOnboarding(onList);
@@ -631,10 +685,11 @@ export default function OnboardingOffboarding() {
     if (q) {
       list = list.filter((r) => {
         const dept = String(r?.department || '').toLowerCase();
-        const last = String(r?.last_name || '').toLowerCase();
-        const first = String(r?.first_name || '').toLowerCase();
+        const intern = String(r?.intern_name || `${r?.first_name || ''} ${r?.last_name || ''}` || '').toLowerCase();
+        const handledBy = String(r?.handled_by || '').toLowerCase();
+        const team = String(r?.team || '').toLowerCase();
         const email = String(r?.email || '').toLowerCase();
-        return [dept, last, first, email].some((v) => v.includes(q));
+        return [dept, intern, handledBy, team, email].some((v) => v.includes(q));
       });
     }
     const safeDate = (r) => {
@@ -642,17 +697,20 @@ export default function OnboardingOffboarding() {
       return dt && !Number.isNaN(dt.getTime()) ? dt.getTime() : 0;
     };
     const safeEmail = (r) => String(r?.email || '').toLowerCase();
-    const safeLast = (r) => String(r?.last_name || '').toLowerCase();
-    const safeHours = (r) => Number(r?.hours) || 0;
+    const safeIntern = (r) => String(r?.intern_name || `${r?.first_name || ''} ${r?.last_name || ''}` || '').toLowerCase();
+    const safeHandledBy = (r) => String(r?.handled_by || '').toLowerCase();
+    const safeStatus = (r) => offboardingStatusFromRow(r).toLowerCase();
     list = [...list].sort((a, b) => {
       if (offboardingSort === 'date_asc') return safeDate(a) - safeDate(b);
       if (offboardingSort === 'date_desc') return safeDate(b) - safeDate(a);
-      if (offboardingSort === 'last_asc') return safeLast(a).localeCompare(safeLast(b));
-      if (offboardingSort === 'last_desc') return safeLast(b).localeCompare(safeLast(a));
+      if (offboardingSort === 'intern_asc') return safeIntern(a).localeCompare(safeIntern(b));
+      if (offboardingSort === 'intern_desc') return safeIntern(b).localeCompare(safeIntern(a));
+      if (offboardingSort === 'handled_by_asc') return safeHandledBy(a).localeCompare(safeHandledBy(b));
+      if (offboardingSort === 'handled_by_desc') return safeHandledBy(b).localeCompare(safeHandledBy(a));
       if (offboardingSort === 'email_asc') return safeEmail(a).localeCompare(safeEmail(b));
       if (offboardingSort === 'email_desc') return safeEmail(b).localeCompare(safeEmail(a));
-      if (offboardingSort === 'hours_asc') return safeHours(a) - safeHours(b);
-      if (offboardingSort === 'hours_desc') return safeHours(b) - safeHours(a);
+      if (offboardingSort === 'status_asc') return safeStatus(a).localeCompare(safeStatus(b));
+      if (offboardingSort === 'status_desc') return safeStatus(b).localeCompare(safeStatus(a));
       return safeDate(b) - safeDate(a);
     });
     return list;
@@ -874,8 +932,8 @@ export default function OnboardingOffboarding() {
     e.preventDefault();
     setOffboardingSubmitAttempted(true);
     const { department, last_name, first_name, actual_end_date, hours, email } = offboardingForm;
-    if (!actual_end_date || !email?.trim()) {
-      toast.error('Actual end date and email (from onboarding) are required.');
+    if (!department?.trim() || !last_name?.trim() || !first_name?.trim() || !actual_end_date || !email?.trim()) {
+      toast.error('Please select an intern and complete Department and Actual end date.');
       return;
     }
     try {
@@ -886,6 +944,12 @@ export default function OnboardingOffboarding() {
         actual_end_date,
         hours: hours ? Number(hours) : null,
         email: email?.trim() || null,
+        tla_signature: false,
+        it_manager_signature: false,
+        coc_cll_creation: false,
+        email_certificates: false,
+        one_drive: false,
+        status: 'In Progress',
       };
       const { error } = await supabase.from('offboarding_records').insert(payload);
       if (error) throw error;
@@ -904,7 +968,80 @@ export default function OnboardingOffboarding() {
       await fetchData(true);
     } catch (err) {
       console.error('Offboarding insert error:', err);
-      toast.error(err?.message || 'Failed to add offboarding record.');
+      toast.error(formatSupabaseWriteError(err));
+    }
+  };
+
+  const startEditOffboardingRow = (row) => {
+    setEditingOffboardingRow(row);
+    setOffboardingEditDraft({
+      tla_signature: toBool(row?.tla_signature),
+      it_manager_signature: toBool(row?.it_manager_signature),
+      coc_cll_creation: toBool(row?.coc_cll_creation),
+      email_certificates: toBool(row?.email_certificates),
+      one_drive: toBool(row?.one_drive),
+      notes: row?.notes || '',
+    });
+  };
+
+  const cancelEditOffboardingRow = () => {
+    setEditingOffboardingRow(null);
+    setOffboardingEditDraft({
+      tla_signature: false,
+      it_manager_signature: false,
+      coc_cll_creation: false,
+      email_certificates: false,
+      one_drive: false,
+      notes: '',
+    });
+  };
+
+  const saveEditOffboardingRow = async (row) => {
+    try {
+      const nextStatus =
+        offboardingEditDraft.tla_signature &&
+        offboardingEditDraft.it_manager_signature &&
+        offboardingEditDraft.coc_cll_creation &&
+        offboardingEditDraft.email_certificates &&
+        offboardingEditDraft.one_drive
+          ? 'Completed'
+          : 'In Progress';
+      const payload = {
+        tla_signature: !!offboardingEditDraft.tla_signature,
+        it_manager_signature: !!offboardingEditDraft.it_manager_signature,
+        coc_cll_creation: !!offboardingEditDraft.coc_cll_creation,
+        email_certificates: !!offboardingEditDraft.email_certificates,
+        one_drive: !!offboardingEditDraft.one_drive,
+        notes: offboardingEditDraft.notes?.trim() || null,
+        status: nextStatus,
+      };
+      const { error } = await supabase.from('offboarding_records').update(payload).eq('id', row.id);
+      if (error) throw error;
+      setOffboarding((prev) =>
+        prev.map((item) => (item.id === row.id ? { ...item, ...payload } : item))
+      );
+      queryCache.invalidate('offboarding:records');
+      cancelEditOffboardingRow();
+      toast.success('Offboarding row updated.');
+    } catch (err) {
+      console.error('Offboarding update error:', err);
+      toast.error(formatSupabaseWriteError(err));
+    }
+  };
+
+  const deleteOffboardingRow = async (row) => {
+    const ok = window.confirm('Delete this offboarding record?');
+    if (!ok) return;
+    try {
+      const { error } = await supabase.from('offboarding_records').delete().eq('id', row.id);
+      if (error) throw error;
+      setOffboarding((prev) => prev.filter((item) => item.id !== row.id));
+      queryCache.invalidate('offboarding:records');
+      if (editingOffboardingRow?.id === row.id) cancelEditOffboardingRow();
+      toast.success('Offboarding record deleted.');
+    } catch (err) {
+      console.error('Offboarding delete error:', err);
+      toast.error(formatSupabaseWriteError(err));
     }
   };
 
@@ -1120,22 +1257,14 @@ export default function OnboardingOffboarding() {
     return offboarding
       .filter((off) => getYear(off.actual_end_date) === activeYear)
       .map((off) => {
-      const email = (off.email || '').trim().toLowerCase();
-      const userMatch =
-        (email &&
-          internUsers.find((u) => (u.email || '').trim().toLowerCase() === email)) ||
-        null;
-      const req =
-        (userMatch &&
-          offboardingRequirements.find((r) => r.intern_id === userMatch.id)) ||
-        (email &&
-          offboardingRequirements.find(
-            (r) => (r.email || '').trim().toLowerCase() === email
-          )) ||
-        null;
-      return { user: userMatch, req, off };
-    });
-  }, [offboarding, internUsers, offboardingRequirements, canManageRequirements, activeYear]);
+        const email = (off.email || '').trim().toLowerCase();
+        const userMatch =
+          (email &&
+            internUsers.find((u) => (u.email || '').trim().toLowerCase() === email)) ||
+          null;
+        return { user: userMatch, off };
+      });
+  }, [offboarding, internUsers, canManageRequirements, activeYear]);
 
   const [showTerminateOnboardingModal, setShowTerminateOnboardingModal] = useState(false);
   const [terminatingOnboarding, setTerminatingOnboarding] = useState(false);
@@ -1627,59 +1756,140 @@ export default function OnboardingOffboarding() {
 
           {offboardingInnerTab === 'records' && (
             <div className="space-y-2">
-              {canManageRecords && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <input
-                    value={offboardingSearch}
-                    onChange={(e) => setOffboardingSearch(e.target.value)}
-                    placeholder="Search department, name, email…"
-                    className="w-full sm:w-[320px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
-                  />
-                  <span className="text-sm text-gray-600 dark:text-gray-300">Sort:</span>
-                  <select
-                    value={offboardingSort}
-                    onChange={(e) => setOffboardingSort(e.target.value)}
-                    className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
-                  >
-                    <option value="date_desc">Actual end date (newest)</option>
-                    <option value="date_asc">Actual end date (oldest)</option>
-                    <option value="last_asc">Last name (A–Z)</option>
-                    <option value="last_desc">Last name (Z–A)</option>
-                    <option value="email_asc">Email (A–Z)</option>
-                    <option value="email_desc">Email (Z–A)</option>
-                    <option value="hours_desc">Hours (high → low)</option>
-                    <option value="hours_asc">Hours (low → high)</option>
-                  </select>
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 sm:px-4 sm:py-3">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap mr-1">
+                      Reference links
+                    </p>
+                    <a
+                      href={OFFBOARDING_COC_ONEDRIVE_LINK}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center rounded-full border border-[#6795BE]/30 bg-[#6795BE]/10 dark:bg-[#6795BE]/20 px-3 py-1.5 text-xs font-semibold text-[#2e5f89] dark:text-[#b8d8f0] hover:bg-[#6795BE]/20 dark:hover:bg-[#6795BE]/30 transition-colors"
+                    >
+                      COC OneDrive
+                    </a>
+                    <a
+                      href={OFFBOARDING_EMAIL_STRUCTURE_LINK}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center rounded-full border border-indigo-300/40 bg-indigo-50 dark:bg-indigo-900/25 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/35 transition-colors"
+                    >
+                      Email Structure
+                    </a>
+                  </div>
+                  {canManageRecords && (
+                    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                      <div className="relative w-full sm:w-[280px]">
+                        <svg
+                          viewBox="0 0 20 20"
+                          aria-hidden="true"
+                          className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                        >
+                          <path
+                            fill="currentColor"
+                            d="M8.5 2a6.5 6.5 0 1 1 4.15 11.5l3.92 3.93a1 1 0 0 1-1.41 1.41l-3.93-3.92A6.5 6.5 0 0 1 8.5 2Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z"
+                          />
+                        </svg>
+                        <input
+                          value={offboardingSearch}
+                          onChange={(e) => setOffboardingSearch(e.target.value)}
+                          placeholder="Search department, name, email…"
+                          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 pl-9 pr-3 py-1.5 focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                        />
+                      </div>
+                      <div className="relative">
+                        <svg
+                          viewBox="0 0 20 20"
+                          aria-hidden="true"
+                          className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                        >
+                          <path
+                            fill="currentColor"
+                            d="M3 5a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2h-5.2a1 1 0 0 0-.8.4L8.6 8.3a1 1 0 0 0-.2.6v5.6a1 1 0 0 1-1.45.9l-1.8-.9a1 1 0 0 1-.55-.9V8.9a1 1 0 0 0-.2-.6L3.2 6.4A1 1 0 0 1 3 5Z"
+                          />
+                        </svg>
+                        <select
+                          value={offboardingSort}
+                          onChange={(e) => setOffboardingSort(e.target.value)}
+                          className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 pl-9 pr-3 py-1.5 focus:ring-2 focus:ring-offset-0 focus:ring-[#6795BE]"
+                        >
+                          <option value="date_desc">Actual end date (newest)</option>
+                          <option value="date_asc">Actual end date (oldest)</option>
+                          <option value="intern_asc">Intern name (A–Z)</option>
+                          <option value="intern_desc">Intern name (Z–A)</option>
+                          <option value="email_asc">Email (A–Z)</option>
+                          <option value="email_desc">Email (Z–A)</option>
+                          <option value="status_asc">Status (A–Z)</option>
+                          <option value="status_desc">Status (Z–A)</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden overflow-x-auto">
+              </div>
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
-                  <thead>
-                    <tr className="bg-gray-50 dark:bg-gray-950/40">
+                  <thead className="bg-gray-50 dark:bg-gray-950/40">
+                    <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Department</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Last name</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">First name</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Actual end date</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Hours</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                    {displayedOffboarding.map((r) => (
-                      <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{r.department || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{r.last_name || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{r.first_name || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                          {r.actual_end_date ? new Date(r.actual_end_date).toLocaleDateString() : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{r.hours ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{r.email || '—'}</td>
-                      </tr>
-                    ))}
+                    {displayedOffboarding.map((r) => {
+                      const statusLabel = offboardingStatusFromRow(r);
+                      const statusClass =
+                        statusLabel === 'Completed'
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900/45 dark:text-green-200'
+                          : 'bg-amber-100 text-amber-900 dark:bg-amber-900/45 dark:text-amber-200';
+                      return (
+                        <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{r.department || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{r.last_name || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{r.first_name || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                            {formatMonthDayYear(r.actual_end_date)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{r.hours ?? '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{r.email || '—'}</td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass}`}>
+                              {statusLabel}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => startEditOffboardingRow(r)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                                style={{ backgroundColor: PRIMARY }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteOffboardingRow(r)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-red-600 hover:bg-red-700"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {displayedOffboarding.length === 0 && (
                       <tr>
-                        <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={6}>
+                        <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={8}>
                           No offboarding records for {activeYear}.
                         </td>
                       </tr>
@@ -2021,178 +2231,6 @@ export default function OnboardingOffboarding() {
         </div>
       )}
 
-      {/* Offboarding Requirements (nested under Offboarding) */}
-      {activeTab === 'offboarding' && offboardingInnerTab === 'requirements' && canSubmitRequirements && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Offboarding Requirements</h2>
-          </div>
-
-          <form
-            onSubmit={(e) => e.preventDefault()}
-            className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-4 space-y-3"
-          >
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              Submit your offboarding requirements files here. Your account details (name, email, team) are linked
-              automatically; you don&apos;t need to type them.
-            </p>
-
-            <div className="mt-4">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
-                <thead className="bg-gray-50 dark:bg-gray-950/40">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Requirement
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      File upload
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-                  {OFFBOARDING_REQUIREMENTS_META.map((meta) => {
-                    const req = currentUserOffboardingRequirements;
-                    const hasFile = req && (req[meta.pathField] || req[meta.flagField]);
-                    let statusLabel = 'Not submitted';
-                    if (hasFile) {
-                      statusLabel = req?.status === 'verified' ? 'Verified' : 'Pending verification';
-                    }
-                    const isVerified = !!(req && req.status === 'verified');
-                    const isPendingVerification = !!(hasFile && !isVerified);
-                    const inReplaceMode = !!offboardingRequirementsReplaceMode?.[meta.key];
-                    return (
-                      <tr key={meta.key} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/60">
-                        <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
-                          <div className="font-medium">{meta.label}</div>
-                          {meta.description && (
-                            <div className="text-xs text-gray-500 dark:text-gray-400">{meta.description}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
-                          {statusLabel}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
-                          <div className="flex flex-col gap-2">
-                            {!hasFile && (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="file"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0] || null;
-                                    setOffboardingRequirementsFiles((prev) => ({
-                                      ...prev,
-                                      [meta.key]: file,
-                                    }));
-                                  }}
-                                  className="block w-full text-xs text-gray-700 dark:text-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 dark:file:bg-gray-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700"
-                                />
-                                <button
-                                  type="button"
-                                  disabled={offboardingRequirementsSubmitting}
-                                  className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
-                                  style={{ backgroundColor: PRIMARY }}
-                                  onClick={async () => {
-                                    const file = offboardingRequirementsFiles[meta.key];
-                                    if (!file) {
-                                      toast.error('Please choose a file before submitting.');
-                                      return;
-                                    }
-                                    await handleOffboardingRequirementsSubmit();
-                                  }}
-                                >
-                                  {offboardingRequirementsSubmitting ? 'Submitting…' : 'Submit'}
-                                </button>
-                              </div>
-                            )}
-
-                            {isPendingVerification && !inReplaceMode && (
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  disabled={offboardingRequirementsSubmitting}
-                                  className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
-                                  style={{ backgroundColor: PRIMARY }}
-                                  onClick={() => {
-                                    setOffboardingRequirementsReplaceMode((prev) => ({ ...prev, [meta.key]: true }));
-                                  }}
-                                >
-                                  Resubmit / Replace file
-                                </button>
-                              </div>
-                            )}
-
-                            {isPendingVerification && inReplaceMode && (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="file"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0] || null;
-                                    setOffboardingRequirementsFiles((prev) => ({
-                                      ...prev,
-                                      [meta.key]: file,
-                                    }));
-                                  }}
-                                  className="block w-full text-xs text-gray-700 dark:text-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 dark:file:bg-gray-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 dark:hover:file:bg-gray-700"
-                                />
-                                <button
-                                  type="button"
-                                  disabled={offboardingRequirementsSubmitting}
-                                  className="px-3 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
-                                  style={{ backgroundColor: PRIMARY }}
-                                  onClick={async () => {
-                                    const file = offboardingRequirementsFiles[meta.key];
-                                    if (!file) {
-                                      toast.error('Please choose a replacement file.');
-                                      return;
-                                    }
-                                    const ok = window.confirm(
-                                      `Replace your pending ${meta.label} submission? This will mark it as pending verification again.`
-                                    );
-                                    if (!ok) return;
-                                    await handleOffboardingRequirementsSubmit();
-                                  }}
-                                >
-                                  {offboardingRequirementsSubmitting ? 'Replacing…' : 'Replace & Resubmit'}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={offboardingRequirementsSubmitting}
-                                  className="px-2 py-1 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                                  onClick={() => {
-                                    setOffboardingRequirementsReplaceMode((prev) => ({ ...prev, [meta.key]: false }));
-                                    setOffboardingRequirementsFiles((prev) => ({ ...prev, [meta.key]: null }));
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            )}
-
-                            {isVerified && <div className="text-xs text-gray-500 dark:text-gray-400">—</div>}
-                          </div>
-                          {req && req[meta.pathField] && (
-                            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              File on record
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Upload files for each offboarding requirement. Once reviewed by Admin / TL/VTL, the status will change
-                from &quot;Pending verification&quot; to &quot;Verified&quot;.
-              </p>
-            </div>
-          </form>
-        </div>
-      )}
-
       {/* Offboarding Requirements tracker (nested under Offboarding) - staff only */}
       {activeTab === 'offboarding' && offboardingInnerTab === 'requirementsTracker' && canManageRequirements && (
         <div className="space-y-4">
@@ -2216,74 +2254,49 @@ export default function OnboardingOffboarding() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Dept</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Team</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">TLA Signature</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">IT Manager Signature</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">COC/LOC Creation</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Email Certificates</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">One Drive</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                {offboardingRequirementsTrackerRows.map(({ user: u, req, off }) => (
+                {offboardingRequirementsTrackerRows.map(({ user: u, off }) => (
                   <tr key={off.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {u?.full_name || req?.name || `${off.first_name || ''} ${off.last_name || ''}`.trim() || '—'}
+                      {u?.full_name || `${off.first_name || ''} ${off.last_name || ''}`.trim() || '—'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                      {u?.email || req?.email || off.email || '—'}
+                      {u?.email || off.email || '—'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                      {req?.department || off.department || '—'}
+                      {off.department || '—'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                      {u?.team || req?.team || '—'}
+                      {formatTeamLabel(off.team || u?.team) || off.team || u?.team || '—'}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">
-                      {(() => {
-                        const hasRow = !!req;
-                        const total = OFFBOARDING_REQUIREMENTS_META.length;
-                        const submittedCount = hasRow
-                          ? OFFBOARDING_REQUIREMENTS_META.filter(
-                              (meta) => req[meta.pathField] || req[meta.flagField]
-                            ).length
-                          : 0;
-                        const allSubmitted = hasRow && submittedCount === total;
-
-                        let label = 'No submission';
-                        let cls = 'bg-yellow-50 text-yellow-700';
-
-                        if (!hasRow || submittedCount === 0) {
-                          label = 'No submission';
-                        } else if (!allSubmitted) {
-                          label = 'Incomplete';
-                        } else if (req.status === 'verified') {
-                          label = 'Complete';
-                          cls = 'bg-green-50 text-green-700';
-                        } else {
-                          label = 'Submitted (Pending verification)';
-                        }
-
-                        return (
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}
-                          >
-                            {label}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 space-x-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setViewOffboardingRequirementsRow({ user: u, req: req || null, off });
-                        }}
-                        className="px-3 py-1 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-100 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          offboardingStatusFromRow(off) === 'Completed'
+                            ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-200'
+                            : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200'
+                        }`}
                       >
-                        View
-                      </button>
+                        {offboardingStatusFromRow(off)}
+                      </span>
                     </td>
+                    <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">{toBool(off.tla_signature) ? 'Signed' : '—'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">{toBool(off.it_manager_signature) ? 'Signed' : '—'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">{toBool(off.coc_cll_creation) ? 'Created' : '—'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">{toBool(off.email_certificates) ? 'Email sent' : '—'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">{toBool(off.one_drive) ? 'Uploaded' : '—'}</td>
                   </tr>
                 ))}
                 {offboardingRequirementsTrackerRows.length === 0 && (
                   <tr>
-                    <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={15}>
+                    <td className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center" colSpan={10}>
                       No offboarding records ending in {activeYear}.
                     </td>
                   </tr>
@@ -2509,24 +2522,24 @@ export default function OnboardingOffboarding() {
       {/* Offboarding requirements detail modal */}
       {viewOffboardingRequirementsRow && (
         <Modal open={!!viewOffboardingRequirementsRow} onClose={() => setViewOffboardingRequirementsRow(null)}>
-          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-gray-200 max-h-[90vh] flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+          <div className="w-full max-w-3xl bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold text-gray-900">Offboarding requirements</h2>
-                <p className="mt-1 text-xs text-gray-600">
+                <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Offboarding requirements</h2>
+                <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
                   Review submitted offboarding requirements for this intern/TL/VTL.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setViewOffboardingRequirementsRow(null)}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl leading-none"
                 aria-label="Close"
               >
                 ×
               </button>
             </div>
-            <div className="px-6 py-4 space-y-4 overflow-y-auto">
+            <div className="px-6 py-4 space-y-4 overflow-y-auto dark:text-gray-100">
               {(() => {
                 const { user: u, req, off } = viewOffboardingRequirementsRow;
                 const overallStatus = req ? (req.status === 'verified' ? 'Verified' : 'Pending') : 'Pending';
@@ -2539,27 +2552,29 @@ export default function OnboardingOffboarding() {
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                       <div>
-                        <div className="text-xs font-medium text-gray-500">Name</div>
-                        <div className="text-gray-900">{displayName}</div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Name</div>
+                        <div className="text-gray-900 dark:text-gray-100">{displayName}</div>
                       </div>
                       <div>
-                        <div className="text-xs font-medium text-gray-500">Email</div>
-                        <div className="text-gray-900">{u?.email || req?.email || off?.email || '—'}</div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Email</div>
+                        <div className="text-gray-900 dark:text-gray-100">{u?.email || req?.email || off?.email || '—'}</div>
                       </div>
                       <div>
-                        <div className="text-xs font-medium text-gray-500">Department</div>
-                        <div className="text-gray-900">{req?.department || off?.department || '—'}</div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Department</div>
+                        <div className="text-gray-900 dark:text-gray-100">{req?.department || off?.department || '—'}</div>
                       </div>
                       <div>
-                        <div className="text-xs font-medium text-gray-500">Team</div>
-                        <div className="text-gray-900">{u?.team || req?.team || '—'}</div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Team</div>
+                        <div className="text-gray-900 dark:text-gray-100">{u?.team || req?.team || '—'}</div>
                       </div>
                       <div>
-                        <div className="text-xs font-medium text-gray-500">Overall status</div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Overall status</div>
                         <div className="mt-0.5">
                           <span
                             className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                              overallStatus === 'Verified' ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'
+                              overallStatus === 'Verified'
+                                ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-200'
+                                : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200'
                             }`}
                           >
                             {overallStatus}
@@ -2569,17 +2584,17 @@ export default function OnboardingOffboarding() {
                     </div>
 
                     <div className="mt-3">
-                      <table className="min-w-full table-auto divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden text-sm">
-                        <thead className="bg-gray-50">
+                      <table className="min-w-full table-auto divide-y divide-gray-200 dark:divide-gray-800 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden text-sm">
+                        <thead className="bg-gray-50 dark:bg-gray-800/60">
                           <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Requirement</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Verified by</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Verified at</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Requirement</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Verified by</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Verified at</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Action</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                           {OFFBOARDING_REQUIREMENTS_META.map((meta) => {
                             const hasFile = req && (req[meta.pathField] || req[meta.flagField]);
                             let statusLabel = 'Not submitted';
@@ -2591,12 +2606,12 @@ export default function OnboardingOffboarding() {
                             return (
                               <tr key={meta.key}>
                                 <td className="px-4 py-2 align-top">
-                                  <div className="font-medium text-gray-900">{meta.label}</div>
+                                  <div className="font-medium text-gray-900 dark:text-gray-100">{meta.label}</div>
                                   {meta.description && (
-                                    <div className="text-xs text-gray-500">{meta.description}</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">{meta.description}</div>
                                   )}
                                 </td>
-                                <td className="px-4 py-2 text-gray-700">
+                                <td className="px-4 py-2 text-gray-700 dark:text-gray-200">
                                   <div className="flex items-center gap-2">
                                     <span>{statusLabel}</span>
                                     {canViewFile && (
@@ -2619,22 +2634,22 @@ export default function OnboardingOffboarding() {
                                             toast.error('Failed to open file.');
                                           }
                                         }}
-                                        className="px-2 py-0.5 rounded text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100"
+                                        className="px-2 py-0.5 rounded text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/35 dark:text-blue-200 dark:hover:bg-blue-900/50"
                                       >
                                         View file
                                       </button>
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-4 py-2 text-xs text-gray-600">
+                                <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                                   {hasFile && req?.verified_by ? offboardingVerifiedByName || '—' : '—'}
                                 </td>
-                                <td className="px-4 py-2 text-xs text-gray-600">
+                                <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                                   {hasFile && req?.verified_at
                                     ? new Date(req.verified_at).toLocaleString()
                                     : '—'}
                                 </td>
-                                <td className="px-4 py-2 text-xs text-gray-600">
+                                <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                                   {req && req.status !== 'verified' && hasFile ? (
                                     <button
                                       type="button"
@@ -2675,7 +2690,7 @@ export default function OnboardingOffboarding() {
                                       Verify
                                     </button>
                                   ) : (
-                                    <span className="text-gray-400">—</span>
+                                    <span className="text-gray-400 dark:text-gray-500">—</span>
                                   )}
                                 </td>
                               </tr>
@@ -2688,11 +2703,11 @@ export default function OnboardingOffboarding() {
                 );
               })()}
             </div>
-            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+            <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setViewOffboardingRequirementsRow(null)}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
               >
                 Close
               </button>
@@ -3000,6 +3015,93 @@ export default function OnboardingOffboarding() {
       )}
 
       {/* Offboarding modal form */}
+      {canManageRecords && editingOffboardingRow && (
+        <Modal open={!!editingOffboardingRow} onClose={cancelEditOffboardingRow}>
+          <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800">
+            <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Edit offboarding checklist</h2>
+              <button
+                type="button"
+                onClick={cancelEditOffboardingRow}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Name</p>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">
+                    {`${editingOffboardingRow.first_name || ''} ${editingOffboardingRow.last_name || ''}`.trim() || '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Email</p>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{editingOffboardingRow.email || '—'}</p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 bg-gray-50 dark:bg-gray-950/40">
+                <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">Checklist requirements</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[
+                    ['tla_signature', 'TLA Signature'],
+                    ['it_manager_signature', 'IT Manager Signature'],
+                    ['coc_cll_creation', 'COC/CLL Creation'],
+                    ['email_certificates', 'Email Certificates'],
+                    ['one_drive', 'One Drive'],
+                  ].map(([key, label]) => (
+                    <label key={key} className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                      <input
+                        type="checkbox"
+                        checked={!!offboardingEditDraft[key]}
+                        onChange={(e) =>
+                          setOffboardingEditDraft((prev) => ({ ...prev, [key]: e.target.checked }))
+                        }
+                        className="h-4 w-4 rounded border-gray-300 dark:border-gray-700"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Notes (Optional)</label>
+                <textarea
+                  value={offboardingEditDraft.notes}
+                  onChange={(e) => setOffboardingEditDraft((prev) => ({ ...prev, notes: e.target.value }))}
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
+                  placeholder="Add notes"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={cancelEditOffboardingRow}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => saveEditOffboardingRow(editingOffboardingRow)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Save changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Offboarding modal form */}
       {canManageRecords && (
         <Modal open={showOffboardingModal} onClose={() => setShowOffboardingModal(false)}>
           <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800">
@@ -3016,6 +3118,63 @@ export default function OnboardingOffboarding() {
             </div>
             <form onSubmit={handleOffboardingSubmit} className="p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Intern</label>
+                  <select
+                    value={offboardingForm.email}
+                    onChange={(e) => {
+                      const email = e.target.value;
+                      const match = onboardingCandidates.find(
+                        (r) => (r.email || '').trim().toLowerCase() === email.trim().toLowerCase()
+                      );
+                      if (!match) {
+                        setOffboardingForm((f) => ({
+                          ...f,
+                          email: '',
+                          first_name: '',
+                          last_name: '',
+                        }));
+                        return;
+                      }
+                      const parts = String(match.name || '').trim().split(/\s+/).filter(Boolean);
+                      const lastName = parts.length > 1 ? parts[parts.length - 1] : '';
+                      const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || '');
+                      setOffboardingForm((f) => ({
+                        ...f,
+                        email: match.email || '',
+                        department: match.department || f.department || '',
+                        first_name: firstName || f.first_name,
+                        last_name: lastName || f.last_name,
+                      }));
+                    }}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">
+                      {`Select intern from ${activeYear} onboarding...`}
+                    </option>
+                    {onboardingCandidates.map((r) => (
+                      <option key={r.id} value={r.email || ''}>
+                        {r.name || 'Unnamed'}
+                      </option>
+                    ))}
+                  </select>
+                  {offboardingSubmitAttempted && !offboardingForm.email?.trim() && (
+                    <p className="mt-1 text-xs font-medium text-red-600">Required.</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Department</label>
+                  <input
+                    type="text"
+                    value={offboardingForm.department}
+                    onChange={(e) => setOffboardingForm((f) => ({ ...f, department: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
+                    placeholder="e.g. IT"
+                  />
+                  {offboardingSubmitAttempted && !offboardingForm.department.trim() && (
+                    <p className="mt-1 text-xs font-medium text-red-600">Required.</p>
+                  )}
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Actual end date</label>
                   <PrettyDatePicker
@@ -3042,46 +3201,22 @@ export default function OnboardingOffboarding() {
                     placeholder="e.g. 160, 320"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Email (Auto-filled)</label>
+                  <input
+                    type="text"
+                    value={offboardingForm.email || ''}
+                    readOnly
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200"
+                    placeholder="Auto-filled from selected intern"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Email (from onboarding)</label>
-                <select
-                  value={offboardingForm.email}
-                  onChange={(e) => {
-                    const email = e.target.value;
-                    setOffboardingForm((f) => ({ ...f, email }));
-                    const match = onboardingCandidates.find(
-                      (r) => (r.email || '').trim().toLowerCase() === email.trim().toLowerCase()
-                    );
-                    if (match) {
-                      const { firstName, lastName } = splitName(match.name || '');
-                      setOffboardingForm((f) => ({
-                        ...f,
-                        email: match.email || '',
-                        department: match.department || f.department || '',
-                        first_name: firstName || f.first_name,
-                        last_name: lastName || f.last_name,
-                      }));
-                    }
-                  }}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-                >
-                  <option value="">
-                    {`Select from ${activeYear} onboarding...`}
-                  </option>
-                  {onboardingCandidates.map((r) => (
-                    <option key={r.id} value={r.email || ''}>
-                      {r.name || 'Unnamed'}
-                    </option>
-                  ))}
-                </select>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Choose an email from onboarding for {activeYear}; department and name will fill automatically.
+                  Select an intern from the onboarding list for {activeYear}. Email is populated automatically.
                 </p>
-                {offboardingSubmitAttempted && !offboardingForm.email?.trim() && (
-                  <p className="mt-1 text-xs font-medium text-red-600">Required.</p>
-                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -3096,7 +3231,13 @@ export default function OnboardingOffboarding() {
                   type="submit"
                   className="px-4 py-2 rounded-lg text-sm font-medium text-white"
                   style={{ backgroundColor: PRIMARY }}
-                  disabled={!offboardingForm.actual_end_date || !offboardingForm.email?.trim()}
+                  disabled={
+                    !offboardingForm.department.trim() ||
+                    !offboardingForm.last_name.trim() ||
+                    !offboardingForm.first_name.trim() ||
+                    !offboardingForm.actual_end_date ||
+                    !offboardingForm.email?.trim()
+                  }
                 >
                   Save offboarding
                 </button>
