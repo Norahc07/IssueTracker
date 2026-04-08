@@ -1787,10 +1787,8 @@ export default function OnboardingOffboarding() {
                           aria-hidden="true"
                           className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
                         >
-                          <path
-                            fill="currentColor"
-                            d="M8.5 2a6.5 6.5 0 1 1 4.15 11.5l3.92 3.93a1 1 0 0 1-1.41 1.41l-3.93-3.92A6.5 6.5 0 0 1 8.5 2Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z"
-                          />
+                          <circle cx="8.5" cy="8.5" r="4.75" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                          <path d="M12.2 12.2 16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                         </svg>
                         <input
                           value={offboardingSearch}
@@ -1806,9 +1804,13 @@ export default function OnboardingOffboarding() {
                           className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
                         >
                           <path
-                            fill="currentColor"
-                            d="M3 5a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2h-5.2a1 1 0 0 0-.8.4L8.6 8.3a1 1 0 0 0-.2.6v5.6a1 1 0 0 1-1.45.9l-1.8-.9a1 1 0 0 1-.55-.9V8.9a1 1 0 0 0-.2-.6L3.2 6.4A1 1 0 0 1 3 5Z"
+                            d="M6 4.5h8M7.5 8h5M9 11.5h2"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            fill="none"
                           />
+                          <path d="m12.8 13.8 1.7 1.7 1.7-1.7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
                         </svg>
                         <select
                           value={offboardingSort}
@@ -2253,7 +2255,6 @@ export default function OnboardingOffboarding() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Email</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Dept</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Team</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">TLA Signature</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">IT Manager Signature</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">COC/LOC Creation</th>
@@ -2275,17 +2276,6 @@ export default function OnboardingOffboarding() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                       {formatTeamLabel(off.team || u?.team) || off.team || u?.team || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                          offboardingStatusFromRow(off) === 'Completed'
-                            ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-200'
-                            : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200'
-                        }`}
-                      >
-                        {offboardingStatusFromRow(off)}
-                      </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">{toBool(off.tla_signature) ? 'Signed' : '—'}</td>
                     <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-200">{toBool(off.it_manager_signature) ? 'Signed' : '—'}</td>
