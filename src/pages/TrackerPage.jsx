@@ -97,6 +97,8 @@ export default function TrackerPage() {
     leave_end_date: '',
     leave_type: 'whole',
     leave_form_link: '',
+    leave_category: 'Sick Leave',
+    leave_category_other: '',
     note: '',
   });
   const [editingLeaveId, setEditingLeaveId] = useState(null);
@@ -459,6 +461,8 @@ export default function TrackerPage() {
       leave_end_date: '',
       leave_type: 'whole',
       leave_form_link: '',
+      leave_category: 'Sick Leave',
+      leave_category_other: '',
       note: '',
     });
   };
@@ -468,6 +472,9 @@ export default function TrackerPage() {
     const start = leaveForm.leave_start_date;
     const end = leaveForm.leave_end_date;
     const link = String(leaveForm.leave_form_link || '').trim();
+    const category = String(leaveForm.leave_category || '').trim();
+    const otherLabel = String(leaveForm.leave_category_other || '').trim();
+    const finalCategory = category === 'Other' ? otherLabel : category;
     if (!internName || !start || !end || !link) {
       toast.error('Please fill in dates and leave form link.');
       return;
@@ -487,6 +494,7 @@ export default function TrackerPage() {
       leave_end_date: end,
       leave_type: leaveForm.leave_type === 'half' ? 'half' : 'whole',
       leave_form_link: link,
+      leave_category: finalCategory || null,
       signed_by: null,
       signed_by_user_id: null,
       status: 'pending',
@@ -526,6 +534,9 @@ export default function TrackerPage() {
     const start = leaveEditDraft.leave_start_date;
     const end = leaveEditDraft.leave_end_date;
     const link = String(leaveEditDraft.leave_form_link || '').trim();
+    const category = String(leaveEditDraft.leave_category || '').trim();
+    const otherLabel = String(leaveEditDraft.leave_category_other || '').trim();
+    const finalCategory = category === 'Other' ? otherLabel : category;
     if (!start || !end || !link) {
       toast.error('Please fill in dates and leave form link.');
       return;
@@ -541,6 +552,7 @@ export default function TrackerPage() {
       leave_end_date: end,
       leave_type: leaveEditDraft.leave_type === 'half' ? 'half' : 'whole',
       leave_form_link: link,
+      leave_category: finalCategory || null,
       note: String(leaveEditDraft.note || '').trim(),
       updated_at: new Date().toISOString(),
     };
@@ -938,6 +950,7 @@ export default function TrackerPage() {
                 <thead className="bg-gray-50 dark:bg-gray-950/40">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Intern name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Leave type</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Leave start</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Leave end</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Option</th>
@@ -964,6 +977,42 @@ export default function TrackerPage() {
                         <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
                           <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                             {row.intern_name}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                            {isEditing ? (
+                              <div className="flex flex-col gap-1">
+                                <select
+                                  value={source.leave_category || 'Sick Leave'}
+                                  onChange={(e) =>
+                                    setLeaveEditDraft((d) => ({ ...d, leave_category: e.target.value }))
+                                  }
+                                  className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm"
+                                >
+                                  <option value="Sick Leave">Sick Leave</option>
+                                  <option value="Personal Leave">Personal Leave</option>
+                                  <option value="Vacation Leave">Vacation Leave</option>
+                                  <option value="Academic Commitment">Academic Commitment</option>
+                                  <option value="Medical Appointment">Medical Appointment</option>
+                                  <option value="Other">Other</option>
+                                </select>
+                                {source.leave_category === 'Other' && (
+                                  <input
+                                    type="text"
+                                    value={source.leave_category_other || ''}
+                                    onChange={(e) =>
+                                      setLeaveEditDraft((d) => ({
+                                        ...d,
+                                        leave_category_other: e.target.value,
+                                      }))
+                                    }
+                                    className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs"
+                                    placeholder="Specify leave type"
+                                  />
+                                )}
+                              </div>
+                            ) : (
+                              row.leave_category || '—'
+                            )}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
                             {isEditing ? (
@@ -1175,6 +1224,21 @@ export default function TrackerPage() {
                     />
                   </div>
                   <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Leave type</label>
+                    <select
+                      value={leaveForm.leave_category}
+                      onChange={(e) => setLeaveForm((p) => ({ ...p, leave_category: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                    >
+                      <option value="Sick Leave">Sick Leave</option>
+                      <option value="Personal Leave">Personal Leave</option>
+                      <option value="Vacation Leave">Vacation Leave</option>
+                      <option value="Academic Commitment">Academic Commitment</option>
+                      <option value="Medical Appointment">Medical Appointment</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Option</label>
                     <select
                       value={leaveForm.leave_type}
@@ -1185,6 +1249,18 @@ export default function TrackerPage() {
                       <option value="half">Half day</option>
                     </select>
                   </div>
+                  {leaveForm.leave_category === 'Other' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Leave type (Other – specify)</label>
+                      <input
+                        type="text"
+                        value={leaveForm.leave_category_other}
+                        onChange={(e) => setLeaveForm((p) => ({ ...p, leave_category_other: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                        placeholder="Type of leave"
+                      />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Duration</label>
                     <div className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950/40 text-gray-800 dark:text-gray-200 px-3 py-2 text-sm">
