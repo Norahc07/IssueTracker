@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
@@ -133,6 +134,12 @@ export default function TrackerPage() {
   const [itdRows, setItdRows] = useState([]);
   const [itdLoading, setItdLoading] = useState(false);
   const [itdModalOpen, setItdModalOpen] = useState(false);
+  const [itdSelectedInternId, setItdSelectedInternId] = useState('');
+  const [itdDocumentLinkTouched, setItdDocumentLinkTouched] = useState(false);
+  const [itdDetailsOpen, setItdDetailsOpen] = useState(false);
+  const [itdDetailsRow, setItdDetailsRow] = useState(null);
+  const [itdDetailsMounted, setItdDetailsMounted] = useState(false);
+  const [itdSearch, setItdSearch] = useState('');
   const [itdManageOptionsOpen, setItdManageOptionsOpen] = useState(false);
   const [itdOptionsSaving, setItdOptionsSaving] = useState(false);
   const [itdApprovingId, setItdApprovingId] = useState(null);
@@ -152,6 +159,7 @@ export default function TrackerPage() {
   const [editingItdId, setEditingItdId] = useState(null);
   const [itdForm, setItdForm] = useState({
     document_link: '',
+    intern_name: '',
     document_type: ITD_DEFAULT_OPTIONS.document_type[0],
     addressed_to: ITD_DEFAULT_OPTIONS.addressed_to[0],
     company: ITD_DEFAULT_OPTIONS.company[0],
@@ -163,6 +171,10 @@ export default function TrackerPage() {
 
   const tlVtlAssignableUsers = useMemo(
     () => users.filter((u) => u.role === 'intern' || u.role === 'tl' || u.role === 'vtl'),
+    [users]
+  );
+  const itdInternOptions = useMemo(
+    () => users.filter((u) => u.role === 'intern'),
     [users]
   );
 
@@ -187,6 +199,13 @@ export default function TrackerPage() {
     if (byUsersList && String(byUsersList).trim()) return String(byUsersList).trim();
     if (user?.email) return user.email.split('@')[0];
     return 'Unknown user';
+  }, [user, users]);
+
+  const currentActorEmail = useMemo(() => {
+    const byUsersList = users.find((u) => u.id === user?.id)?.email;
+    if (byUsersList && String(byUsersList).trim()) return String(byUsersList).trim();
+    if (user?.email && String(user.email).trim()) return String(user.email).trim();
+    return '';
   }, [user, users]);
 
   const fetchUsers = async () => {
@@ -266,13 +285,16 @@ export default function TrackerPage() {
   };
 
   const resetItdForm = () => {
+    setItdSelectedInternId('');
+    setItdDocumentLinkTouched(false);
     setItdForm({
       document_link: '',
+      intern_name: isInternRole ? currentActorName : '',
       document_type: ITD_DEFAULT_OPTIONS.document_type[0],
       addressed_to: ITD_DEFAULT_OPTIONS.addressed_to[0],
       company: ITD_DEFAULT_OPTIONS.company[0],
-      contact_address: '',
-      designated_team: '',
+      contact_address: isInternRole ? currentActorEmail : '',
+      designated_team: isInternRole ? String(userTeam || '').trim() : '',
       due_date: '',
       return_to_whom: '',
     });
@@ -780,11 +802,79 @@ export default function TrackerPage() {
     return itdRows.filter((r) => r.submitter_user_id && r.submitter_user_id === user?.id);
   }, [itdRows, canManageItd, user?.id]);
 
+  const filteredItdRows = useMemo(() => {
+    const q = String(itdSearch || '').trim().toLowerCase();
+    if (!q) return visibleItdRows;
+    return visibleItdRows.filter((r) => {
+      const hay = [
+        r?.intern_name,
+        r?.contact_address,
+        r?.document_type,
+        r?.designated_team,
+        r?.status,
+        r?.addressed_to,
+        r?.company,
+        r?.return_to_whom,
+        r?.handled_by,
+        r?.requested_by,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [visibleItdRows, itdSearch]);
+
   const openAddItd = () => {
     setEditingItdId(null);
     resetItdForm();
     setItdModalOpen(true);
   };
+
+  const openItdDetails = (row) => {
+    if (!row) return;
+    setItdDetailsRow(row);
+    setItdDetailsOpen(true);
+  };
+
+  useEffect(() => {
+    if (itdDetailsOpen) setItdDetailsMounted(true);
+    if (!itdDetailsOpen && itdDetailsMounted) {
+      const t = window.setTimeout(() => setItdDetailsMounted(false), 260);
+      return () => window.clearTimeout(t);
+    }
+  }, [itdDetailsOpen, itdDetailsMounted]);
+
+  useEffect(() => {
+    if (!itdDetailsMounted) return;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setItdDetailsOpen(false);
+        setItdDetailsRow(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [itdDetailsMounted]);
+
+  useEffect(() => {
+    if (!itdDetailsOpen || !itdDetailsRow?.id) return;
+    const freshRow = itdRows.find((r) => r.id === itdDetailsRow.id);
+    if (!freshRow) return;
+    if (
+      freshRow.status !== itdDetailsRow.status ||
+      freshRow.handled_by !== itdDetailsRow.handled_by ||
+      freshRow.date_signed !== itdDetailsRow.date_signed ||
+      freshRow.updated_at !== itdDetailsRow.updated_at
+    ) {
+      setItdDetailsRow(freshRow);
+    }
+  }, [itdDetailsOpen, itdDetailsRow, itdRows]);
 
   const openManageItdOptions = () => {
     setItdOptionEditor({
@@ -857,9 +947,19 @@ export default function TrackerPage() {
   };
 
   const openEditItd = (row) => {
+    const matchedIntern = users.find(
+      (u) =>
+        u.role === 'intern' &&
+        (u.id === row?.submitter_user_id ||
+          (u.full_name && String(u.full_name).trim() === String(row?.intern_name || '').trim()) ||
+          (u.email && String(u.email).trim().toLowerCase() === String(row?.contact_address || '').trim().toLowerCase()))
+    );
+    setItdSelectedInternId(matchedIntern?.id || '');
+    setItdDocumentLinkTouched(false);
     setEditingItdId(row?.id || null);
     setItdForm({
       document_link: row?.document_link || '',
+      intern_name: row?.intern_name || '',
       document_type: row?.document_type || ITD_DEFAULT_OPTIONS.document_type[0],
       addressed_to: row?.addressed_to || ITD_DEFAULT_OPTIONS.addressed_to[0],
       company: row?.company || ITD_DEFAULT_OPTIONS.company[0],
@@ -869,6 +969,53 @@ export default function TrackerPage() {
       return_to_whom: row?.return_to_whom || '',
     });
     setItdModalOpen(true);
+  };
+
+  const handleSelectItdIntern = (internId) => {
+    setItdSelectedInternId(internId);
+    const selected = itdInternOptions.find((u) => u.id === internId);
+    if (!selected) return;
+    setItdForm((prev) => ({
+      ...prev,
+      intern_name: String(selected.full_name || '').trim() || String(selected.email || '').trim(),
+      contact_address: String(selected.email || '').trim(),
+      designated_team: String(selected.team || '').trim(),
+    }));
+  };
+
+  const isValidHttpUrl = (value) => {
+    try {
+      const u = new URL(value);
+      return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+
+  const isValidItdDocumentLink = (value) => {
+    try {
+      const u = new URL(String(value || '').trim());
+      if (u.protocol !== 'https:') return false;
+      const host = String(u.hostname || '').toLowerCase();
+      const allowedHosts = [
+        'docs.google.com',
+        'drive.google.com',
+        'onedrive.live.com',
+        '1drv.ms',
+        'sharepoint.com',
+        'microsoft.com',
+        'kti-portal.vercel.app',
+      ];
+      return allowedHosts.some((h) => host === h || host.endsWith(`.${h}`));
+    } catch {
+      return false;
+    }
+  };
+
+  const isValidEmail = (value) => {
+    const v = String(value || '').trim();
+    if (!v) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   };
 
   const updateItdRow = async (rowId, patch) => {
@@ -904,11 +1051,14 @@ export default function TrackerPage() {
     try {
       setItdApprovingId(row.id);
       const today = new Date().toISOString().slice(0, 10);
-      await updateItdRow(row.id, {
+      const updated = await updateItdRow(row.id, {
         status: 'Signed',
         handled_by: currentActorName,
         date_signed: today,
       });
+      if (itdDetailsOpen && itdDetailsRow?.id === row.id && updated) {
+        setItdDetailsRow(updated);
+      }
       toast.success('Document approved.');
     } catch (err) {
       console.warn('TrackerPage: approve ITD error', err);
@@ -920,6 +1070,7 @@ export default function TrackerPage() {
 
   const saveItd = async () => {
     const link = String(itdForm.document_link || '').trim();
+    const internName = String(itdForm.intern_name || '').trim();
     const docType = String(itdForm.document_type || '').trim();
     const addressedTo = String(itdForm.addressed_to || '').trim();
     const company = String(itdForm.company || '').trim();
@@ -927,8 +1078,29 @@ export default function TrackerPage() {
     const team = String(itdForm.designated_team || '').trim();
     const dueDate = itdForm.due_date || '';
 
-    if (!link || !docType || !addressedTo || !company || !contact || !team || !dueDate) {
+    if (!link || !internName || !docType || !addressedTo || !company || !contact || !team || !dueDate) {
       toast.error('Please complete all required fields.');
+      return;
+    }
+    if (!isInternRole && canManageItd && !itdSelectedInternId) {
+      toast.error('Please select an intern.');
+      return;
+    }
+    if (!isValidHttpUrl(link)) {
+      toast.error('Document link must be a valid URL (include https://).');
+      return;
+    }
+    if (!isValidItdDocumentLink(link)) {
+      toast.error('Document link must be an HTTPS Google Drive/Docs, SharePoint/OneDrive, or Microsoft Teams link.');
+      return;
+    }
+    if (!isValidEmail(contact)) {
+      toast.error('Contact address must be a valid email.');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (dueDate < today) {
+      toast.error('Due date cannot be in the past.');
       return;
     }
 
@@ -938,6 +1110,7 @@ export default function TrackerPage() {
       submitter_role: userRole || null,
       submitter_team: userTeam || null,
       document_link: link,
+      intern_name: internName,
       document_type: docType,
       addressed_to: addressedTo,
       company,
@@ -945,6 +1118,7 @@ export default function TrackerPage() {
       designated_team: team,
       due_date: dueDate,
       return_to_whom: String(itdForm.return_to_whom || '').trim() || null,
+      requested_by: userRole === 'admin' ? currentActorName : null,
       updated_at: new Date().toISOString(),
     };
 
@@ -973,9 +1147,48 @@ export default function TrackerPage() {
       resetItdForm();
     } catch (err) {
       console.warn('TrackerPage: save ITD error', err);
+      // Backward-compat fallback if DB doesn't yet have new columns.
+      const msg = String(err?.message || '');
+      const maybeMissingColumn = msg.toLowerCase().includes('column') && msg.toLowerCase().includes('does not exist');
+      if (maybeMissingColumn && (msg.includes('intern_name') || msg.includes('requested_by'))) {
+        try {
+          const fallbackPayload = { ...basePayload };
+          delete fallbackPayload.intern_name;
+          delete fallbackPayload.requested_by;
+          const q = supabase.from('intern_document_tracker');
+          const { data, error } = editingItdId
+            ? await q.update(fallbackPayload).eq('id', editingItdId).select('*').single()
+            : await q
+                .insert({
+                  ...fallbackPayload,
+                  date_submitted: new Date().toISOString().slice(0, 10),
+                  status: 'Pending',
+                  created_at: new Date().toISOString(),
+                })
+                .select('*')
+                .single();
+          if (error) throw error;
+          setItdRows((prev) => {
+            if (!data?.id) return prev;
+            const exists = prev.some((r) => r.id === data.id);
+            return exists ? prev.map((r) => (r.id === data.id ? data : r)) : [data, ...prev];
+          });
+          toast.success(editingItdId ? 'ITD record updated.' : 'ITD record added.');
+          setItdModalOpen(false);
+          setEditingItdId(null);
+          resetItdForm();
+          return;
+        } catch (fallbackErr) {
+          console.warn('TrackerPage: save ITD fallback error', fallbackErr);
+        }
+      }
       toast.error(err?.message || 'Failed to save ITD record.');
     }
   };
+
+  const itdDocumentLinkTrimmed = String(itdForm.document_link || '').trim();
+  const itdDocumentLinkInvalid =
+    Boolean(itdDocumentLinkTrimmed) && !isValidItdDocumentLink(itdDocumentLinkTrimmed);
 
   const deleteItd = async (row) => {
     if (!row?.id) return;
@@ -1739,7 +1952,31 @@ export default function TrackerPage() {
                   Track documents requested/required from interns and signing/return workflow.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col sm:flex-row flex-wrap sm:items-center gap-2">
+                <div className="w-full sm:w-[18rem] relative">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-gray-500">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className="h-4 w-4"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M9 3a6 6 0 104.472 10.03l2.249 2.25a.75.75 0 101.06-1.06l-2.25-2.249A6 6 0 009 3zm-4.5 6a4.5 4.5 0 118.999 0A4.5 4.5 0 014.5 9z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <input
+                    type="search"
+                    value={itdSearch}
+                    onChange={(e) => setItdSearch(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 pl-10 pr-3 py-2 text-sm"
+                    placeholder="Search ITD (intern, email, type, status, team...)"
+                  />
+                </div>
                 {canManageItd && (
                   <button
                     type="button"
@@ -1768,15 +2005,12 @@ export default function TrackerPage() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Document</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Requested by</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Addressed to</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Company</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Contact</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Team</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Submitted</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Due</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Return to</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Handled by</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Signed</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
                   </tr>
@@ -1784,58 +2018,82 @@ export default function TrackerPage() {
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-gray-900">
                   {itdLoading ? (
                     <tr>
-                      <td colSpan={13} className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                      <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                         Loading…
                       </td>
                     </tr>
-                  ) : visibleItdRows.length === 0 ? (
+                  ) : filteredItdRows.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-                        No ITD records yet.
+                      <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                        {String(itdSearch || '').trim() ? 'No matching ITD records.' : 'No ITD records yet.'}
                       </td>
                     </tr>
                   ) : (
-                    visibleItdRows.map((row) => (
-                      <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                    filteredItdRows.map((row) => (
+                      <tr
+                        key={row.id}
+                        onClick={() => openItdDetails(row)}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer"
+                        title="Click to view details"
+                      >
                         <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
-                          {row.document_link ? (
+                          {row.document_link && isValidHttpUrl(row.document_link) ? (
                             <a
                               href={row.document_link}
                               target="_blank"
                               rel="noreferrer"
-                              onClick={() => markItdForReviewOnOpen(row)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markItdForReviewOnOpen(row);
+                              }}
                               className="text-[#6795BE] hover:underline"
                             >
                               Open link
                             </a>
                           ) : (
-                            '—'
+                            row.document_link ? (
+                              <span
+                                className="text-xs text-gray-500 dark:text-gray-400"
+                                title={row.document_link}
+                              >
+                                Invalid link
+                              </span>
+                            ) : (
+                              '—'
+                            )
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.document_type || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                          {row.intern_name || row.submitter_name || row.contact_address || '—'}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.addressed_to || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.company || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.contact_address || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.designated_team || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatMdy(row.date_submitted)}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatMdy(row.due_date)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.return_to_whom || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.status || 'Pending'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.handled_by || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.date_signed ? formatMdy(row.date_signed) : '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                          {row.date_signed ? formatMdy(row.date_signed) : '—'}
+                        </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
                           {canEditItdRow(row) ? (
                             <>
                               <button
                                 type="button"
-                                onClick={() => openEditItd(row)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEditItd(row);
+                                }}
                                 className="px-2.5 py-1 rounded-md text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
                               >
                                 Edit
                               </button>
                               <button
                                 type="button"
-                                onClick={() => deleteItd(row)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteItd(row);
+                                }}
                                 className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
                               >
                                 Delete
@@ -1849,7 +2107,10 @@ export default function TrackerPage() {
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => approveItd(row)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  approveItd(row);
+                                }}
                                 disabled={itdApprovingId === row.id}
                                 className="px-2.5 py-1 rounded-md text-xs font-medium border border-green-200 dark:border-green-900/60 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-950/30 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                               >
@@ -1867,6 +2128,154 @@ export default function TrackerPage() {
               </table>
             </div>
           </div>
+
+          {itdDetailsMounted &&
+            createPortal(
+              <div
+                className="fixed inset-0 z-[2147483647]"
+                aria-hidden={!itdDetailsOpen}
+              >
+                <div
+                  className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-250 ${
+                    itdDetailsOpen ? 'opacity-100' : 'opacity-0'
+                  }`}
+                  onMouseDown={() => {
+                    setItdDetailsOpen(false);
+                    setItdDetailsRow(null);
+                  }}
+                />
+                <div className="absolute inset-0 flex justify-end pointer-events-none">
+                  <div
+                    className={`h-full w-full max-w-[760px] pointer-events-auto bg-gradient-to-b from-white to-slate-50 dark:from-gray-900 dark:to-gray-950 shadow-2xl border-l border-gray-200 dark:border-gray-800 transform transition-transform duration-250 ease-out ${
+                      itdDetailsOpen ? 'translate-x-0' : 'translate-x-full'
+                    }`}
+                    role="dialog"
+                    aria-modal="true"
+                  >
+                    <div className="h-full flex flex-col">
+                      <div className="px-5 py-4 border-b border-gray-200/80 dark:border-gray-800 flex items-start justify-between gap-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
+                        <div className="min-w-0">
+                          <h3 className="font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+                            ITD record details
+                          </h3>
+                          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 truncate">
+                            {itdDetailsRow?.document_type || '—'} • {itdDetailsRow?.intern_name || itdDetailsRow?.submitter_name || itdDetailsRow?.contact_address || '—'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setItdDetailsOpen(false);
+                            setItdDetailsRow(null);
+                          }}
+                          className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                        >
+                          Close
+                        </button>
+                      </div>
+
+                      <div className="flex-1 p-4 sm:p-5 overflow-y-auto">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {[
+                            {
+                              label: 'Document',
+                              value:
+                                itdDetailsRow?.document_link && isValidHttpUrl(itdDetailsRow.document_link) ? (
+                                  <div className="space-y-1">
+                                    <a
+                                      href={itdDetailsRow.document_link}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      onClick={() => markItdForReviewOnOpen(itdDetailsRow)}
+                                      className="inline-flex items-center px-2.5 py-1 rounded-md bg-[#6795BE]/10 text-[#517a9d] dark:text-[#8bb4d8] text-xs font-semibold hover:underline"
+                                    >
+                                      Open document
+                                    </a>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 break-all">
+                                      {itdDetailsRow.document_link}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <span className="break-all">{itdDetailsRow?.document_link || '—'}</span>
+                                ),
+                            },
+                            { label: 'Addressed to', value: itdDetailsRow?.addressed_to || '—' },
+                            { label: 'Company', value: itdDetailsRow?.company || '—' },
+                            { label: 'Contact', value: itdDetailsRow?.contact_address || '—' },
+                            { label: 'Team', value: itdDetailsRow?.designated_team || '—' },
+                            { label: 'Submitted', value: formatMdy(itdDetailsRow?.date_submitted) },
+                            { label: 'Due', value: formatMdy(itdDetailsRow?.due_date) },
+                            { label: 'Return to', value: itdDetailsRow?.return_to_whom || '—' },
+                            { label: 'Status', value: itdDetailsRow?.status || 'Pending' },
+                            { label: 'Handled by', value: itdDetailsRow?.handled_by || '—' },
+                            { label: 'Signed', value: itdDetailsRow?.date_signed ? formatMdy(itdDetailsRow.date_signed) : '—' },
+                          ].map((item) => (
+                            <div
+                              key={item.label}
+                              className={`rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/55 px-3.5 py-3 shadow-sm ${
+                                item.label === 'Document' ? 'sm:col-span-2' : ''
+                              }`}
+                            >
+                              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 uppercase tracking-wide">
+                                {item.label}
+                              </p>
+                              <div className="mt-1 text-sm text-slate-900 dark:text-slate-100 leading-relaxed">
+                                {item.label === 'Status' ? (
+                                  <span
+                                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                      String(item.value || '').toLowerCase() === 'signed'
+                                        ? 'bg-green-100 text-green-800 dark:bg-green-900/35 dark:text-green-200'
+                                        : String(item.value || '').toLowerCase() === 'for review'
+                                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/35 dark:text-amber-200'
+                                          : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
+                                    }`}
+                                  >
+                                    {item.value}
+                                  </span>
+                                ) : (
+                                  item.value
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="px-5 py-4 border-t border-gray-200/80 dark:border-gray-800 flex items-center justify-end gap-2 bg-white/85 dark:bg-gray-900/85 backdrop-blur-sm">
+                        {itdDetailsRow && canEditItdRow(itdDetailsRow) ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setItdDetailsOpen(false);
+                              openEditItd(itdDetailsRow);
+                            }}
+                            className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+                        {itdDetailsRow && canManageItd ? (
+                          <button
+                            type="button"
+                            onClick={() => approveItd(itdDetailsRow)}
+                            disabled={itdApprovingId === itdDetailsRow.id || String(itdDetailsRow.status || '').toLowerCase() === 'signed'}
+                            className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                            style={{ backgroundColor: PRIMARY }}
+                          >
+                            {String(itdDetailsRow?.status || '').toLowerCase() === 'signed'
+                              ? 'Approved'
+                              : itdApprovingId === itdDetailsRow?.id
+                                ? 'Approving…'
+                                : 'Approve'}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
 
           <Modal
             open={itdModalOpen}
@@ -1903,14 +2312,58 @@ export default function TrackerPage() {
                     <input
                       type="url"
                       value={itdForm.document_link}
-                      onChange={(e) => setItdForm((p) => ({ ...p, document_link: e.target.value }))}
-                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
-                      placeholder="Paste MS Teams / Drive / Share link"
+                      onChange={(e) => {
+                        if (!itdDocumentLinkTouched) setItdDocumentLinkTouched(true);
+                        setItdForm((p) => ({ ...p, document_link: e.target.value }));
+                      }}
+                      onBlur={() => setItdDocumentLinkTouched(true)}
+                      className={`w-full rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm ${
+                        itdDocumentLinkTouched && itdDocumentLinkInvalid
+                          ? 'border border-red-500 dark:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/40'
+                          : 'border border-gray-300 dark:border-gray-700'
+                      }`}
+                      placeholder="Paste HTTPS Google Drive/Docs, SharePoint/OneDrive, or Teams link"
                     />
-                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                      Attach letter from school for Partial COC; attach ICF for COC/LOC.
-                    </p>
+                    {itdDocumentLinkTouched && itdDocumentLinkInvalid ? (
+                      <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">
+                        Enter a valid HTTPS link from Google Drive/Docs, SharePoint/OneDrive, or Microsoft Teams.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                        Accepted links: HTTPS Google Drive/Docs, SharePoint/OneDrive, or Microsoft Teams shared links.
+                      </p>
+                    )}
                   </div>
+
+                  {!isInternRole && canManageItd ? (
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                        Select intern <span className="text-red-600">*</span>
+                      </label>
+                      <select
+                        value={itdSelectedInternId}
+                        onChange={(e) => handleSelectItdIntern(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                      >
+                        <option value="">Select intern...</option>
+                        {itdInternOptions.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {(u.full_name || '').trim() || u.email || 'Unnamed intern'}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                        Contact address and designated team are auto-filled from selected intern.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Intern name</label>
+                      <div className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-gray-800 dark:text-gray-100 px-3 py-2 text-sm">
+                        {itdForm.intern_name || currentActorName}
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
@@ -1967,40 +2420,52 @@ export default function TrackerPage() {
                     <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
                       Contact address (MS Teams email) <span className="text-red-600">*</span>
                     </label>
-                    <input
-                      type="text"
-                      value={itdForm.contact_address}
-                      onChange={(e) => setItdForm((p) => ({ ...p, contact_address: e.target.value }))}
-                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
-                      placeholder="e.g. user@company.com"
-                    />
+                    {isInternRole || (!isInternRole && canManageItd && Boolean(itdSelectedInternId)) ? (
+                      <div className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-gray-800 dark:text-gray-100 px-3 py-2 text-sm">
+                        {itdForm.contact_address || '—'}
+                      </div>
+                    ) : (
+                      <input
+                        type="email"
+                        value={itdForm.contact_address}
+                        onChange={(e) => setItdForm((p) => ({ ...p, contact_address: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                        placeholder="e.g. user@company.com"
+                      />
+                    )}
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
                       Designated team <span className="text-red-600">*</span>
                     </label>
-                    {itdOptions.designated_team?.length ? (
-                      <select
-                        value={itdForm.designated_team}
-                        onChange={(e) => setItdForm((p) => ({ ...p, designated_team: e.target.value }))}
-                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
-                      >
-                        <option value="">Select…</option>
-                        {itdOptions.designated_team.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
+                    {isInternRole || (!isInternRole && canManageItd && Boolean(itdSelectedInternId)) ? (
+                      <div className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-gray-800 dark:text-gray-100 px-3 py-2 text-sm">
+                        {itdForm.designated_team || '—'}
+                      </div>
                     ) : (
-                      <input
-                        type="text"
-                        value={itdForm.designated_team}
-                        onChange={(e) => setItdForm((p) => ({ ...p, designated_team: e.target.value }))}
-                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
-                        placeholder="e.g. Team Lead Assistant"
-                      />
+                      itdOptions.designated_team?.length ? (
+                        <select
+                          value={itdForm.designated_team}
+                          onChange={(e) => setItdForm((p) => ({ ...p, designated_team: e.target.value }))}
+                          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                        >
+                          <option value="">Select…</option>
+                          {itdOptions.designated_team.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={itdForm.designated_team}
+                          onChange={(e) => setItdForm((p) => ({ ...p, designated_team: e.target.value }))}
+                          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                          placeholder="e.g. Team Lead Assistant"
+                        />
+                      )
                     )}
                   </div>
 
@@ -2010,6 +2475,7 @@ export default function TrackerPage() {
                     </label>
                     <input
                       type="date"
+                      min={new Date().toISOString().slice(0, 10)}
                       value={itdForm.due_date}
                       onChange={(e) => setItdForm((p) => ({ ...p, due_date: e.target.value }))}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
