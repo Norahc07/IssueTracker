@@ -12,6 +12,29 @@ const TL_VTL_DEPARTMENTS = ['IT', 'HR', 'Marketing'];
 const TL_VTL_TEAMS = ['Team Lead Assistant', 'Monitoring Team', 'PAT1', 'HR Intern', 'Marketing Intern'];
 const TL_VTL_ROLES = ['Team Leader', 'Vice Team Leader', 'Representative'];
 const LEAVE_TEMPLATE_URL = 'https://ssgcgroup-my.sharepoint.com/:x:/g/personal/carl_ssgc_group/IQC95nJHfVwAQYLtfdOApPbIAXDs4P-HgyG02kq6fE9BdyY?e=n9HW7j';
+const ITD_DEFAULT_OPTIONS = {
+  document_type: [
+    'Final Appraisal/Evaluation',
+    'Monthly Appraisal/Evaluation',
+    'Monthly/Weekly Report',
+    'ICF',
+    'DTR',
+    'Partial COC',
+    'COC/LOC',
+    'Leave Form',
+  ],
+  addressed_to: [
+    'Knowles TLA',
+    'Knowles Monitoring',
+    'Sir Eugene Monitoring',
+    'Sir Eugene TLA',
+    'Sir Sancy TLA',
+    'Sir Sancy Monitoring',
+    'HR Representative',
+  ],
+  company: ['Knowles', 'Umonics'],
+  status: ['Pending', 'For Review', 'Signed', 'Returned'],
+};
 const formatMdy = (value) => {
   if (!value) return '—';
   const d = new Date(`${value}T00:00:00`);
@@ -44,7 +67,7 @@ const canAccessTracker = (userRole, userTeam) => {
 export default function TrackerPage() {
   const { supabase, user, userRole, userTeam } = useSupabase();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab'); // 'tl-vtl' | 'schedule' | 'intern-records' | 'leave'
+  const tabParam = searchParams.get('tab'); // 'tl-vtl' | 'schedule' | 'intern-records' | 'leave' | 'itd'
   const trackerTab =
     tabParam === 'schedule'
       ? 'schedule'
@@ -52,6 +75,8 @@ export default function TrackerPage() {
       ? 'intern-records'
       : tabParam === 'leave'
       ? 'leave'
+      : tabParam === 'itd'
+      ? 'itd'
       : 'tl-vtl';
 
   const [users, setUsers] = useState([]);
@@ -104,6 +129,38 @@ export default function TrackerPage() {
   const [editingLeaveId, setEditingLeaveId] = useState(null);
   const [leaveEditDraft, setLeaveEditDraft] = useState(null);
 
+  // Intern Document Tracker (ITD)
+  const [itdRows, setItdRows] = useState([]);
+  const [itdLoading, setItdLoading] = useState(false);
+  const [itdModalOpen, setItdModalOpen] = useState(false);
+  const [itdManageOptionsOpen, setItdManageOptionsOpen] = useState(false);
+  const [itdOptionsSaving, setItdOptionsSaving] = useState(false);
+  const [itdApprovingId, setItdApprovingId] = useState(null);
+  const [itdOptionEditor, setItdOptionEditor] = useState({
+    document_type: [],
+    addressed_to: [],
+    company: [],
+  });
+  const [itdOptions, setItdOptions] = useState({
+    document_type: ITD_DEFAULT_OPTIONS.document_type,
+    addressed_to: ITD_DEFAULT_OPTIONS.addressed_to,
+    company: ITD_DEFAULT_OPTIONS.company,
+    status: ITD_DEFAULT_OPTIONS.status,
+    handled_by: [],
+    designated_team: [],
+  });
+  const [editingItdId, setEditingItdId] = useState(null);
+  const [itdForm, setItdForm] = useState({
+    document_link: '',
+    document_type: ITD_DEFAULT_OPTIONS.document_type[0],
+    addressed_to: ITD_DEFAULT_OPTIONS.addressed_to[0],
+    company: ITD_DEFAULT_OPTIONS.company[0],
+    contact_address: '',
+    designated_team: '',
+    due_date: '',
+    return_to_whom: '',
+  });
+
   const tlVtlAssignableUsers = useMemo(
     () => users.filter((u) => u.role === 'intern' || u.role === 'tl' || u.role === 'vtl'),
     [users]
@@ -118,6 +175,7 @@ export default function TrackerPage() {
     userRole === 'admin' || ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam);
   const isInternRole = userRole === 'intern';
   const isTlVtlRole = userRole === 'tl' || userRole === 'vtl';
+  const canManageItd = userRole === 'admin' || ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam);
 
   const currentActorName = useMemo(() => {
     const meta = user?.user_metadata || {};
@@ -207,9 +265,78 @@ export default function TrackerPage() {
     }
   };
 
+  const resetItdForm = () => {
+    setItdForm({
+      document_link: '',
+      document_type: ITD_DEFAULT_OPTIONS.document_type[0],
+      addressed_to: ITD_DEFAULT_OPTIONS.addressed_to[0],
+      company: ITD_DEFAULT_OPTIONS.company[0],
+      contact_address: '',
+      designated_team: '',
+      due_date: '',
+      return_to_whom: '',
+    });
+  };
+
+  const fetchItdOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('itd_dropdown_options')
+        .select('*')
+        .order('sort_order', { ascending: true });
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      const byField = rows.reduce((acc, r) => {
+        const key = String(r?.field_key || '').trim();
+        const val = String(r?.value || '').trim();
+        if (!key || !val) return acc;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(val);
+        return acc;
+      }, {});
+      setItdOptions((prev) => ({
+        document_type: byField.document_type?.length ? byField.document_type : prev.document_type,
+        addressed_to: byField.addressed_to?.length ? byField.addressed_to : prev.addressed_to,
+        company: byField.company?.length ? byField.company : prev.company,
+        status: byField.status?.length ? byField.status : prev.status,
+        handled_by: byField.handled_by || [],
+        designated_team: byField.designated_team || [],
+      }));
+    } catch (err) {
+      console.warn('TrackerPage: itd_dropdown_options fetch error', err);
+      // keep defaults
+    }
+  };
+
+  const fetchItdRows = async () => {
+    if (!supabase) return;
+    setItdLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('intern_document_tracker')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setItdRows(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('TrackerPage: intern_document_tracker fetch error', err);
+      toast.error(err?.message || 'Failed to load ITD records.');
+      setItdRows([]);
+    } finally {
+      setItdLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (trackerTab !== 'leave') return;
     fetchLeaveRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackerTab, supabase]);
+
+  useEffect(() => {
+    if (trackerTab !== 'itd') return;
+    fetchItdOptions();
+    fetchItdRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackerTab, supabase]);
 
@@ -647,6 +774,230 @@ export default function TrackerPage() {
     }
   };
 
+  const visibleItdRows = useMemo(() => {
+    if (canManageItd) return itdRows;
+    // interns: only their own submitted rows
+    return itdRows.filter((r) => r.submitter_user_id && r.submitter_user_id === user?.id);
+  }, [itdRows, canManageItd, user?.id]);
+
+  const openAddItd = () => {
+    setEditingItdId(null);
+    resetItdForm();
+    setItdModalOpen(true);
+  };
+
+  const openManageItdOptions = () => {
+    setItdOptionEditor({
+      document_type: [...(itdOptions.document_type || [])],
+      addressed_to: [...(itdOptions.addressed_to || [])],
+      company: [...(itdOptions.company || [])],
+    });
+    setItdManageOptionsOpen(true);
+  };
+
+  const updateItdEditorValue = (fieldKey, index, value) => {
+    setItdOptionEditor((prev) => {
+      const next = [...(prev[fieldKey] || [])];
+      next[index] = value;
+      return { ...prev, [fieldKey]: next };
+    });
+  };
+
+  const addItdEditorValue = (fieldKey) => {
+    setItdOptionEditor((prev) => ({
+      ...prev,
+      [fieldKey]: [...(prev[fieldKey] || []), ''],
+    }));
+  };
+
+  const removeItdEditorValue = (fieldKey, index) => {
+    setItdOptionEditor((prev) => ({
+      ...prev,
+      [fieldKey]: (prev[fieldKey] || []).filter((_, i) => i !== index),
+    }));
+  };
+
+  const saveItdDropdownOptions = async () => {
+    if (!canManageItd) return;
+    const fieldKeys = ['document_type', 'addressed_to', 'company'];
+    const rows = [];
+    fieldKeys.forEach((fieldKey) => {
+      const seen = new Set();
+      (itdOptionEditor[fieldKey] || []).forEach((raw, i) => {
+        const value = String(raw || '').trim();
+        if (!value) return;
+        const normalized = value.toLowerCase();
+        if (seen.has(normalized)) return;
+        seen.add(normalized);
+        rows.push({ field_key: fieldKey, value, sort_order: i });
+      });
+    });
+    if (!rows.length) {
+      toast.error('Please keep at least one value.');
+      return;
+    }
+    setItdOptionsSaving(true);
+    try {
+      const { error: delError } = await supabase
+        .from('itd_dropdown_options')
+        .delete()
+        .in('field_key', fieldKeys);
+      if (delError) throw delError;
+      const { error: insError } = await supabase.from('itd_dropdown_options').insert(rows);
+      if (insError) throw insError;
+      await fetchItdOptions();
+      setItdManageOptionsOpen(false);
+      toast.success('Dropdown options updated.');
+    } catch (err) {
+      console.warn('TrackerPage: save ITD dropdown options error', err);
+      toast.error(err?.message || 'Failed to update dropdown options.');
+    } finally {
+      setItdOptionsSaving(false);
+    }
+  };
+
+  const openEditItd = (row) => {
+    setEditingItdId(row?.id || null);
+    setItdForm({
+      document_link: row?.document_link || '',
+      document_type: row?.document_type || ITD_DEFAULT_OPTIONS.document_type[0],
+      addressed_to: row?.addressed_to || ITD_DEFAULT_OPTIONS.addressed_to[0],
+      company: row?.company || ITD_DEFAULT_OPTIONS.company[0],
+      contact_address: row?.contact_address || '',
+      designated_team: row?.designated_team || '',
+      due_date: row?.due_date || '',
+      return_to_whom: row?.return_to_whom || '',
+    });
+    setItdModalOpen(true);
+  };
+
+  const updateItdRow = async (rowId, patch) => {
+    if (!rowId) return null;
+    const payload = { ...patch, updated_at: new Date().toISOString() };
+    const { data, error } = await supabase
+      .from('intern_document_tracker')
+      .update(payload)
+      .eq('id', rowId)
+      .select('*')
+      .single();
+    if (error) throw error;
+    setItdRows((prev) => prev.map((r) => (r.id === rowId ? data : r)));
+    return data;
+  };
+
+  const markItdForReviewOnOpen = async (row) => {
+    if (!canManageItd) return;
+    if (!row?.id) return;
+    const current = String(row.status || '').trim();
+    if (!current || current.toLowerCase() === 'pending') {
+      try {
+        await updateItdRow(row.id, { status: 'For Review' });
+      } catch (err) {
+        console.warn('TrackerPage: set ITD For Review error', err);
+      }
+    }
+  };
+
+  const approveItd = async (row) => {
+    if (!canManageItd) return;
+    if (!row?.id) return;
+    try {
+      setItdApprovingId(row.id);
+      const today = new Date().toISOString().slice(0, 10);
+      await updateItdRow(row.id, {
+        status: 'Signed',
+        handled_by: currentActorName,
+        date_signed: today,
+      });
+      toast.success('Document approved.');
+    } catch (err) {
+      console.warn('TrackerPage: approve ITD error', err);
+      toast.error(err?.message || 'Failed to approve ITD record.');
+    } finally {
+      setItdApprovingId((prev) => (prev === row.id ? null : prev));
+    }
+  };
+
+  const saveItd = async () => {
+    const link = String(itdForm.document_link || '').trim();
+    const docType = String(itdForm.document_type || '').trim();
+    const addressedTo = String(itdForm.addressed_to || '').trim();
+    const company = String(itdForm.company || '').trim();
+    const contact = String(itdForm.contact_address || '').trim();
+    const team = String(itdForm.designated_team || '').trim();
+    const dueDate = itdForm.due_date || '';
+
+    if (!link || !docType || !addressedTo || !company || !contact || !team || !dueDate) {
+      toast.error('Please complete all required fields.');
+      return;
+    }
+
+    const basePayload = {
+      submitter_user_id: user?.id || null,
+      submitter_name: currentActorName,
+      submitter_role: userRole || null,
+      submitter_team: userTeam || null,
+      document_link: link,
+      document_type: docType,
+      addressed_to: addressedTo,
+      company,
+      contact_address: contact,
+      designated_team: team,
+      due_date: dueDate,
+      return_to_whom: String(itdForm.return_to_whom || '').trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const q = supabase.from('intern_document_tracker');
+      const { data, error } = editingItdId
+        ? await q.update(basePayload).eq('id', editingItdId).select('*').single()
+        : await q
+            .insert({
+              ...basePayload,
+              date_submitted: new Date().toISOString().slice(0, 10),
+              status: 'Pending',
+              created_at: new Date().toISOString(),
+            })
+            .select('*')
+            .single();
+      if (error) throw error;
+      setItdRows((prev) => {
+        if (!data?.id) return prev;
+        const exists = prev.some((r) => r.id === data.id);
+        return exists ? prev.map((r) => (r.id === data.id ? data : r)) : [data, ...prev];
+      });
+      toast.success(editingItdId ? 'ITD record updated.' : 'ITD record added.');
+      setItdModalOpen(false);
+      setEditingItdId(null);
+      resetItdForm();
+    } catch (err) {
+      console.warn('TrackerPage: save ITD error', err);
+      toast.error(err?.message || 'Failed to save ITD record.');
+    }
+  };
+
+  const deleteItd = async (row) => {
+    if (!row?.id) return;
+    const ok = window.confirm('Delete this ITD record?');
+    if (!ok) return;
+    try {
+      const { error } = await supabase.from('intern_document_tracker').delete().eq('id', row.id);
+      if (error) throw error;
+      setItdRows((prev) => prev.filter((r) => r.id !== row.id));
+      toast.success('ITD record deleted.');
+    } catch (err) {
+      console.warn('TrackerPage: delete ITD error', err);
+      toast.error(err?.message || 'Failed to delete ITD record.');
+    }
+  };
+
+  const canEditItdRow = (row) => {
+    if (!row) return false;
+    if (canManageItd) return false;
+    return row.submitter_user_id && row.submitter_user_id === user?.id;
+  };
+
   if (!canAccessTracker(userRole, userTeam)) {
     const dashboard = userRole === 'admin' || userRole === 'tla' ? '/admin/dashboard' : '/intern/dashboard';
     return <Navigate to={dashboard} replace />;
@@ -714,6 +1065,18 @@ export default function TrackerPage() {
             style={trackerTab === 'leave' ? { borderTopColor: PRIMARY } : {}}
           >
             Leave
+          </button>
+          <button
+            type="button"
+            onClick={() => setSearchParams({ tab: 'itd' })}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              trackerTab === 'itd'
+                ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
+            }`}
+            style={trackerTab === 'itd' ? { borderTopColor: PRIMARY } : {}}
+          >
+            ITD
           </button>
         </div>
         {trackerTab === 'tl-vtl' && (
@@ -965,7 +1328,7 @@ export default function TrackerPage() {
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-gray-900">
                   {visibleLeaveRows.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                      <td colSpan={11} className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                         No leave records yet.
                       </td>
                     </tr>
@@ -1363,6 +1726,422 @@ export default function TrackerPage() {
               </div>
             </div>
           </Modal>
+        </div>
+      ) : trackerTab === 'itd' ? (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+                  Intern Document Tracker (ITD)
+                </h2>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Track documents requested/required from interns and signing/return workflow.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {canManageItd && (
+                  <button
+                    type="button"
+                    onClick={openManageItdOptions}
+                    className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800"
+                  >
+                    Manage dropdowns
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={openAddItd}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Add ITD record
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Document</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Addressed to</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Company</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Contact</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Team</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Submitted</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Due</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Return to</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Handled by</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Signed</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-gray-900">
+                  {itdLoading ? (
+                    <tr>
+                      <td colSpan={13} className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                        Loading…
+                      </td>
+                    </tr>
+                  ) : visibleItdRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={13} className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                        No ITD records yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    visibleItdRows.map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                          {row.document_link ? (
+                            <a
+                              href={row.document_link}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={() => markItdForReviewOnOpen(row)}
+                              className="text-[#6795BE] hover:underline"
+                            >
+                              Open link
+                            </a>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.document_type || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.addressed_to || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.company || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.contact_address || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.designated_team || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatMdy(row.date_submitted)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatMdy(row.due_date)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.return_to_whom || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.status || 'Pending'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.handled_by || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.date_signed ? formatMdy(row.date_signed) : '—'}</td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          {canEditItdRow(row) ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openEditItd(row)}
+                                className="px-2.5 py-1 rounded-md text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteItd(row)}
+                                className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          ) : canManageItd ? (
+                            String(row.status || '').toLowerCase() === 'signed' ? (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900/35 dark:text-green-200">
+                                Approved
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => approveItd(row)}
+                                disabled={itdApprovingId === row.id}
+                                className="px-2.5 py-1 rounded-md text-xs font-medium border border-green-200 dark:border-green-900/60 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-950/30 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {itdApprovingId === row.id ? 'Approving…' : 'Approve'}
+                              </button>
+                            )
+                          ) : (
+                            <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <Modal
+            open={itdModalOpen}
+            onClose={() => {
+              setItdModalOpen(false);
+              setEditingItdId(null);
+              resetItdForm();
+            }}
+            zIndexClassName="z-[2147483647]"
+          >
+            <div className="w-full max-w-4xl bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+                  {editingItdId ? 'Edit ITD record' : 'Add ITD record'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setItdModalOpen(false);
+                    setEditingItdId(null);
+                    resetItdForm();
+                  }}
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                      Document link <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="url"
+                      value={itdForm.document_link}
+                      onChange={(e) => setItdForm((p) => ({ ...p, document_link: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                      placeholder="Paste MS Teams / Drive / Share link"
+                    />
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      Attach letter from school for Partial COC; attach ICF for COC/LOC.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                      Document type <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={itdForm.document_type}
+                      onChange={(e) => setItdForm((p) => ({ ...p, document_type: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                    >
+                      {(itdOptions.document_type || []).map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                      Addressed to <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={itdForm.addressed_to}
+                      onChange={(e) => setItdForm((p) => ({ ...p, addressed_to: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                    >
+                      {(itdOptions.addressed_to || []).map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                      Company <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={itdForm.company}
+                      onChange={(e) => setItdForm((p) => ({ ...p, company: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                    >
+                      {(itdOptions.company || []).map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                      Contact address (MS Teams email) <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={itdForm.contact_address}
+                      onChange={(e) => setItdForm((p) => ({ ...p, contact_address: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                      placeholder="e.g. user@company.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                      Designated team <span className="text-red-600">*</span>
+                    </label>
+                    {itdOptions.designated_team?.length ? (
+                      <select
+                        value={itdForm.designated_team}
+                        onChange={(e) => setItdForm((p) => ({ ...p, designated_team: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                      >
+                        <option value="">Select…</option>
+                        {itdOptions.designated_team.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={itdForm.designated_team}
+                        onChange={(e) => setItdForm((p) => ({ ...p, designated_team: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                        placeholder="e.g. Team Lead Assistant"
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                      Due date <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={itdForm.due_date}
+                      onChange={(e) => setItdForm((p) => ({ ...p, due_date: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Return to whom (if applicable)</label>
+                    <input
+                      type="text"
+                      value={itdForm.return_to_whom}
+                      onChange={(e) => setItdForm((p) => ({ ...p, return_to_whom: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                      placeholder="e.g. HR Representative / Supervisor"
+                    />
+                  </div>
+
+                </div>
+
+                <div className="mt-5 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setItdModalOpen(false);
+                      setEditingItdId(null);
+                      resetItdForm();
+                    }}
+                    className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveItd}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                    style={{ backgroundColor: PRIMARY }}
+                  >
+                    {editingItdId ? 'Save changes' : 'Add ITD record'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Modal>
+
+          <Modal
+            open={itdManageOptionsOpen}
+            onClose={() => setItdManageOptionsOpen(false)}
+            zIndexClassName="z-[2147483647]"
+          >
+            <div className="w-full max-w-2xl bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden max-h-[85vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+                  Manage ITD dropdown options
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setItdManageOptionsOpen(false)}
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-5 space-y-4 text-sm text-gray-700 dark:text-gray-200 overflow-y-auto flex-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Admin/TL/VTL can add/update values for Document Type, Addressed To, and Company.
+                </p>
+                <div className="grid grid-cols-1 gap-3">
+                  {[
+                    { key: 'document_type', label: 'Document Type' },
+                    { key: 'addressed_to', label: 'Addressed To' },
+                    { key: 'company', label: 'Company' },
+                  ].map((field) => (
+                    <div key={field.key} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/40 p-3">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">{field.label}</p>
+                        <button
+                          type="button"
+                          onClick={() => addItdEditorValue(field.key)}
+                          className="px-2.5 py-1 rounded-md text-xs font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          + Add value
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {(itdOptionEditor[field.key] || []).map((value, idx) => (
+                          <div key={`${field.key}-${idx}`} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={value}
+                              onChange={(e) => updateItdEditorValue(field.key, idx, e.target.value)}
+                              className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-1.5 text-sm"
+                              placeholder={`Enter ${field.label.toLowerCase()} value`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeItdEditorValue(field.key, idx)}
+                              className="px-2.5 py-1.5 rounded-md text-xs font-medium border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                        {(itdOptionEditor[field.key] || []).length === 0 && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">No values yet.</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-end gap-2 bg-white dark:bg-gray-900">
+                <button
+                  type="button"
+                  onClick={() => setItdManageOptionsOpen(false)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  disabled={itdOptionsSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveItdDropdownOptions}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                  disabled={itdOptionsSaving}
+                >
+                  {itdOptionsSaving ? 'Saving…' : 'Save dropdown options'}
+                </button>
+              </div>
+            </div>
+          </Modal>
+
         </div>
       ) : (
         <>
