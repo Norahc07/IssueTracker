@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import DailyReportReminder from './DailyReportReminder.jsx';
 import AppBreadcrumbs from './AppBreadcrumbs.jsx';
 import { useSupabase } from '../context/supabase.jsx';
+import { toast } from 'react-hot-toast';
 import { getRoleDisplayName, getRoleColor, getRoleDescription, permissions } from '../utils/rolePermissions.js';
 import { createNotifications } from '../utils/notifications.js';
 import { applyTheme, getStoredTheme, setStoredTheme } from '../utils/theme.js';
@@ -88,6 +89,23 @@ export default function SidebarLayout() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmNewPassword: '',
+  });
+  const [passwordTouched, setPasswordTouched] = useState({
+    currentPassword: false,
+    newPassword: false,
+    confirmNewPassword: false,
+  });
+  const [passwordVisible, setPasswordVisible] = useState({
+    currentPassword: false,
+    newPassword: false,
+    confirmNewPassword: false,
+  });
   const [profileFullName, setProfileFullName] = useState(null);
   const canSendReminders = permissions.canManageAttendanceSchedules(userRole, userTeam); // Admin + Monitoring TL/VTL
 
@@ -166,6 +184,27 @@ export default function SidebarLayout() {
   }, [location.pathname]);
 
   useEffect(() => {
+    if (!changePasswordOpen) {
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmNewPassword: '',
+      });
+      setPasswordTouched({
+        currentPassword: false,
+        newPassword: false,
+        confirmNewPassword: false,
+      });
+      setPasswordVisible({
+        currentPassword: false,
+        newPassword: false,
+        confirmNewPassword: false,
+      });
+      setChangingPassword(false);
+    }
+  }, [changePasswordOpen]);
+
+  useEffect(() => {
     if (!profileOpen) return;
     const onKey = (e) => {
       if (e.key === 'Escape') setProfileOpen(false);
@@ -173,6 +212,15 @@ export default function SidebarLayout() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [profileOpen]);
+
+  useEffect(() => {
+    if (!changePasswordOpen) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setChangePasswordOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [changePasswordOpen]);
 
   useEffect(() => {
     if (!profileOpen || !supabase || !user?.id) return;
@@ -486,6 +534,74 @@ export default function SidebarLayout() {
     supabase.auth.signOut().catch(() => {});
   };
 
+  const passwordRules = (value) => {
+    const v = String(value || '');
+    return {
+      minLength: v.length >= 8,
+      upper: /[A-Z]/.test(v),
+      lower: /[a-z]/.test(v),
+      number: /\d/.test(v),
+      symbol: /[^A-Za-z0-9]/.test(v),
+    };
+  };
+
+  const handleChangePassword = async () => {
+    const currentPassword = String(passwordForm.currentPassword || '');
+    const newPassword = String(passwordForm.newPassword || '');
+    const confirmNewPassword = String(passwordForm.confirmNewPassword || '');
+    const rules = passwordRules(newPassword);
+    const rulesPassed = Object.values(rules).every(Boolean);
+
+    setPasswordTouched({
+      currentPassword: true,
+      newPassword: true,
+      confirmNewPassword: true,
+    });
+
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      toast.error('Please complete all password fields.');
+      return;
+    }
+    if (!rulesPassed) {
+      toast.error('New password does not meet complexity requirements.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      toast.error('New password and confirmation do not match.');
+      return;
+    }
+    if (currentPassword === newPassword) {
+      toast.error('New password must be different from current password.');
+      return;
+    }
+    if (!user?.email) {
+      toast.error('Unable to verify current account email.');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      // Option B: re-authenticate with current password before applying new password.
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      });
+      if (reauthError) throw new Error('Current password is incorrect.');
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (updateError) throw updateError;
+
+      toast.success('Password changed successfully.');
+      setChangePasswordOpen(false);
+    } catch (err) {
+      toast.error(err?.message || 'Failed to change password.');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   const sidebarDesktopWidthClass = isSidebarCollapsed ? 'lg:w-20' : 'lg:w-72';
   const sidebarDesktopOffsetClass = isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72';
 
@@ -775,6 +891,17 @@ export default function SidebarLayout() {
                   type="button"
                   onClick={() => {
                     setProfileOpen(false);
+                    setChangePasswordOpen(true);
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
+                >
+                  <Icon path="M12 11c1.657 0 3-1.343 3-3S13.657 5 12 5 9 6.343 9 8s1.343 3 3 3zm0 0v2m-7 6v-5a3 3 0 013-3h8a3 3 0 013 3v5" className="h-4 w-4" />
+                  Change password
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileOpen(false);
                     handleLogout();
                   }}
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
@@ -793,6 +920,174 @@ export default function SidebarLayout() {
         </main>
       </div>
       <DailyReportReminder />
+
+      {changePasswordOpen && (
+        <div
+          className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setChangePasswordOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-lg border border-gray-200 dark:border-gray-800 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Change password</h2>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  Confirm your current password before setting a new one.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setChangePasswordOpen(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                aria-label="Close change password"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Current password</label>
+                <div className="relative">
+                  <input
+                    type={passwordVisible.currentPassword ? 'text' : 'password'}
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm((p) => ({ ...p, currentPassword: e.target.value }))}
+                    onBlur={() => setPasswordTouched((p) => ({ ...p, currentPassword: true }))}
+                    className={`w-full rounded-lg pl-3 pr-10 py-2 text-sm bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 ${
+                      passwordTouched.currentPassword && !passwordForm.currentPassword
+                        ? 'border border-red-500'
+                        : 'border border-gray-300 dark:border-gray-700'
+                    }`}
+                    placeholder="Enter current password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPasswordVisible((p) => ({ ...p, currentPassword: !p.currentPassword }))}
+                    className="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    aria-label={passwordVisible.currentPassword ? 'Hide current password' : 'Show current password'}
+                  >
+                    {passwordVisible.currentPassword ? (
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-5.05 0-9.27-2.95-10.5-7 1.01-3.322 3.865-5.86 7.428-6.732M9.88 9.88a3 3 0 104.243 4.243M6.1 6.1l11.8 11.8M9.9 4.8A10.57 10.57 0 0112 4.5c5.05 0 9.27 2.95 10.5 7a11.05 11.05 0 01-4.22 5.63" />
+                      </svg>
+                    ) : (
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm6.5 0c-1.23 4.05-5.45 7-10.5 7s-9.27-2.95-10.5-7c1.23-4.05 5.45-7 10.5-7s9.27 2.95 10.5 7z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">New password</label>
+                <div className="relative">
+                  <input
+                    type={passwordVisible.newPassword ? 'text' : 'password'}
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm((p) => ({ ...p, newPassword: e.target.value }))}
+                    onBlur={() => setPasswordTouched((p) => ({ ...p, newPassword: true }))}
+                    className={`w-full rounded-lg pl-3 pr-10 py-2 text-sm bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 ${
+                      passwordTouched.newPassword && !Object.values(passwordRules(passwordForm.newPassword)).every(Boolean)
+                        ? 'border border-red-500'
+                        : 'border border-gray-300 dark:border-gray-700'
+                    }`}
+                    placeholder="Enter new password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPasswordVisible((p) => ({ ...p, newPassword: !p.newPassword }))}
+                    className="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    aria-label={passwordVisible.newPassword ? 'Hide new password' : 'Show new password'}
+                  >
+                    {passwordVisible.newPassword ? (
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-5.05 0-9.27-2.95-10.5-7 1.01-3.322 3.865-5.86 7.428-6.732M9.88 9.88a3 3 0 104.243 4.243M6.1 6.1l11.8 11.8M9.9 4.8A10.57 10.57 0 0112 4.5c5.05 0 9.27 2.95 10.5 7a11.05 11.05 0 01-4.22 5.63" />
+                      </svg>
+                    ) : (
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm6.5 0c-1.23 4.05-5.45 7-10.5 7s-9.27-2.95-10.5-7c1.23-4.05 5.45-7 10.5-7s9.27 2.95 10.5 7z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                <ul className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                  {Object.entries({
+                    'At least 8 chars': passwordRules(passwordForm.newPassword).minLength,
+                    'Uppercase letter': passwordRules(passwordForm.newPassword).upper,
+                    'Lowercase letter': passwordRules(passwordForm.newPassword).lower,
+                    Number: passwordRules(passwordForm.newPassword).number,
+                    Symbol: passwordRules(passwordForm.newPassword).symbol,
+                  }).map(([label, ok]) => (
+                    <li key={label} className={ok ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}>
+                      {ok ? '✓' : '•'} {label}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Confirm new password</label>
+                <div className="relative">
+                  <input
+                    type={passwordVisible.confirmNewPassword ? 'text' : 'password'}
+                    value={passwordForm.confirmNewPassword}
+                    onChange={(e) => setPasswordForm((p) => ({ ...p, confirmNewPassword: e.target.value }))}
+                    onBlur={() => setPasswordTouched((p) => ({ ...p, confirmNewPassword: true }))}
+                    className={`w-full rounded-lg pl-3 pr-10 py-2 text-sm bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 ${
+                      passwordTouched.confirmNewPassword &&
+                      passwordForm.confirmNewPassword &&
+                      passwordForm.newPassword !== passwordForm.confirmNewPassword
+                        ? 'border border-red-500'
+                        : 'border border-gray-300 dark:border-gray-700'
+                    }`}
+                    placeholder="Re-enter new password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPasswordVisible((p) => ({ ...p, confirmNewPassword: !p.confirmNewPassword }))}
+                    className="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    aria-label={passwordVisible.confirmNewPassword ? 'Hide confirm password' : 'Show confirm password'}
+                  >
+                    {passwordVisible.confirmNewPassword ? (
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-5.05 0-9.27-2.95-10.5-7 1.01-3.322 3.865-5.86 7.428-6.732M9.88 9.88a3 3 0 104.243 4.243M6.1 6.1l11.8 11.8M9.9 4.8A10.57 10.57 0 0112 4.5c5.05 0 9.27 2.95 10.5 7a11.05 11.05 0 01-4.22 5.63" />
+                      </svg>
+                    ) : (
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm6.5 0c-1.23 4.05-5.45 7-10.5 7s-9.27-2.95-10.5-7c1.23-4.05 5.45-7 10.5-7s9.27 2.95 10.5 7z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setChangePasswordOpen(false)}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                disabled={changingPassword}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleChangePassword}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                style={{ backgroundColor: PRIMARY }}
+                disabled={changingPassword}
+              >
+                {changingPassword ? 'Updating...' : 'Update password'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {notificationsOpen && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setNotificationsOpen(false)}>

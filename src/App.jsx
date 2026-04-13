@@ -42,6 +42,10 @@ function AppContent() {
   const { user, userRole, userTeam, loading } = useSupabase();
   const location = useLocation();
   const isAuthPage = location.pathname === '/login';
+  const isPasswordRecovery =
+    isAuthPage &&
+    (location.hash.includes('type=recovery') ||
+      new URLSearchParams(location.search).get('mode') === 'recovery');
 
   if (loading) {
     return (
@@ -92,7 +96,10 @@ function AppContent() {
           <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/" element={<Navigate to="/login" replace />} />
-              <Route path="/login" element={!user ? <Login /> : <Navigate to={getDashboardRoute()} replace />} />
+              <Route
+                path="/login"
+                element={!user || isPasswordRecovery ? <Login /> : <Navigate to={getDashboardRoute()} replace />}
+              />
             </Routes>
           </Suspense>
         </ErrorBoundary>
