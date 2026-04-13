@@ -12,7 +12,7 @@ const MAIN_TAGS = ['sop', 'tasks', 'credentials', 'seo'];
 const MAIN_TAG_LABELS = { sop: 'SOP', tasks: 'Tasks', credentials: 'Credentials', seo: 'SEO' };
 
 export default function CentralizedRepository() {
-  const { supabase, userRole } = useSupabase();
+  const { supabase, userRole, userTeam } = useSupabase();
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +24,9 @@ export default function CentralizedRepository() {
   const [deletingId, setDeletingId] = useState(null);
 
   const canManage = permissions.canEditRepository(userRole);
+  const canViewOffboardingIntern =
+    userRole === 'admin' ||
+    ((userRole === 'tl' || userRole === 'vtl') && String(userTeam || '').toLowerCase() === 'tla');
 
   const fetchItems = async () => {
     setLoading(true);
@@ -133,6 +136,10 @@ export default function CentralizedRepository() {
 
   const filteredItems = useMemo(() => {
     let list = items;
+    // Restricted visibility: Offboarding Intern is only for Admin and TL/VTL under TLA.
+    if (!canViewOffboardingIntern) {
+      list = list.filter((item) => String(item.slug || '').toLowerCase() !== 'offboarding-intern');
+    }
     if (tagFilter === 'others') {
       list = list.filter((item) =>
         (item.tags || []).some((t) => !MAIN_TAGS.includes(String(t).toLowerCase()))
@@ -153,7 +160,7 @@ export default function CentralizedRepository() {
       );
     }
     return list;
-  }, [items, tagFilter, searchQuery]);
+  }, [items, tagFilter, searchQuery, canViewOffboardingIntern]);
 
   if (loading) {
     return (

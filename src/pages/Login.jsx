@@ -3,6 +3,8 @@ import { useSupabase } from '../context/supabase.jsx';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 
+const PRESENCE_CHANNEL = 'kti-presence';
+
 export default function Login() {
   const [mode, setMode] = useState('login'); // login | forgot | reset
   const [email, setEmail] = useState('');
@@ -60,7 +62,7 @@ export default function Login() {
         // Single-device restriction: if another active presence exists for this user,
         // deny this new login attempt and show a modal message.
         const hasOtherActiveSession = await new Promise((resolve) => {
-          const channel = supabase.channel(`kti-single-device-check-${user.id}-${Date.now()}`, {
+          const channel = supabase.channel(PRESENCE_CHANNEL, {
             config: { presence: { key: user.id } },
           });
 

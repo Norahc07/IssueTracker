@@ -106,7 +106,7 @@ export default function RepositoryView() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { supabase, userRole } = useSupabase();
+  const { supabase, userRole, userTeam } = useSupabase();
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('');
@@ -122,6 +122,9 @@ export default function RepositoryView() {
   const canManage = permissions.canEditRepository(userRole);
   const isEditing = canManage && item && !item.isStatic && searchParams.get('edit') === '1';
   const isCoursePriceTable = item?.slug === 'course-price-table';
+  const canViewOffboardingIntern =
+    userRole === 'admin' ||
+    ((userRole === 'tl' || userRole === 'vtl') && String(userTeam || '').toLowerCase() === 'tla');
 
   useEffect(() => {
     let cancelled = false;
@@ -253,6 +256,24 @@ export default function RepositoryView() {
           Back
         </button>
         <p className="text-gray-500 dark:text-gray-400">Repository item not found.</p>
+      </div>
+    );
+  }
+
+  if (item?.slug === 'offboarding-intern' && !canViewOffboardingIntern) {
+    return (
+      <div className="w-full space-y-4">
+        <button
+          type="button"
+          onClick={() => navigate('/repository')}
+          className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back
+        </button>
+        <p className="text-gray-500 dark:text-gray-400">You do not have permission to view this repository item.</p>
       </div>
     );
   }
