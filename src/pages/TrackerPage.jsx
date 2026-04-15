@@ -68,7 +68,7 @@ const canAccessTracker = (userRole, userTeam) => {
 export default function TrackerPage() {
   const { supabase, user, userRole, userTeam } = useSupabase();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab'); // 'tl-vtl' | 'schedule' | 'intern-records' | 'leave' | 'itd'
+  const tabParam = searchParams.get('tab'); // 'tl-vtl' | 'schedule' | 'intern-records' | 'leave' | 'blocked-domains' | 'itd'
   const trackerTab =
     tabParam === 'schedule'
       ? 'schedule'
@@ -76,6 +76,8 @@ export default function TrackerPage() {
       ? 'intern-records'
       : tabParam === 'leave'
       ? 'leave'
+      : tabParam === 'blocked-domains'
+      ? 'blocked-domains'
       : tabParam === 'itd'
       ? 'itd'
       : 'tl-vtl';
@@ -129,6 +131,17 @@ export default function TrackerPage() {
   });
   const [editingLeaveId, setEditingLeaveId] = useState(null);
   const [leaveEditDraft, setLeaveEditDraft] = useState(null);
+  const [domains, setDomains] = useState([]);
+  const [blockedDomainsRows, setBlockedDomainsRows] = useState([]);
+  const [blockedDomainsLoading, setBlockedDomainsLoading] = useState(false);
+  const [blockedDomainsModalOpen, setBlockedDomainsModalOpen] = useState(false);
+  const [editingBlockedDomain, setEditingBlockedDomain] = useState(null);
+  const [blockedDomainForm, setBlockedDomainForm] = useState({
+    public_ip: '',
+    domain_id: '',
+    notes: '',
+  });
+  const [blockedDomainSaving, setBlockedDomainSaving] = useState(false);
 
   // Intern Document Tracker (ITD)
   const [itdRows, setItdRows] = useState([]);
@@ -188,6 +201,9 @@ export default function TrackerPage() {
   const isInternRole = userRole === 'intern';
   const isTlVtlRole = userRole === 'tl' || userRole === 'vtl';
   const canManageItd = userRole === 'admin' || ((userRole === 'tl' || userRole === 'vtl') && isTlaTeam);
+  const canAddEditBlockedDomain = ['admin', 'intern', 'tl', 'vtl'].includes(String(userRole || '').toLowerCase());
+  const canDeleteBlockedDomain = ['admin', 'tl', 'vtl'].includes(String(userRole || '').toLowerCase());
+  const canMarkBlockedDomainUnblocked = canDeleteBlockedDomain;
 
   const currentActorName = useMemo(() => {
     const meta = user?.user_metadata || {};
@@ -284,6 +300,41 @@ export default function TrackerPage() {
     }
   };
 
+  const fetchDomains = async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('domains')
+        .select('id, country, url, type')
+        .order('country', { ascending: true });
+      if (error) throw error;
+      setDomains(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('TrackerPage: domains fetch error', err);
+      setDomains([]);
+    }
+  };
+
+  const fetchBlockedDomainRows = async () => {
+    if (!supabase) return;
+    setBlockedDomainsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('blocked_domain_tracker')
+        .select('*')
+        .order('date_blocked', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setBlockedDomainsRows(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('TrackerPage: blocked_domain_tracker fetch error', err);
+      toast.error(err?.message || 'Failed to load blocked domains.');
+      setBlockedDomainsRows([]);
+    } finally {
+      setBlockedDomainsLoading(false);
+    }
+  };
+
   const resetItdForm = () => {
     setItdSelectedInternId('');
     setItdDocumentLinkTouched(false);
@@ -359,6 +410,13 @@ export default function TrackerPage() {
     if (trackerTab !== 'itd') return;
     fetchItdOptions();
     fetchItdRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackerTab, supabase]);
+
+  useEffect(() => {
+    if (trackerTab !== 'blocked-domains') return;
+    fetchDomains();
+    fetchBlockedDomainRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackerTab, supabase]);
 
@@ -615,6 +673,136 @@ export default function TrackerPage() {
       note: '',
     });
   };
+
+  const resetBlockedDomainForm = () => {
+    setBlockedDomainForm({
+      public_ip: '',
+      domain_id: '',
+      notes: '',
+    });
+  };
+
+  const closeBlockedDomainModal = () => {
+    setBlockedDomainsModalOpen(false);
+    setEditingBlockedDomain(null);
+    resetBlockedDomainForm();
+  };
+
+  const openAddBlockedDomain = () => {
+    if (!canAddEditBlockedDomain) {
+      toast.error('You do not have permission to add blocked domains.');
+      return;
+    }
+    setEditingBlockedDomain(null);
+    resetBlockedDomainForm();
+    setBlockedDomainsModalOpen(true);
+  };
+
+  const openEditBlockedDomain = (row) => {
+    if (!canAddEditBlockedDomain || !row?.id) return;
+    setEditingBlockedDomain(row);
+    setBlockedDomainForm({
+      public_ip: row.public_ip || '',
+      domain_id: row.domain_id || '',
+      notes: row.notes || '',
+    });
+    setBlockedDomainsModalOpen(true);
+  };
+
+  const saveBlockedDomain = async () => {
+    if (!supabase) return;
+    if (!canAddEditBlockedDomain) {
+      toast.error('You do not have permission to save blocked domains.');
+      return;
+    }
+    const publicIp = String(blockedDomainForm.public_ip || '').trim();
+    const domainId = String(blockedDomainForm.domain_id || '').trim();
+    if (!publicIp || !domainId) {
+      toast.error('Public IP and Domain Blocked are required.');
+      return;
+    }
+    const todayLocalDate = new Date().toLocaleDateString('en-CA');
+
+    const payload = {
+      public_ip: publicIp,
+      intern_name: currentActorName,
+      domain_id: domainId,
+      date_blocked: editingBlockedDomain?.date_blocked || todayLocalDate,
+      notes: String(blockedDomainForm.notes || '').trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      setBlockedDomainSaving(true);
+      const q = supabase.from('blocked_domain_tracker');
+      const { error } = editingBlockedDomain?.id
+        ? await q.update(payload).eq('id', editingBlockedDomain.id)
+        : await q.insert({
+            ...payload,
+            created_at: new Date().toISOString(),
+            date_unblocked: null,
+            handled_by: null,
+          });
+      if (error) throw error;
+      toast.success(editingBlockedDomain?.id ? 'Blocked domain updated.' : 'Blocked domain added.');
+      closeBlockedDomainModal();
+      fetchBlockedDomainRows();
+    } catch (err) {
+      console.warn('TrackerPage: save blocked domain error', err);
+      toast.error(err?.message || 'Failed to save blocked domain.');
+    } finally {
+      setBlockedDomainSaving(false);
+    }
+  };
+
+  const deleteBlockedDomain = async (row) => {
+    if (!supabase || !row?.id) return;
+    if (!canDeleteBlockedDomain) {
+      toast.error('You do not have permission to delete blocked domains.');
+      return;
+    }
+    const ok = window.confirm('Delete this blocked domain entry?');
+    if (!ok) return;
+    try {
+      const { error } = await supabase.from('blocked_domain_tracker').delete().eq('id', row.id);
+      if (error) throw error;
+      toast.success('Blocked domain entry deleted.');
+      fetchBlockedDomainRows();
+    } catch (err) {
+      console.warn('TrackerPage: delete blocked domain error', err);
+      toast.error(err?.message || 'Failed to delete blocked domain entry.');
+    }
+  };
+
+  const markBlockedDomainAsUnblocked = async (row) => {
+    if (!supabase || !row?.id) return;
+    if (!canMarkBlockedDomainUnblocked) {
+      toast.error('Only TL/VTL/Admin can mark a blocked domain as unblocked.');
+      return;
+    }
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const payload = {
+        handled_by: currentActorName,
+        date_unblocked: row.date_unblocked || today,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase.from('blocked_domain_tracker').update(payload).eq('id', row.id);
+      if (error) throw error;
+      toast.success('Marked as unblocked.');
+      fetchBlockedDomainRows();
+    } catch (err) {
+      console.warn('TrackerPage: unblock blocked domain error', err);
+      toast.error(err?.message || 'Failed to mark as unblocked.');
+    }
+  };
+
+  const domainsById = useMemo(() => {
+    return domains.reduce((acc, domain) => {
+      if (domain?.id) acc[domain.id] = domain;
+      return acc;
+    }, {});
+  }, [domains]);
 
   const addLeaveRow = async () => {
     const internName = String(currentActorName || '').trim();
@@ -1281,6 +1469,18 @@ export default function TrackerPage() {
           </button>
           <button
             type="button"
+            onClick={() => setSearchParams({ tab: 'blocked-domains' })}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+              trackerTab === 'blocked-domains'
+                ? 'bg-white dark:bg-gray-900 border border-b-0 border-gray-200 dark:border-gray-800 -mb-px text-gray-900 dark:text-gray-100'
+                : 'bg-gray-100 dark:bg-gray-950/40 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-800'
+            }`}
+            style={trackerTab === 'blocked-domains' ? { borderTopColor: PRIMARY } : {}}
+          >
+            Blocked Domains
+          </button>
+          <button
+            type="button"
             onClick={() => setSearchParams({ tab: 'itd' })}
             className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
               trackerTab === 'itd'
@@ -1936,6 +2136,196 @@ export default function TrackerPage() {
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Use this as a temporary template reference until a final standardized leave form is provided.
                 </p>
+              </div>
+            </div>
+          </Modal>
+        </div>
+      ) : trackerTab === 'blocked-domains' ? (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+                  Blocked Domains Tracker
+                </h2>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Shared visibility for blocked domains so interns and leads can quickly troubleshoot outages.
+                </p>
+              </div>
+              {canAddEditBlockedDomain && (
+                <button
+                  type="button"
+                  onClick={openAddBlockedDomain}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  Add blocked domain
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-950/40">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Public IP</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Intern Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Domain Blocked</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date Blocked</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Handled By</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date Unblocked</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Notes</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-gray-900">
+                  {blockedDomainsLoading ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                        Loading blocked domains...
+                      </td>
+                    </tr>
+                  ) : blockedDomainsRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                        No blocked domains yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    blockedDomainsRows.map((row) => {
+                      const domain = domainsById[row.domain_id];
+                      const domainLabel = domain?.country || row.domain_name || row.domain_id || '—';
+                      const unblocked = Boolean(row.date_unblocked);
+                      return (
+                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.public_ip || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.intern_name || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                            <div>{domainLabel}</div>
+                            {domain?.url ? (
+                              <div className="text-xs text-gray-500 dark:text-gray-400 break-all">{domain.url}</div>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatMdy(row.date_blocked)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.handled_by || '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatMdy(row.date_unblocked)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200 max-w-xs">
+                            {row.notes ? <span className="line-clamp-2">{row.notes}</span> : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            {canAddEditBlockedDomain && (
+                              <button
+                                type="button"
+                                onClick={() => openEditBlockedDomain(row)}
+                                className="px-2.5 py-1 rounded-md text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                              >
+                                Edit
+                              </button>
+                            )}
+                            {canMarkBlockedDomainUnblocked && !unblocked && (
+                              <button
+                                type="button"
+                                onClick={() => markBlockedDomainAsUnblocked(row)}
+                                className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-green-200 dark:border-green-900/60 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-950/30"
+                              >
+                                Unblocked
+                              </button>
+                            )}
+                            {canDeleteBlockedDomain && (
+                              <button
+                                type="button"
+                                onClick={() => deleteBlockedDomain(row)}
+                                className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <Modal open={blockedDomainsModalOpen} onClose={closeBlockedDomainModal} zIndexClassName="z-[2147483647]">
+            <div className="w-full max-w-3xl bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
+                  {editingBlockedDomain?.id ? 'Edit blocked domain' : 'Add blocked domain'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={closeBlockedDomainModal}
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-5">
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                      Public IP <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={blockedDomainForm.public_ip}
+                      onChange={(e) => setBlockedDomainForm((p) => ({ ...p, public_ip: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                      placeholder="e.g. 203.0.113.15"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                      Domain Blocked <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={blockedDomainForm.domain_id}
+                      onChange={(e) => setBlockedDomainForm((p) => ({ ...p, domain_id: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
+                    >
+                      <option value="">Select domain...</option>
+                      {domains.map((domain) => (
+                        <option key={domain.id} value={domain.id}>
+                          {domain.country || 'Unknown'} {domain.type ? `(${domain.type})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Notes (optional)</label>
+                    <textarea
+                      value={blockedDomainForm.notes}
+                      onChange={(e) => setBlockedDomainForm((p) => ({ ...p, notes: e.target.value }))}
+                      rows={4}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm resize-y"
+                      placeholder="Describe issue, affected feature, or troubleshooting details"
+                    />
+                  </div>
+                </div>
+                <div className="mt-5 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeBlockedDomainModal}
+                    className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveBlockedDomain}
+                    disabled={blockedDomainSaving}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60"
+                    style={{ backgroundColor: PRIMARY }}
+                  >
+                    {blockedDomainSaving ? 'Saving...' : editingBlockedDomain?.id ? 'Save changes' : 'Add blocked domain'}
+                  </button>
+                </div>
               </div>
             </div>
           </Modal>

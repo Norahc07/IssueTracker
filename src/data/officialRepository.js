@@ -32,8 +32,8 @@ export const OFFICIAL_REPOSITORY_ITEMS = [
 <h3>GSC Console Account</h3>
 <p><em>Need MFA from Sir Mark for first log in — just message him.</em></p>
 <p><a href="https://search.google.com/search-console/welcome" target="_blank" rel="noopener noreferrer">Welcome to Google Search Console</a></p>
-<p>Username: <code>knowlestraininginstitute2@gmail.com</code><br>Password: <code>Idontknow1!</code></p>
-<p><strong>NOTE:</strong> Make sure you are logged into Google Search Console using the credentials above.</p>
+<p><strong>Access:</strong> Request credentials from Team Lead/Admin through the approved secure channel (vault/secret manager). Do not store raw passwords in this repository.</p>
+<p><strong>NOTE:</strong> Make sure you are logged into Google Search Console using authorized credentials.</p>
 
 <p>Go to this link: <a href="https://search.google.com/search-console/" target="_blank" rel="noopener noreferrer">Google Search Console</a></p>
 
@@ -66,26 +66,26 @@ export const OFFICIAL_REPOSITORY_ITEMS = [
 
 <h3>GSC Console Account:</h3>
 <p><em>Need MFA from Sir Mark for first log in.</em></p>
-<p>Username: <code>knowlestraininginstitute2@gmail.com</code><br>Password: <code>Idontknow1!</code></p>
+<p><strong>Credentials are managed securely.</strong> Request temporary access via Team Lead/Admin approved process.</p>
 <hr>
 
 <h3>Canva Account:</h3>
 <p><em>(for COC and CCL making) Need MFA from Sir Mark for first log in.</em></p>
-<p>Username: <code>erick@umonics.sg</code><br>Password: <code>8%3R$£O&lt;gnGOog|hF47G</code></p>
+<p><strong>Credentials are managed securely.</strong> Request temporary access via Team Lead/Admin approved process.</p>
 <hr>
 
 <h3>TAWK.TO Account:</h3>
-<p>Username: <code>alaiza@knowlesti.sg</code><br>Password: <code>Idontknow1!</code></p>
+<p><strong>Credentials are managed securely.</strong> Request temporary access via Team Lead/Admin approved process.</p>
 <hr>
 
 <h3>InMotion Hosting:</h3>
 <p><em>If it doesn’t work, ask Monitoring or Sir Mark if it is changed.</em></p>
 <p><a href="https://secure1.inmotionhosting.com/amp/" target="_blank" rel="noopener noreferrer">https://secure1.inmotionhosting.com/amp/</a></p>
-<p>Username: <code>it@ssgc.group</code><br>Password: <code>mQPAL&amp;gr&amp;5*EpS$TMqJ9ZBath%wgilXJvDc2bCfnV2v*FtAB02</code></p>
+<p><strong>Credentials are managed securely.</strong> Request temporary access via Team Lead/Admin approved process.</p>
 <hr>
 
 <h3>WordPress:</h3>
-<p>Username: <code>knowlesticom</code><br>Password: <code>6roH_cra?9S1Ut==rl3+!KEWRa#ifri0aBREcItOt#Obe$=tut</code></p>
+<p><strong>Credentials are managed securely.</strong> Request temporary access via Team Lead/Admin approved process.</p>
 <hr>
 
 <h3>Sir Mark Signature:</h3>
@@ -1201,8 +1201,7 @@ and relevant notes. Submit before <strong>5 PM</strong> to the Team Lead.
   <li>Fill in:
     <ul>
       <li><strong>Email</strong>: same email that will be used in the onboarding record.</li>
-      <li><strong>Password</strong>: your standard internship password (for example <code>KTI-Intern-2026!</code>).
-        You give this password to the intern; you may keep one shared password per batch.</li>
+      <li><strong>Password</strong>: generate a strong unique password per account using approved policy (do not reuse/shared batch passwords).</li>
     </ul>
   </li>
   <li>You can leave <strong>User metadata / Display name</strong> empty. It will be filled later from onboarding.</li>

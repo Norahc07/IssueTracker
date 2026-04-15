@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import Modal from './Modal.jsx';
+import { sanitizeHtml } from '../utils/sanitizeHtml.js';
 
 const PRIMARY = '#6795BE';
 
@@ -153,6 +154,7 @@ export default function RepositoryFormModal({ open, onClose, initialItem, onSucc
       if (isCoursePriceTable && isEdit && tableRows.length > 0) {
         finalContent = buildCoursePriceTableContent(legendHtml, tableRows);
       }
+      finalContent = sanitizeHtml(finalContent);
       const payload = {
         title: title.trim(),
         type,

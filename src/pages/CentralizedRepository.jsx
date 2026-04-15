@@ -8,8 +8,50 @@ import { OFFICIAL_REPOSITORY_ITEMS } from '../data/officialRepository.js';
 
 const PRIMARY = '#6795BE';
 
-const MAIN_TAGS = ['sop', 'tasks', 'credentials', 'seo'];
-const MAIN_TAG_LABELS = { sop: 'SOP', tasks: 'Tasks', credentials: 'Credentials', seo: 'SEO' };
+const MAIN_TAGS = ['sop', 'seo', 'security', 'tasks'];
+const MAIN_TAG_LABELS = { sop: 'SOP', tasks: 'Tasks', security: 'Security', seo: 'SEO' };
+const TAG_ALIASES = { credentials: 'security' };
+
+const normalizeTag = (tag) => {
+  const lower = String(tag || '').trim().toLowerCase();
+  return TAG_ALIASES[lower] || lower;
+};
+
+const OTHER_TAG_STYLE_PALETTE = [
+  'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200',
+  'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200',
+  'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200',
+  'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/40 dark:text-fuchsia-200',
+  'bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-200',
+  'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-200',
+];
+
+const getOtherTagStyle = (tag) => {
+  const normalized = normalizeTag(tag);
+  if (!normalized) return OTHER_TAG_STYLE_PALETTE[0];
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i += 1) {
+    hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  }
+  return OTHER_TAG_STYLE_PALETTE[hash % OTHER_TAG_STYLE_PALETTE.length];
+};
+
+const getTagStyles = (tag, isSelected = false) => {
+  const normalized = normalizeTag(tag);
+  if (isSelected) return 'text-white';
+  switch (normalized) {
+    case 'sop':
+      return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200';
+    case 'seo':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200';
+    case 'security':
+      return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200';
+    case 'tasks':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200';
+    default:
+      return getOtherTagStyle(normalized);
+  }
+};
 
 export default function CentralizedRepository() {
   const { supabase, userRole, userTeam } = useSupabase();
@@ -142,12 +184,12 @@ export default function CentralizedRepository() {
     }
     if (tagFilter === 'others') {
       list = list.filter((item) =>
-        (item.tags || []).some((t) => !MAIN_TAGS.includes(String(t).toLowerCase()))
+        (item.tags || []).some((t) => !MAIN_TAGS.includes(normalizeTag(t)))
       );
     } else if (tagFilter !== 'all') {
       const tagLower = tagFilter.toLowerCase();
       list = list.filter((item) =>
-        (item.tags || []).some((t) => String(t).toLowerCase() === tagLower)
+        (item.tags || []).some((t) => normalizeTag(t) === tagLower)
       );
     }
     if (searchQuery.trim()) {
@@ -198,13 +240,30 @@ export default function CentralizedRepository() {
 
       <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Search</label>
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search by title, description, or tags..."
-          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-4 py-2.5 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
-        />
+        <div className="relative">
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-gray-500">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="h-4 w-4"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M9 3a6 6 0 104.472 10.03l2.249 2.25a.75.75 0 101.06-1.06l-2.25-2.249A6 6 0 009 3zm-4.5 6a4.5 4.5 0 118.999 0A4.5 4.5 0 014.5 9z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </div>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by title, description, or tags..."
+            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+          />
+        </div>
         <div className="mt-4">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Filter</label>
           <div className="flex flex-wrap gap-2">
@@ -227,8 +286,8 @@ export default function CentralizedRepository() {
                 onClick={() => setTagFilter(tag)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   tagFilter === tag
-                    ? 'text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    ? getTagStyles(tag, true)
+                    : `${getTagStyles(tag)} hover:brightness-95 dark:hover:brightness-110`
                 }`}
                 style={tagFilter === tag ? { backgroundColor: PRIMARY } : {}}
               >
@@ -311,9 +370,9 @@ export default function CentralizedRepository() {
                     {item.tags.map((tag, index) => (
                       <span
                         key={index}
-                        className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                        className={`px-2 py-0.5 text-xs rounded font-medium ${getTagStyles(tag)}`}
                       >
-                        {tag}
+                        {MAIN_TAG_LABELS[normalizeTag(tag)] || tag}
                       </span>
                     ))}
                   </div>

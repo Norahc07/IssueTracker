@@ -6,6 +6,7 @@ import { useSupabase } from '../context/supabase.jsx';
 import { getRepositoryItemBySlug } from '../data/officialRepository.js';
 import { permissions } from '../utils/rolePermissions.js';
 import { toast } from 'react-hot-toast';
+import { sanitizeHtml } from '../utils/sanitizeHtml.js';
 
 const PRIMARY = '#6795BE';
 
@@ -201,6 +202,7 @@ export default function RepositoryView() {
       if (isCoursePriceTable && tableRows.length > 0) {
         finalContent = buildCoursePriceTableContent(legendHtml, tableRows);
       }
+      finalContent = sanitizeHtml(finalContent);
       const { error: updateErr } = await supabase
         .from('repository_items')
         .update({
@@ -280,7 +282,7 @@ export default function RepositoryView() {
 
   return (
     <div className="w-full max-w-full overflow-x-hidden space-y-4 sm:space-y-6">
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex items-center text-sm">
         <button
           type="button"
           onClick={() => navigate('/repository')}
@@ -292,12 +294,6 @@ export default function RepositoryView() {
           </svg>
           <span>Back</span>
         </button>
-        <span className="text-gray-400 dark:text-gray-500">/</span>
-        <span className="text-gray-500 dark:text-gray-400">Repository</span>
-        <span className="text-gray-400 dark:text-gray-500">/</span>
-        <span className="font-medium text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
-          {item.title}
-        </span>
       </div>
 
       <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden max-w-full">
@@ -494,7 +490,7 @@ export default function RepositoryView() {
               ) : (
                 <div
                   className="prose prose-sm max-w-full w-full text-gray-800 dark:text-gray-100 repository-content repository-content-view-only break-words"
-                  dangerouslySetInnerHTML={{ __html: item.content || '' }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.content || '') }}
                   // Avoid breaking words mid-letter (e.g. "inpro-gress") while still preventing horizontal overflow.
                   style={{ overflowX: 'hidden', overflowWrap: 'break-word', wordBreak: 'normal' }}
                 />
