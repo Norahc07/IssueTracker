@@ -357,6 +357,7 @@ export default function TaskAssignmentLog() {
   const [wpPluginRows, setWpPluginRows] = useState([]);
   const [domainPasswordHistory, setDomainPasswordHistory] = useState({});
   const [passwordHistoryModalDomain, setPasswordHistoryModalDomain] = useState(null);
+  const [passwordHistoryModalLabel, setPasswordHistoryModalLabel] = useState('');
   const [passwordHistoryAddForm, setPasswordHistoryAddForm] = useState({ month: '', password: '' });
   const [addingPasswordHistory, setAddingPasswordHistory] = useState(false);
   const [editingPasswordHistoryRow, setEditingPasswordHistoryRow] = useState(null); // { id, domain_id, recorded_at, password }
@@ -736,6 +737,24 @@ export default function TaskAssignmentLog() {
       console.warn('fetchDomainPasswordHistory error:', error);
       setDomainPasswordHistory((prev) => ({ ...prev, [domainId]: [] }));
     }
+  };
+
+  const openDefaultOldDomainPasswordHistory = async (accountKind) => {
+    const oldDomains = (Array.isArray(domains) ? domains : []).filter((d) => d?.type === 'old');
+    const targetDomain =
+      accountKind === 'sg'
+        ? oldDomains.find((d) => String(d?.country || '').trim().toLowerCase().includes('singapore'))
+        : oldDomains.find((d) => !String(d?.country || '').trim().toLowerCase().includes('singapore'));
+
+    if (!targetDomain?.id) {
+      toast.error(accountKind === 'sg' ? 'No SG old domain found.' : 'No non-SG old domain found.');
+      return;
+    }
+
+    await fetchDomainPasswordHistory(targetDomain.id);
+    setPasswordHistoryAddForm({ month: new Date().toISOString().slice(0, 7), password: '' });
+    setPasswordHistoryModalLabel(accountKind === 'sg' ? 'SG Domain WordPress' : 'Intern Account WordPress');
+    setPasswordHistoryModalDomain(targetDomain);
   };
 
   const addDomainPasswordHistory = async ({ domainId, month, password }) => {
@@ -1294,9 +1313,12 @@ export default function TaskAssignmentLog() {
     try {
       const domain = domains.find((d) => d.id === domainId);
       if (domain?.new_password) {
+        const now = new Date();
+        const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
         await supabase.from('domain_password_history').insert({
           domain_id: domainId,
           password: domain.new_password,
+          recorded_at: `${currentMonth}-01T00:00:00.000Z`,
         });
       }
       const { error } = await supabase.from('domains').update({ new_password: newPassword }).eq('id', domainId);
@@ -3893,7 +3915,16 @@ export default function TaskAssignmentLog() {
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
                 <div className="bg-white/70 dark:bg-gray-900/50 rounded-lg p-3 border border-blue-100 dark:border-blue-900/40 relative">
-                  <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Intern Account WordPress</p>
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">Intern Account WordPress</p>
+                    <button
+                      type="button"
+                      onClick={() => openDefaultOldDomainPasswordHistory('intern')}
+                      className="text-xs font-medium text-[#6795BE] hover:underline"
+                    >
+                      View old password history
+                    </button>
+                  </div>
                   <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
                     <span className="font-semibold text-gray-900 dark:text-gray-100 shrink-0">Admin Username:</span>
                     {defaultAccounts.intern?.username ? (
@@ -3974,7 +4005,16 @@ export default function TaskAssignmentLog() {
                   )}
                 </div>
                 <div className="bg-white/70 dark:bg-gray-900/50 rounded-lg p-3 border border-amber-100 dark:border-amber-900/40 relative">
-                  <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">SG Domain WordPress</p>
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">SG Domain WordPress</p>
+                    <button
+                      type="button"
+                      onClick={() => openDefaultOldDomainPasswordHistory('sg')}
+                      className="text-xs font-medium text-amber-700 dark:text-amber-300 hover:underline"
+                    >
+                      View old password history
+                    </button>
+                  </div>
                   <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
                     <span className="font-semibold text-gray-900 dark:text-gray-100 shrink-0">Admin username:</span>
                     {defaultAccounts.sg?.username ? (
@@ -4451,6 +4491,8 @@ export default function TaskAssignmentLog() {
                         type="button"
                         onClick={async () => {
                           await fetchDomainPasswordHistory(selectedDomainForAccounts.id);
+                          setPasswordHistoryAddForm({ month: new Date().toISOString().slice(0, 7), password: '' });
+                          setPasswordHistoryModalLabel('');
                           setPasswordHistoryModalDomain(selectedDomainForAccounts);
                         }}
                         className="block mt-1 text-xs text-gray-500 hover:underline"
@@ -4515,16 +4557,22 @@ export default function TaskAssignmentLog() {
 
                     <div className="flex-1 overflow-y-auto p-5 space-y-5">
                       <div className="flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await fetchDomainPasswordHistory(newDomainDrawerDomain.id);
-                            setPasswordHistoryModalDomain(newDomainDrawerDomain);
-                          }}
-                          className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-                        >
-                          View old password history
-                        </button>
+                        {domainDrawerKind !== 'old' ? (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await fetchDomainPasswordHistory(newDomainDrawerDomain.id);
+                              setPasswordHistoryAddForm({ month: new Date().toISOString().slice(0, 7), password: '' });
+                              setPasswordHistoryModalLabel('');
+                              setPasswordHistoryModalDomain(newDomainDrawerDomain);
+                            }}
+                            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                          >
+                            View old password history
+                          </button>
+                        ) : (
+                          <span />
+                        )}
 
                         {canManageDomainsForTla(userRole, userTeam) && (
                           <div className="flex items-center gap-2">
@@ -4572,8 +4620,12 @@ export default function TaskAssignmentLog() {
                           {[
                             { key: 'country', label: 'Country', type: 'text', placeholder: 'Country' },
                             { key: 'url', label: 'URL', type: 'url', placeholder: 'https://...' },
-                            { key: 'wp_username', label: 'WP Username', type: 'text', placeholder: 'WP Username' },
-                            { key: 'new_password', label: 'New Password', type: 'text', placeholder: 'Password' },
+                            ...(domainDrawerKind === 'old'
+                              ? []
+                              : [
+                                  { key: 'wp_username', label: 'WP Username', type: 'text', placeholder: 'WP Username' },
+                                  { key: 'new_password', label: 'New Password', type: 'text', placeholder: 'Password' },
+                                ]),
                           ].map((f) => (
                             <div key={f.key} className="space-y-1">
                               <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">{f.label}</label>
@@ -4774,7 +4826,10 @@ export default function TaskAssignmentLog() {
           {passwordHistoryModalDomain && (
             <Modal
               open={!!passwordHistoryModalDomain}
-              onClose={() => setPasswordHistoryModalDomain(null)}
+              onClose={() => {
+                setPasswordHistoryModalDomain(null);
+                setPasswordHistoryModalLabel('');
+              }}
               zIndexClassName="z-[2147483647]"
             >
               <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
@@ -4785,6 +4840,7 @@ export default function TaskAssignmentLog() {
                         type="button"
                         onClick={() => {
                           setPasswordHistoryModalDomain(null);
+                          setPasswordHistoryModalLabel('');
                           setPasswordHistoryAddForm({ month: '', password: '' });
                           setAddingPasswordHistory(false);
                         }}
@@ -4794,7 +4850,7 @@ export default function TaskAssignmentLog() {
                       </button>
                     </div>
                     <h3 className="mt-1 text-center font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
-                      {passwordHistoryModalDomain.country || passwordHistoryModalDomain.url || 'Domain'}
+                      {passwordHistoryModalLabel || passwordHistoryModalDomain.country || passwordHistoryModalDomain.url || 'Domain'}
                     </h3>
                     <p className="mt-1 text-center text-xs text-gray-500 dark:text-gray-400">
                       Password history by month and year
@@ -4819,7 +4875,7 @@ export default function TaskAssignmentLog() {
                             Previous password
                           </label>
                           <input
-                            type="text"
+                            type="password"
                             value={passwordHistoryAddForm.password}
                             onChange={(e) => setPasswordHistoryAddForm((p) => ({ ...p, password: e.target.value }))}
                             placeholder="Enter previous password"
@@ -4899,7 +4955,7 @@ export default function TaskAssignmentLog() {
                         <div className="flex-[2] min-w-[220px]">
                           <label className="block text-xs font-semibold text-amber-800 dark:text-amber-200 mb-1">Previous password</label>
                           <input
-                            type="text"
+                            type="password"
                             value={passwordHistoryEditForm.password}
                             onChange={(e) => setPasswordHistoryEditForm((p) => ({ ...p, password: e.target.value }))}
                             className="w-full rounded-lg border border-amber-200 dark:border-amber-900/60 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
