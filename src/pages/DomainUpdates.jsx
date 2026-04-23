@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
+import useConfirmDialog from '../hooks/useConfirmDialog.js';
 
 const PRIMARY = '#6795BE';
 const UPDATE_STATUS_OPTIONS = ['Updated', 'Skipped', 'Failed'];
@@ -10,6 +11,7 @@ const DOMAIN_ROW_STATUS_OPTIONS = ['done', 'need verification', 'blocked access'
 
 export default function DomainUpdates() {
   const { supabase, user, userRole, userTeam } = useSupabase();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [domains, setDomains] = useState([]);
   const [updates, setUpdates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -255,8 +257,12 @@ export default function DomainUpdates() {
   const handleRemoveAllUpdatesForDomain = async (domainId) => {
     if (!isAdmin) return;
     if (!domainId) return;
-    // eslint-disable-next-line no-alert
-    const ok = window.confirm('Remove ALL plugin updates for this domain and reset it back to start?');
+    const ok = await confirm({
+      title: 'Remove all updates?',
+      message: 'Remove ALL plugin updates for this domain and reset it back to start?',
+      intent: 'danger',
+      confirmText: 'Remove',
+    });
     if (!ok) return;
     try {
       setUpdatesLoading(true);
@@ -930,6 +936,7 @@ export default function DomainUpdates() {
           </div>,
           document.body
         )}
+      {ConfirmDialog}
     </div>
   );
 }

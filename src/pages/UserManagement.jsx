@@ -8,6 +8,7 @@ import {
   TEAMS,
 } from '../utils/rolePermissions.js';
 import { queryCache } from '../utils/queryCache.js';
+import useConfirmDialog from '../hooks/useConfirmDialog.js';
 // NOTE: User accounts (Auth) are created manually in Supabase per workflow.
 // This page manages public.users role/team and can remove profile rows.
 
@@ -57,6 +58,7 @@ function canAccessUserManagement(role) {
 
 export default function UserManagement() {
   const { supabase, userRole } = useSupabase();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [users, setUsers] = useState([]);
   const [onboardingRecords, setOnboardingRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -177,8 +179,12 @@ export default function UserManagement() {
     const confirmMsg =
       `Delete user profile "${user.email || user.full_name || user.id}"?\n` +
       `This removes the row from public.users. (Supabase Auth user must be removed in Supabase Dashboard if needed.)`;
-    // eslint-disable-next-line no-alert
-    const ok = window.confirm(confirmMsg);
+    const ok = await confirm({
+      title: 'Delete user profile?',
+      message: confirmMsg,
+      intent: 'danger',
+      confirmText: 'Delete',
+    });
     if (!ok) return;
     try {
       // RLS can block deletes but still return 200 with no rows deleted.
@@ -496,6 +502,7 @@ export default function UserManagement() {
 
       {/* SuperAdmin user creation has been removed.
           Accounts are created in Supabase Auth, then synced via Onboarding + SQL script. */}
+      {ConfirmDialog}
     </div>
   );
 }

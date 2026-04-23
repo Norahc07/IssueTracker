@@ -6,6 +6,7 @@ import { usePresence } from '../context/PresenceContext.jsx';
 import { toast } from 'react-hot-toast';
 import { queryCache } from '../utils/queryCache.js';
 import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
+import useConfirmDialog from '../hooks/useConfirmDialog.js';
 
 const PRIMARY = '#6795BE';
 
@@ -232,6 +233,7 @@ function mapUserTeamToOnboardingTeam(raw) {
 
 export default function OnboardingOffboarding() {
   const { supabase, user, userRole } = useSupabase();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const { getStatus } = usePresence();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -1030,7 +1032,12 @@ export default function OnboardingOffboarding() {
   };
 
   const deleteOffboardingRow = async (row) => {
-    const ok = window.confirm('Delete this offboarding record?');
+    const ok = await confirm({
+      title: 'Delete offboarding record?',
+      message: 'Delete this offboarding record?',
+      intent: 'danger',
+      confirmText: 'Delete',
+    });
     if (!ok) return;
     try {
       const { error } = await supabase.from('offboarding_records').delete().eq('id', row.id);
@@ -2034,9 +2041,12 @@ export default function OnboardingOffboarding() {
                                       toast.error('Please choose a replacement file.');
                                       return;
                                     }
-                                    const ok = window.confirm(
-                                      `Replace your pending ${meta.label} submission? This will mark it as pending verification again.`
-                                    );
+                                    const ok = await confirm({
+                                      title: 'Replace pending submission?',
+                                      message: `Replace your pending ${meta.label} submission? This will mark it as pending verification again.`,
+                                      intent: 'warning',
+                                      confirmText: 'Replace',
+                                    });
                                     if (!ok) return;
                                     await handleRequirementsSubmit();
                                   }}
@@ -3236,6 +3246,7 @@ export default function OnboardingOffboarding() {
           </div>
         </Modal>
       )}
+      {ConfirmDialog}
     </div>
   );
 }

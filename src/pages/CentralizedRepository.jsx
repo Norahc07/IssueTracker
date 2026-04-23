@@ -5,12 +5,14 @@ import { toast } from 'react-hot-toast';
 import { permissions } from '../utils/rolePermissions.js';
 import RepositoryFormModal from '../components/RepositoryFormModal.jsx';
 import { OFFICIAL_REPOSITORY_ITEMS } from '../data/officialRepository.js';
+import useConfirmDialog from '../hooks/useConfirmDialog.js';
 
 const PRIMARY = '#6795BE';
 
 const MAIN_TAGS = ['sop', 'seo', 'security', 'tasks'];
 const MAIN_TAG_LABELS = { sop: 'SOP', tasks: 'Tasks', security: 'Security', seo: 'SEO' };
 const TAG_ALIASES = { credentials: 'security' };
+const REPOSITORY_FAVORITES_STORAGE_KEY = 'repository_favorite_slugs_v1';
 
 const normalizeTag = (tag) => {
   const lower = String(tag || '').trim().toLowerCase();
@@ -53,6 +55,30 @@ const getTagStyles = (tag, isSelected = false) => {
   }
 };
 
+const getPrimaryCategory = (item) => {
+  const tags = Array.isArray(item?.tags) ? item.tags : [];
+  return tags.map((t) => normalizeTag(t)).find((t) => MAIN_TAGS.includes(t)) || null;
+};
+
+const getDisplayTags = (item) => {
+  const tags = Array.isArray(item?.tags) ? item.tags : [];
+  const primaryCategory = getPrimaryCategory(item);
+  const seen = new Set();
+  const result = [];
+
+  tags.forEach((tag) => {
+    const raw = String(tag || '').trim();
+    if (!raw) return;
+    const normalized = normalizeTag(raw);
+    if (primaryCategory && normalized === primaryCategory) return; // avoid duplicate with category badge
+    if (seen.has(normalized)) return; // dedupe repeated tags (case-insensitive/alias-aware)
+    seen.add(normalized);
+    result.push(raw);
+  });
+
+  return result;
+};
+
 export default function CentralizedRepository() {
   const { supabase, userRole, userTeam } = useSupabase();
   const navigate = useNavigate();
@@ -64,6 +90,8 @@ export default function CentralizedRepository() {
   const [editItem, setEditItem] = useState(null);
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [favoriteSlugs, setFavoriteSlugs] = useState([]);
+  const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const canManage = permissions.canEditRepository(userRole);
   const canViewOffboardingIntern =
@@ -124,6 +152,27 @@ export default function CentralizedRepository() {
     fetchItems();
   }, [supabase]);
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(REPOSITORY_FAVORITES_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setFavoriteSlugs(parsed.filter((slug) => typeof slug === 'string' && slug.trim()));
+      }
+    } catch {
+      // ignore storage parsing errors
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(REPOSITORY_FAVORITES_STORAGE_KEY, JSON.stringify(favoriteSlugs));
+    } catch {
+      // ignore storage write errors
+    }
+  }, [favoriteSlugs]);
+
   const handleCreateOrUpdate = async (payload) => {
     const isEdit = !!payload.id && !String(payload.id).startsWith('static-');
     if (isEdit) {
@@ -161,7 +210,13 @@ export default function CentralizedRepository() {
       toast.error('Cannot delete seeded items from the UI. Use Supabase to modify.');
       return;
     }
-    if (!window.confirm(`Delete "${item.title}"?`)) return;
+    const ok = await confirm({
+      title: 'Delete repository item?',
+      message: `Delete "${item.title}"?`,
+      intent: 'danger',
+      confirmText: 'Delete',
+    });
+    if (!ok) return;
     setDeletingId(item.id);
     try {
       const { error } = await supabase.from('repository_items').delete().eq('id', item.id);
@@ -174,6 +229,12 @@ export default function CentralizedRepository() {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const toggleFavorite = (item) => {
+    const slug = String(item?.slug || '').trim();
+    if (!slug) return;
+    setFavoriteSlugs((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]));
   };
 
   const filteredItems = useMemo(() => {
@@ -201,8 +262,14 @@ export default function CentralizedRepository() {
           (item.tags || []).some((t) => String(t).toLowerCase().includes(q))
       );
     }
-    return list;
-  }, [items, tagFilter, searchQuery, canViewOffboardingIntern]);
+    const favoriteSet = new Set(favoriteSlugs);
+    return [...list].sort((a, b) => {
+      const aFav = favoriteSet.has(String(a.slug || ''));
+      const bFav = favoriteSet.has(String(b.slug || ''));
+      if (aFav !== bFav) return aFav ? -1 : 1;
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+  }, [items, tagFilter, searchQuery, canViewOffboardingIntern, favoriteSlugs]);
 
   if (loading) {
     return (
@@ -238,30 +305,18 @@ export default function CentralizedRepository() {
         )}
       </div>
 
-      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Search</label>
         <div className="relative">
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-gray-500">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="h-4 w-4"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M9 3a6 6 0 104.472 10.03l2.249 2.25a.75.75 0 101.06-1.06l-2.25-2.249A6 6 0 009 3zm-4.5 6a4.5 4.5 0 118.999 0A4.5 4.5 0 014.5 9z"
-                clipRule="evenodd"
-              />
-            </svg>
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-base" aria-hidden="true">
+            🔎
           </div>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by title, description, or tags..."
-            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+            className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
           />
         </div>
         <div className="mt-4">
@@ -308,6 +363,10 @@ export default function CentralizedRepository() {
             </button>
           </div>
         </div>
+        <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+          <span className="text-pink-500" aria-hidden="true">❤</span>
+          Tip: click the star icon to pin important items to the top.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -315,8 +374,17 @@ export default function CentralizedRepository() {
           filteredItems.map((item) => (
             <div
               key={item.id}
-              className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-5 sm:p-6 hover:shadow-md transition-shadow flex flex-col relative"
+              className={`bg-white dark:bg-gray-900 rounded-lg border p-5 sm:p-6 hover:shadow-md transition-shadow flex flex-col relative ${
+                favoriteSlugs.includes(String(item.slug || ''))
+                  ? 'border-amber-300 dark:border-amber-700/60 shadow-[0_0_0_1px_rgba(245,158,11,0.25)]'
+                  : 'border-gray-200 dark:border-gray-800'
+              }`}
             >
+              {(() => {
+                const primaryCategory = getPrimaryCategory(item);
+                const displayTags = getDisplayTags(item);
+                return (
+                  <>
               {canManage && (
                 <div className="absolute top-3 right-3">
                   <button
@@ -356,7 +424,34 @@ export default function CentralizedRepository() {
                   )}
                 </div>
               )}
+              <div className={`absolute top-4 ${canManage ? 'right-12' : 'right-3'}`}>
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite(item)}
+                  className={`inline-flex items-center justify-center h-6 w-6 rounded-full transition-colors ${
+                    favoriteSlugs.includes(String(item.slug || ''))
+                      ? 'text-amber-500'
+                      : 'text-gray-400 hover:text-amber-500 dark:text-gray-400 dark:hover:text-amber-300'
+                  }`}
+                  title={favoriteSlugs.includes(String(item.slug || '')) ? 'Remove from favorites' : 'Add to favorites'}
+                  aria-label={favoriteSlugs.includes(String(item.slug || '')) ? 'Remove from favorites' : 'Add to favorites'}
+                >
+                  <svg className="w-5.5 h-5.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                  </svg>
+                </button>
+              </div>
               <div className="flex-1 pr-8">
+                <div className="mb-3 flex items-start justify-between gap-2">
+                  <div>
+                    {primaryCategory && (
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full font-semibold ${getTagStyles(primaryCategory)}`}>
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                        {MAIN_TAG_LABELS[primaryCategory]}
+                      </span>
+                    )}
+                  </div>
+                </div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
                   {item.title}
                 </h3>
@@ -365,9 +460,9 @@ export default function CentralizedRepository() {
                     {item.description}
                   </p>
                 )}
-                {(item.tags || []).length > 0 && (
+                {displayTags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
-                    {item.tags.map((tag, index) => (
+                    {displayTags.map((tag, index) => (
                       <span
                         key={index}
                         className={`px-2 py-0.5 text-xs rounded font-medium ${getTagStyles(tag)}`}
@@ -387,6 +482,9 @@ export default function CentralizedRepository() {
                   View
                 </Link>
               </div>
+                  </>
+                );
+              })()}
             </div>
           ))
         ) : (
@@ -408,6 +506,7 @@ export default function CentralizedRepository() {
           />
         </>
       )}
+      {ConfirmDialog}
     </div>
   );
 }

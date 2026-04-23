@@ -7,6 +7,7 @@ import { permissions } from '../utils/rolePermissions.js';
 import ScheduleTab from '../components/ScheduleTab.jsx';
 import Modal from '../components/Modal.jsx';
 import { TEAMS } from '../utils/rolePermissions.js';
+import useConfirmDialog from '../hooks/useConfirmDialog.js';
 
 const PRIMARY = '#6795BE';
 const TL_VTL_DEPARTMENTS = ['IT', 'HR', 'Marketing'];
@@ -67,6 +68,7 @@ const canAccessTracker = (userRole, userTeam) => {
 
 export default function TrackerPage() {
   const { supabase, user, userRole, userTeam } = useSupabase();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab'); // 'tl-vtl' | 'schedule' | 'intern-records' | 'leave' | 'blocked-domains' | 'itd'
   const trackerTab =
@@ -204,6 +206,20 @@ export default function TrackerPage() {
   const canAddEditBlockedDomain = ['admin', 'intern', 'tl', 'vtl'].includes(String(userRole || '').toLowerCase());
   const canDeleteBlockedDomain = ['admin', 'tl', 'vtl'].includes(String(userRole || '').toLowerCase());
   const canMarkBlockedDomainUnblocked = canDeleteBlockedDomain;
+  const blockedDomainsGroupedRows = useMemo(() => {
+    const groups = [];
+    const byIp = new Map();
+    (Array.isArray(blockedDomainsRows) ? blockedDomainsRows : []).forEach((row) => {
+      const ip = String(row?.public_ip || '').trim() || '—';
+      if (!byIp.has(ip)) {
+        const group = { publicIp: ip, rows: [] };
+        byIp.set(ip, group);
+        groups.push(group);
+      }
+      byIp.get(ip).rows.push(row);
+    });
+    return groups;
+  }, [blockedDomainsRows]);
 
   const currentActorName = useMemo(() => {
     const meta = user?.user_metadata || {};
@@ -507,7 +523,12 @@ export default function TrackerPage() {
   const deleteRecord = async (rec) => {
     if (!supabase || !rec?.id) return;
     if (!canAccessTlaInternRecords) return;
-    const ok = window.confirm('Delete this intern record? This cannot be undone.');
+    const ok = await confirm({
+      title: 'Delete intern record?',
+      message: 'Delete this intern record? This cannot be undone.',
+      intent: 'danger',
+      confirmText: 'Delete',
+    });
     if (!ok) return;
     try {
       const { error } = await supabase.from('intern_records').delete().eq('id', rec.id);
@@ -761,7 +782,12 @@ export default function TrackerPage() {
       toast.error('You do not have permission to delete blocked domains.');
       return;
     }
-    const ok = window.confirm('Delete this blocked domain entry?');
+    const ok = await confirm({
+      title: 'Delete blocked domain entry?',
+      message: 'Delete this blocked domain entry?',
+      intent: 'danger',
+      confirmText: 'Delete',
+    });
     if (!ok) return;
     try {
       const { error } = await supabase.from('blocked_domain_tracker').delete().eq('id', row.id);
@@ -971,7 +997,13 @@ export default function TrackerPage() {
   };
 
   const deleteLeaveRow = async (id) => {
-    if (!window.confirm('Delete this leave record?')) return;
+    const ok = await confirm({
+      title: 'Delete leave record?',
+      message: 'Delete this leave record?',
+      intent: 'danger',
+      confirmText: 'Delete',
+    });
+    if (!ok) return;
     try {
       const { error } = await supabase.from('leave_tracker').delete().eq('id', id);
       if (error) throw error;
@@ -1380,7 +1412,12 @@ export default function TrackerPage() {
 
   const deleteItd = async (row) => {
     if (!row?.id) return;
-    const ok = window.confirm('Delete this ITD record?');
+    const ok = await confirm({
+      title: 'Delete ITD record?',
+      message: 'Delete this ITD record?',
+      intent: 'danger',
+      confirmText: 'Delete',
+    });
     if (!ok) return;
     try {
       const { error } = await supabase.from('intern_document_tracker').delete().eq('id', row.id);
@@ -2194,58 +2231,72 @@ export default function TrackerPage() {
                       </td>
                     </tr>
                   ) : (
-                    blockedDomainsRows.map((row) => {
-                      const domain = domainsById[row.domain_id];
-                      const domainLabel = domain?.country || row.domain_name || row.domain_id || '—';
-                      const unblocked = Boolean(row.date_unblocked);
-                      return (
-                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.public_ip || '—'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.intern_name || '—'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
-                            <div>{domainLabel}</div>
-                            {domain?.url ? (
-                              <div className="text-xs text-gray-500 dark:text-gray-400 break-all">{domain.url}</div>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatMdy(row.date_blocked)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.handled_by || '—'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatMdy(row.date_unblocked)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200 max-w-xs">
-                            {row.notes ? <span className="line-clamp-2">{row.notes}</span> : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-right whitespace-nowrap">
-                            {canAddEditBlockedDomain && (
-                              <button
-                                type="button"
-                                onClick={() => openEditBlockedDomain(row)}
-                                className="px-2.5 py-1 rounded-md text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    blockedDomainsGroupedRows.map((group) =>
+                      group.rows.map((row, rowIndex) => {
+                        const domain = domainsById[row.domain_id];
+                        const domainLabel = domain?.country || row.domain_name || row.domain_id || '—';
+                        const unblocked = Boolean(row.date_unblocked);
+                        return (
+                          <tr key={row.id} className={rowIndex > 0 ? 'bg-gray-50/50 dark:bg-gray-800/30 hover:bg-gray-50 dark:hover:bg-gray-800/60' : 'hover:bg-gray-50 dark:hover:bg-gray-800/60'}>
+                            {rowIndex === 0 && (
+                              <td
+                                rowSpan={group.rows.length}
+                                className="px-4 py-3 text-sm font-semibold text-gray-800 dark:text-gray-100 align-top border-r border-gray-100 dark:border-gray-800"
                               >
-                                Edit
-                              </button>
+                                <div>{group.publicIp}</div>
+                                {group.rows.length > 1 ? (
+                                  <div className="mt-1 text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                                    {group.rows.length} entries
+                                  </div>
+                                ) : null}
+                              </td>
                             )}
-                            {canMarkBlockedDomainUnblocked && !unblocked && (
-                              <button
-                                type="button"
-                                onClick={() => markBlockedDomainAsUnblocked(row)}
-                                className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-green-200 dark:border-green-900/60 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-950/30"
-                              >
-                                Unblocked
-                              </button>
-                            )}
-                            {canDeleteBlockedDomain && (
-                              <button
-                                type="button"
-                                onClick={() => deleteBlockedDomain(row)}
-                                className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.intern_name || '—'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                              <div>{domainLabel}</div>
+                              {domain?.url ? (
+                                <div className="text-xs text-gray-500 dark:text-gray-400 break-all">{domain.url}</div>
+                              ) : null}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatMdy(row.date_blocked)}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{row.handled_by || '—'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatMdy(row.date_unblocked)}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200 max-w-xs">
+                              {row.notes ? <span className="line-clamp-2">{row.notes}</span> : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-right whitespace-nowrap">
+                              {canAddEditBlockedDomain && (
+                                <button
+                                  type="button"
+                                  onClick={() => openEditBlockedDomain(row)}
+                                  className="px-2.5 py-1 rounded-md text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                >
+                                  Edit
+                                </button>
+                              )}
+                              {canMarkBlockedDomainUnblocked && !unblocked && (
+                                <button
+                                  type="button"
+                                  onClick={() => markBlockedDomainAsUnblocked(row)}
+                                  className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-green-200 dark:border-green-900/60 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-950/30"
+                                >
+                                  Unblocked
+                                </button>
+                              )}
+                              {canDeleteBlockedDomain && (
+                                <button
+                                  type="button"
+                                  onClick={() => deleteBlockedDomain(row)}
+                                  className="ml-2 px-2.5 py-1 rounded-md text-xs font-medium border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )
                   )}
                 </tbody>
               </table>
@@ -3154,6 +3205,7 @@ export default function TrackerPage() {
           </div>
         </Modal>
       )}
+      {ConfirmDialog}
     </div>
   );
 }

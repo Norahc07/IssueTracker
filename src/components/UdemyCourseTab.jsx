@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'react-hot-toast';
 import { useSupabase } from '../context/supabase.jsx';
+import useConfirmDialog from '../hooks/useConfirmDialog.js';
 
 const PRIMARY = '#6795BE';
 
@@ -42,8 +43,17 @@ const DEFAULT_UDEMY_COURSES = [
 
 const ROTATION_REVIEW_STATUS = ['Not Started', 'In Progress', 'Completed'];
 const ROTATION_SCREENSHOT_STATUS = ['Pending', 'Done'];
+
+const formatLongDate = (value) => {
+  if (!value) return '—';
+  const d = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+};
+
 export default function UdemyCourseTab() {
   const { supabase, user, userRole, userTeam } = useSupabase();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [activeSubTab, setActiveSubTab] = useState('rotation'); // 'rotation' | 'intern'
 
   const [batches, setBatches] = useState([]);
@@ -66,13 +76,15 @@ export default function UdemyCourseTab() {
     course_link: '',
     course_title: '',
     assigned_intern: '',
-    day: '',
+    date: '',
     review_status: 'Not Started',
     screenshot_status: 'Pending',
   });
   const [rotationSaving, setRotationSaving] = useState(false);
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [editingRotationRow, setEditingRotationRow] = useState(null);
+  const [quickAddRowModal, setQuickAddRowModal] = useState(null); // { course_title, course_link } | null
+  const [quickAddRowForm, setQuickAddRowForm] = useState({ assigned_intern: '', date: '' });
 
   // Intern tracker
   const [internNames, setInternNames] = useState([]);
@@ -221,6 +233,18 @@ export default function UdemyCourseTab() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rotationRows]);
 
+  const groupedRotationCourses = useMemo(() => {
+    const map = new Map();
+    (rotationRows || []).forEach((row) => {
+      const title = (row.course_title || '').trim() || 'Untitled course';
+      const link = (row.course_link || '').trim();
+      const key = `${title}|||${link}`;
+      if (!map.has(key)) map.set(key, { course_title: title, course_link: link, rows: [] });
+      map.get(key).rows.push(row);
+    });
+    return Array.from(map.values()).sort((a, b) => a.course_title.localeCompare(b.course_title));
+  }, [rotationRows]);
+
   const getRotationRowForCell = (courseTitle, assignedName) =>
     (rotationRows || []).find(
       (r) =>
@@ -312,9 +336,12 @@ export default function UdemyCourseTab() {
       assignmentCount > 0
         ? `\n\nThis will permanently delete ${assignmentCount} course assignment(s) and all related intern tracker data for this batch.`
         : '\n\nAll related tracker data for this batch will be removed.';
-    const ok = window.confirm(
-      `Remove batch "${label}"? This cannot be undone.${detail}`
-    );
+    const ok = await confirm({
+      title: 'Remove batch?',
+      message: `Remove batch "${label}"? This cannot be undone.${detail}`,
+      intent: 'danger',
+      confirmText: 'Remove',
+    });
     if (!ok) return;
     setBatchDeleting(true);
     try {
@@ -361,12 +388,16 @@ export default function UdemyCourseTab() {
         course_link: courseLink,
         course_title: courseTitle,
         assigned_intern: (rotationCreate.assigned_intern || '').trim() || null,
-        day: (rotationCreate.day || '').trim() || null,
-        review_status: rotationCreate.review_status || 'Not Started',
-        screenshot_status: rotationCreate.screenshot_status || 'Pending',
+        day: (rotationCreate.date || '').trim() || null,
+        review_status: 'Not Started',
+        screenshot_status: 'Pending',
       };
 
-      const { error } = await supabase.from('udemy_rotation_assignments').insert(payload);
+      const { data, error } = await supabase
+        .from('udemy_rotation_assignments')
+        .insert(payload)
+        .select('*')
+        .single();
       if (error) throw error;
       toast.success('Course assignment added.');
       setShowRotationModal(false);
@@ -374,11 +405,15 @@ export default function UdemyCourseTab() {
         course_link: '',
         course_title: '',
         assigned_intern: '',
-        day: '',
+        date: '',
         review_status: 'Not Started',
         screenshot_status: 'Pending',
       });
-      await fetchRotationRows(selectedBatchId);
+      if (data) {
+        setRotationRows((prev) => [data, ...(Array.isArray(prev) ? prev : [])]);
+      } else {
+        await fetchRotationRows(selectedBatchId);
+      }
     } catch (err) {
       console.warn('Create rotation row error', err);
       toast.error(err?.message || 'Failed to add assignment.');
@@ -423,9 +458,9 @@ export default function UdemyCourseTab() {
           course_link: courseLink,
           course_title: courseTitle,
           assigned_intern: (rotationCreate.assigned_intern || '').trim() || null,
-          day: (rotationCreate.day || '').trim() || null,
-          review_status: rotationCreate.review_status || 'Not Started',
-          screenshot_status: rotationCreate.screenshot_status || 'Pending',
+          day: (rotationCreate.date || '').trim() || null,
+          review_status: editingRotationRow?.review_status || 'Not Started',
+          screenshot_status: editingRotationRow?.screenshot_status || 'Pending',
         };
         await handleUpdateRotationRow(editingRotationRow.id, payload);
         toast.success('Course assignment updated.');
@@ -435,11 +470,10 @@ export default function UdemyCourseTab() {
           course_link: '',
           course_title: '',
           assigned_intern: '',
-          day: '',
+          date: '',
           review_status: 'Not Started',
           screenshot_status: 'Pending',
         });
-        await fetchRotationRows(selectedBatchId);
       } catch (err) {
         // error already shown in handleUpdateRotationRow
       } finally {
@@ -456,18 +490,100 @@ export default function UdemyCourseTab() {
       return;
     }
     if (!row?.id) return;
-    const ok = window.confirm(`Delete this course assignment?\n\n"${row.course_title || 'Untitled'}"`);
+    const ok = await confirm({
+      title: 'Delete course assignment?',
+      message: `Delete this course assignment?\n\n"${row.course_title || 'Untitled'}"`,
+      intent: 'danger',
+      confirmText: 'Delete',
+    });
     if (!ok) return;
     try {
       const { error } = await supabase.from('udemy_rotation_assignments').delete().eq('id', row.id);
       if (error) throw error;
       toast.success('Course assignment deleted.');
       setRotationRows((prev) => prev.filter((r) => r.id !== row.id));
-      await fetchRotationRows(selectedBatchId);
     } catch (err) {
       console.warn('Delete rotation row error', err);
       toast.error(err?.message || 'Failed to delete assignment.');
       await fetchRotationRows(selectedBatchId);
+    }
+  };
+
+  const handleDeleteCourseGroup = async (group) => {
+    if (!canManageUdemy) {
+      toast.error('You do not have permission to delete courses.');
+      return;
+    }
+    const rows = Array.isArray(group?.rows) ? group.rows : [];
+    if (!rows.length) return;
+    const title = group?.course_title || 'Untitled course';
+    const ok = await confirm({
+      title: 'Delete whole course?',
+      message: `Delete this whole course?\n\n"${title}"\n\nThis will remove ${rows.length} row(s).`,
+      intent: 'danger',
+      confirmText: 'Delete course',
+    });
+    if (!ok) return;
+    try {
+      const ids = rows.map((r) => r.id).filter(Boolean);
+      if (!ids.length) return;
+      const { error } = await supabase.from('udemy_rotation_assignments').delete().in('id', ids);
+      if (error) throw error;
+      toast.success('Course removed.');
+      setRotationRows((prev) => (Array.isArray(prev) ? prev.filter((r) => !ids.includes(r.id)) : []));
+    } catch (err) {
+      console.warn('Delete course group error', err);
+      toast.error(err?.message || 'Failed to remove course.');
+      await fetchRotationRows(selectedBatchId);
+    }
+  };
+
+  const handleQuickAddRow = async (e) => {
+    e?.preventDefault();
+    if (!canManageUdemy) {
+      toast.error('You do not have permission to add course assignments.');
+      return;
+    }
+    if (!selectedBatchId) {
+      toast.error('No active batch found.');
+      return;
+    }
+    const courseTitle = (quickAddRowModal?.course_title || '').trim();
+    const courseLink = (quickAddRowModal?.course_link || '').trim();
+    if (!courseTitle || !courseLink) {
+      toast.error('Course title and link are required.');
+      return;
+    }
+    try {
+      setRotationSaving(true);
+      const payload = {
+        batch_id: selectedBatchId,
+        course_link: courseLink,
+        course_title: courseTitle,
+        assigned_intern: (quickAddRowForm.assigned_intern || '').trim() || null,
+        day: (quickAddRowForm.date || '').trim() || null,
+        review_status: 'Not Started',
+        screenshot_status: 'Pending',
+      };
+      const { data, error } = await supabase
+        .from('udemy_rotation_assignments')
+        .insert(payload)
+        .select('*')
+        .single();
+      if (error) throw error;
+      toast.success('Row added.');
+      setQuickAddRowModal(null);
+      setQuickAddRowForm({ assigned_intern: '', date: '' });
+      if (data) {
+        setRotationRows((prev) => [data, ...(Array.isArray(prev) ? prev : [])]);
+      } else {
+        await fetchRotationRows(selectedBatchId);
+      }
+    } catch (err) {
+      console.warn('Quick add row error', err);
+      toast.error(err?.message || 'Failed to add row.');
+    } finally {
+      setRotationSaving(false);
     }
   };
 
@@ -508,7 +624,12 @@ export default function UdemyCourseTab() {
 
   const handleDeleteInternName = async (row) => {
     if (!row?.id) return;
-    const ok = window.confirm(`Delete "${row.name}" column? This will also remove its statuses.`);
+    const ok = await confirm({
+      title: 'Delete intern column?',
+      message: `Delete "${row.name}" column? This will also remove its statuses.`,
+      intent: 'danger',
+      confirmText: 'Delete',
+    });
     if (!ok) return;
     try {
       // statuses are ON DELETE CASCADE via FK
@@ -569,51 +690,7 @@ export default function UdemyCourseTab() {
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
             Udemy Course
           </h2>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Track assignments and course review progress per batch.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="min-w-[220px]">
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Batch</label>
-            <select
-              value={selectedBatchId}
-              onChange={(e) => setSelectedBatchId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1.5 text-xs"
-            >
-              <option value="">Select batch…</option>
-              {batches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.batch_no}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-wrap items-end gap-2 mt-5">
-            {canManageUdemy && (
-              <button
-                type="button"
-                onClick={handleAddBatch}
-                className="px-3 py-2 rounded-lg text-xs font-medium text-white"
-                style={{ backgroundColor: PRIMARY }}
-              >
-                Add batch
-              </button>
-            )}
-            {canDeleteUdemyBatch && (
-              <button
-                type="button"
-                onClick={handleDeleteSelectedBatch}
-                disabled={!selectedBatchId || batchDeleting}
-                title={
-                  !selectedBatchId
-                    ? 'Select a batch to remove'
-                    : 'Delete this batch and all course assignments / tracker data'
-                }
-                className="px-3 py-2 rounded-lg text-xs font-medium border border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {batchDeleting ? 'Removing…' : 'Remove batch'}
-              </button>
-            )}
-          </div>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Track assignments and course review progress per course.</p>
         </div>
       </div>
 
@@ -660,7 +737,7 @@ export default function UdemyCourseTab() {
                       course_link: '',
                       course_title: '',
                       assigned_intern: '',
-                      day: '',
+                      date: '',
                       review_status: 'Not Started',
                       screenshot_status: 'Pending',
                     });
@@ -698,7 +775,7 @@ export default function UdemyCourseTab() {
                         {editingRotationRow ? 'Edit course assignment' : 'Add course assignment'}
                       </h4>
                       <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                        Batch: <span className="font-medium">{selectedBatch?.batch_no || '—'}</span>
+                        Add course details, assigned intern, and date.
                       </p>
                     </div>
                     <button
@@ -775,60 +852,21 @@ export default function UdemyCourseTab() {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Day</label>
-                          <select
-                            value={rotationCreate.day || ''}
+                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Date</label>
+                          <input
+                            type="date"
+                            value={rotationCreate.date || ''}
                             onChange={(e) =>
                               setRotationCreate((s) => ({
                                 ...s,
-                                day: e.target.value || '',
+                                date: e.target.value || '',
                               }))
                             }
                             className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100"
-                          >
-                            <option value="">Select day</option>
-                            <option value="1">1</option>
-                            <option value="2">2</option>
-                            <option value="3">3</option>
-                            <option value="4">4</option>
-                          </select>
+                          />
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Review status</label>
-                          <select
-                            value={rotationCreate.review_status || 'Not Started'}
-                            onChange={(e) => setRotationCreate((s) => ({ ...s, review_status: e.target.value }))}
-                            className={`w-full min-w-[8rem] px-2.5 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] ${getReviewStatusSelectClasses(
-                              rotationCreate.review_status || 'Not Started'
-                            )}`}
-                          >
-                            {ROTATION_REVIEW_STATUS.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Screenshot status</label>
-                          <select
-                            value={rotationCreate.screenshot_status}
-                            onChange={(e) => setRotationCreate((s) => ({ ...s, screenshot_status: e.target.value }))}
-                            className={`w-full min-w-[8rem] px-2.5 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] ${getScreenshotStatusSelectClasses(
-                              rotationCreate.screenshot_status
-                            )}`}
-                          >
-                            {ROTATION_SCREENSHOT_STATUS.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
                     </form>
                   </div>
 
@@ -864,138 +902,253 @@ export default function UdemyCourseTab() {
                 <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading assignments…</div>
               ) : rotationRows.length === 0 ? (
                 <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                  {selectedBatch ? 'No assignments yet for this batch.' : 'Select a batch to view assignments.'}
+                  No course assignments yet.
                 </div>
               ) : (
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
-                  <thead className="bg-gray-50 dark:bg-gray-950/40">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Batch No.</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Course Link</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Assigned Intern</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Day</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Review Status</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Screenshot Status</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-28">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
-                    {rotationRows.map((row) => (
-                      <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{selectedBatch?.batch_no || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 max-w-xs">
-                          {row.course_link ? (
-                            <a
-                              className="text-blue-600 dark:text-blue-400 hover:underline inline-block max-w-xs truncate"
-                              href={row.course_link}
-                              target="_blank"
-                              rel="noreferrer"
-                              title={row.course_link}
+                <div className="space-y-4 p-4">
+                  {groupedRotationCourses.map((group) => (
+                    <div key={`${group.course_title}|${group.course_link}`} className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                      <div className="px-4 py-3 bg-gray-50 dark:bg-gray-950/40 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {group.course_link ? (
+                              <a href={group.course_link} target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline break-all">
+                                {group.course_title}
+                              </a>
+                            ) : (
+                              group.course_title
+                            )}
+                          </h4>
+                        </div>
+                        {canManageUdemy && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQuickAddRowModal({
+                                  course_title: group.course_title || '',
+                                  course_link: group.course_link || '',
+                                });
+                                setQuickAddRowForm({ assigned_intern: '', date: '' });
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                              style={{ backgroundColor: PRIMARY }}
                             >
-                              {row.course_link}
-                            </a>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.assigned_intern || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.day || '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                          {canManageUdemy ? (
-                            <select
-                              value={row.review_status || 'Not Started'}
-                              onChange={(e) =>
-                                handleUpdateRotationRow(row.id, { review_status: e.target.value })
-                              }
-                              className={`w-full min-w-[8rem] px-2.5 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] ${getReviewStatusSelectClasses(
-                                row.review_status || 'Not Started'
-                              )}`}
+                              Add intern
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCourseGroup(group)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/60 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/40"
                             >
-                              {ROTATION_REVIEW_STATUS.map((s) => (
-                                <option key={s} value={s}>
-                                  {s}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getReviewStatusPillClasses(
-                                row.review_status || 'Not Started'
-                              )}`}
-                            >
-                              {row.review_status || 'Not Started'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                          {canManageUdemy ? (
-                            <select
-                              value={row.screenshot_status || 'Pending'}
-                              onChange={(e) =>
-                                handleUpdateRotationRow(row.id, { screenshot_status: e.target.value })
-                              }
-                              className={`w-full min-w-[8rem] px-2.5 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] ${getScreenshotStatusSelectClasses(
-                                row.screenshot_status || 'Pending'
-                              )}`}
-                            >
-                              {ROTATION_SCREENSHOT_STATUS.map((s) => (
-                                <option key={s} value={s}>
-                                  {s}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getScreenshotStatusSelectClasses(
-                                row.screenshot_status || 'Pending'
-                              )}`}
-                            >
-                              {row.screenshot_status || 'Pending'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 align-middle">
-                          {canManageUdemy ? (
-                            <div className="flex items-center gap-2 flex-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingRotationRow(row);
-                                  setRotationCreate({
-                                    course_link: row.course_link || '',
-                                    course_title: row.course_title || '',
-                                    assigned_intern: row.assigned_intern || '',
-                                    day: row.day || '',
-                                    review_status: row.review_status || 'Not Started',
-                                    screenshot_status: row.screenshot_status || 'Pending',
-                                  });
-                                  setShowRotationModal(true);
-                                }}
-                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteRotationRow(row)}
-                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/60 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/40 shrink-0"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="inline-block text-xs text-gray-400 dark:text-gray-500">View only</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                              Delete course
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                          <thead className="bg-gray-50 dark:bg-gray-950/40">
+                            <tr>
+                              <th className="w-[30%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Assigned Intern</th>
+                              <th className="w-[16%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                              <th className="w-[18%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Review Status</th>
+                              <th className="w-[18%] px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Screenshot Status</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-28">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
+                            {group.rows.map((row) => (
+                              <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                                  <div className="truncate" title={row.assigned_intern || '—'}>
+                                    {row.assigned_intern || '—'}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{formatLongDate(row.day)}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                                  {canManageUdemy ? (
+                                    <select
+                                      value={row.review_status || 'Not Started'}
+                                      onChange={(e) =>
+                                        handleUpdateRotationRow(row.id, { review_status: e.target.value })
+                                      }
+                                      className={`w-[9.25rem] max-w-full px-2.5 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] ${getReviewStatusSelectClasses(
+                                        row.review_status || 'Not Started'
+                                      )}`}
+                                    >
+                                      {ROTATION_REVIEW_STATUS.map((s) => (
+                                        <option key={s} value={s}>
+                                          {s}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span
+                                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getReviewStatusPillClasses(
+                                        row.review_status || 'Not Started'
+                                      )}`}
+                                    >
+                                      {row.review_status || 'Not Started'}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                                  {canManageUdemy ? (
+                                    <select
+                                      value={row.screenshot_status || 'Pending'}
+                                      onChange={(e) =>
+                                        handleUpdateRotationRow(row.id, { screenshot_status: e.target.value })
+                                      }
+                                      className={`w-[9.25rem] max-w-full px-2.5 py-1.5 text-xs font-medium rounded-full border border-gray-300 dark:border-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6795BE] ${getScreenshotStatusSelectClasses(
+                                        row.screenshot_status || 'Pending'
+                                      )}`}
+                                    >
+                                      {ROTATION_SCREENSHOT_STATUS.map((s) => (
+                                        <option key={s} value={s}>
+                                          {s}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span
+                                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getScreenshotStatusSelectClasses(
+                                        row.screenshot_status || 'Pending'
+                                      )}`}
+                                    >
+                                      {row.screenshot_status || 'Pending'}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 align-middle">
+                                  {canManageUdemy ? (
+                                    <div className="flex items-center gap-2 flex-nowrap">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingRotationRow(row);
+                                          setRotationCreate({
+                                            course_link: row.course_link || '',
+                                            course_title: row.course_title || '',
+                                            assigned_intern: row.assigned_intern || '',
+                                            date: row.day || '',
+                                            review_status: row.review_status || 'Not Started',
+                                            screenshot_status: row.screenshot_status || 'Pending',
+                                          });
+                                          setShowRotationModal(true);
+                                        }}
+                                        className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteRotationRow(row)}
+                                        className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/60 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-950/40 shrink-0"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="inline-block text-xs text-gray-400 dark:text-gray-500">View only</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
         </div>
       )}
+
+      {quickAddRowModal &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[10000] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setQuickAddRowModal(null);
+            }}
+          >
+            <div
+              className="w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">Add row</h4>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Add assigned intern and date for this course.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setQuickAddRowModal(null)}
+                  className="px-2.5 py-1 rounded-lg text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
+              <form onSubmit={handleQuickAddRow} className="p-4 space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Assigned intern</label>
+                  <select
+                    value={quickAddRowForm.assigned_intern}
+                    onChange={(e) => setQuickAddRowForm((s) => ({ ...s, assigned_intern: e.target.value || '' }))}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">Unassigned</option>
+                    {tlaPeople.map((p) => {
+                      const label = p.name || 'Unnamed';
+                      return (
+                        <option key={label} value={label}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                    {quickAddRowForm.assigned_intern &&
+                      !tlaPeople.some((p) => (p.name || '').trim() === quickAddRowForm.assigned_intern.trim()) && (
+                        <option value={quickAddRowForm.assigned_intern}>{quickAddRowForm.assigned_intern}</option>
+                      )}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={quickAddRowForm.date}
+                    onChange={(e) => setQuickAddRowForm((s) => ({ ...s, date: e.target.value || '' }))}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Review Status and Screenshot Status are set automatically to default values.
+                </p>
+                <div className="pt-1 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuickAddRowModal(null)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={rotationSaving}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                    style={{ backgroundColor: PRIMARY }}
+                  >
+                    {rotationSaving ? 'Saving…' : 'Add'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {activeSubTab === 'intern' && (
         <div className="space-y-3">
@@ -1077,6 +1230,7 @@ export default function UdemyCourseTab() {
           </div>
         </div>
       )}
+      {ConfirmDialog}
     </div>
   );
 }

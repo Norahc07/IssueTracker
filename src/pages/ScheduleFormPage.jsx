@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
+import useConfirmDialog from '../hooks/useConfirmDialog.js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -33,6 +34,7 @@ const inputClass = 'w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1.5';
 
 export default function ScheduleFormPage() {
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -68,23 +70,47 @@ export default function ScheduleFormPage() {
     if (!form.intern_name?.trim() || !form.email?.trim()) return;
     const opt = form.preferred_option;
     if (opt === 'regular_shift' && !regular_shift_hours) {
-      alert('Please select a regular shift (7 or 8 hours/day).');
+      await confirm({
+        title: 'Regular shift required',
+        message: 'Please select a regular shift (7 or 8 hours/day).',
+        intent: 'info',
+        confirmText: 'OK',
+        cancelText: 'Close',
+      });
       return;
     }
     if (opt === 'option_a') {
       const totalHours = option_a_hours_per_half_day * 5;
       if (totalHours < 20) {
-        alert('Option A requires at least 20 hours per week. With 5 half-days, please set at least 4 hours per half-day.');
+        await confirm({
+          title: 'Minimum hours not met',
+          message: 'Option A requires at least 20 hours per week. With 5 half-days, please set at least 4 hours per half-day.',
+          intent: 'warning',
+          confirmText: 'Got it',
+          cancelText: 'Close',
+        });
         return;
       }
     }
     if (opt === 'option_b') {
       if (option_b_days.length !== 3) {
-        alert('Please select exactly 3 days for Option B.');
+        await confirm({
+          title: 'Select 3 days',
+          message: 'Please select exactly 3 days for Option B.',
+          intent: 'info',
+          confirmText: 'OK',
+          cancelText: 'Close',
+        });
         return;
       }
       if (!option_b_hours) {
-        alert('Please select 7 or 8 hours per day for Option B.');
+        await confirm({
+          title: 'Hours required',
+          message: 'Please select 7 or 8 hours per day for Option B.',
+          intent: 'info',
+          confirmText: 'OK',
+          cancelText: 'Close',
+        });
         return;
       }
     }
@@ -120,7 +146,13 @@ export default function ScheduleFormPage() {
       setOptionAHoursPerHalfDay(4);
     } catch (err) {
       console.error(err);
-      alert(err?.message || 'Failed to submit. Please try again.');
+      await confirm({
+        title: 'Submission failed',
+        message: err?.message || 'Failed to submit. Please try again.',
+        intent: 'danger',
+        confirmText: 'OK',
+        cancelText: 'Close',
+      });
     } finally {
       setSubmitting(false);
     }
@@ -402,6 +434,7 @@ export default function ScheduleFormPage() {
           </main>
         </div>
       </div>
+      {ConfirmDialog}
     </div>
   );
 }

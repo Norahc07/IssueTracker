@@ -10,6 +10,7 @@ import { createNotifications, getUserIdsByScope, notifyUser, scopeFromUserProfil
 import UdemyCourseTab from '../components/UdemyCourseTab.jsx';
 import PrettyDatePicker from '../components/PrettyDatePicker.jsx';
 import DomainUpdates from './DomainUpdates.jsx';
+import useConfirmDialog from '../hooks/useConfirmDialog.js';
 
 /** Shared copy for Domains tab — weekly WordPress plugin update expectations */
 const WEEKLY_PLUGIN_SCHEDULE_BULLETS = [
@@ -62,6 +63,7 @@ function WeeklyPluginScheduleNote({ open, onToggle, className = '' }) {
           ))}
         </ul>
       )}
+      {ConfirmDialog}
     </div>
   );
 }
@@ -389,6 +391,7 @@ export default function TaskAssignmentLog() {
   }, [tabParam]);
 
   const [showDefaultPassword, setShowDefaultPassword] = useState({ intern: false, sg: false });
+  const [defaultAccountMenuOpen, setDefaultAccountMenuOpen] = useState(null); // 'intern' | 'sg' | null
   const [editDefaultAccount, setEditDefaultAccount] = useState(null); // 'intern' | 'sg' | null
   const [defaultAccountEditForm, setDefaultAccountEditForm] = useState({ username: '', password: '' });
   const [savingDefaultAccount, setSavingDefaultAccount] = useState(false);
@@ -420,6 +423,7 @@ export default function TaskAssignmentLog() {
   });
 
   const [corporateCoursePages, setCorporateCoursePages] = useState({});
+  const { confirm, ConfirmDialog } = useConfirmDialog();
 
   // Per-domain course list: client-side filter by title (helps with locating letters like "T").
   const courseListFilteredItems = useMemo(() => {
@@ -1481,7 +1485,13 @@ export default function TaskAssignmentLog() {
   };
 
   const handleDeleteTask = async (task) => {
-    if (!window.confirm(`Delete task "${task.name}"?`)) return;
+    const ok = await confirm({
+      title: 'Delete task?',
+      message: `Delete task "${task.name}"?`,
+      intent: 'danger',
+      confirmText: 'Delete',
+    });
+    if (!ok) return;
     try {
       const { error } = await supabase.from('tasks').delete().eq('id', task.id);
       if (error) throw error;
@@ -1737,8 +1747,12 @@ export default function TaskAssignmentLog() {
   const handleRemoveDomainClaim = async (claimRow) => {
     if (userRole !== 'admin') return;
     if (!claimRow?.domain_id) return;
-    // eslint-disable-next-line no-alert
-    const ok = window.confirm('Remove this domain claim and return it to claimable state?');
+    const ok = await confirm({
+      title: 'Remove domain claim?',
+      message: 'Remove this domain claim and return it to claimable state?',
+      intent: 'warning',
+      confirmText: 'Remove',
+    });
     if (!ok) return;
     try {
       // Delete by domain_id to avoid any mismatch between UI keys and DB PK.
@@ -2646,7 +2660,7 @@ export default function TaskAssignmentLog() {
                             toast.error('Course title is required.');
                             return;
                           }
-                          if (!window.confirm('Create this new course?')) return;
+                          if (!(await confirm({ title: 'Create course?', message: 'Create this new course?', intent: 'info', confirmText: 'Create' }))) return;
                           setCourseListSaving(true);
                           try {
                             const payload = buildDomainCoursePayload(creatingDomainCourseDraft, {}, user?.id);
@@ -2926,7 +2940,7 @@ export default function TaskAssignmentLog() {
                                         <button
                                           type="button"
                                           onClick={async () => {
-                                            if (!window.confirm('Delete this course from this domain?')) return;
+                                            if (!(await confirm({ title: 'Delete course?', message: 'Delete this course from this domain?', intent: 'danger', confirmText: 'Delete' }))) return;
                                             try {
                                               await supabase
                                                 .from('course_list_domain_items')
@@ -3088,7 +3102,7 @@ export default function TaskAssignmentLog() {
                                       toast.error('Course title is required.');
                                       return;
                                     }
-                                    if (!window.confirm('Create this new course?')) return;
+                                    if (!(await confirm({ title: 'Create course?', message: 'Create this new course?', intent: 'info', confirmText: 'Create' }))) return;
 
                                     setCorporateCourseLoading(true);
                                     try {
@@ -3361,9 +3375,12 @@ export default function TaskAssignmentLog() {
                                                 type="button"
                                                 onClick={async () => {
                                                   if (
-                                                    !window.confirm(
-                                                      'Delete this corporate course for this domain?'
-                                                    )
+                                                    !(await confirm({
+                                                      title: 'Delete corporate course?',
+                                                      message: 'Delete this corporate course for this domain?',
+                                                      intent: 'danger',
+                                                      confirmText: 'Delete',
+                                                    }))
                                                   ) {
                                                     return;
                                                   }
@@ -3718,9 +3735,12 @@ export default function TaskAssignmentLog() {
                                                       type="button"
                                                       onClick={async () => {
                                                         if (
-                                                          !window.confirm(
-                                                            'Delete this corporate course for this domain?'
-                                                          )
+                                                          !(await confirm({
+                                                            title: 'Delete corporate course?',
+                                                            message: 'Delete this corporate course for this domain?',
+                                                            intent: 'danger',
+                                                            confirmText: 'Delete',
+                                                          }))
                                                         ) {
                                                           return;
                                                         }
@@ -3917,13 +3937,50 @@ export default function TaskAssignmentLog() {
                 <div className="bg-white/70 dark:bg-gray-900/50 rounded-lg p-3 border border-blue-100 dark:border-blue-900/40 relative">
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <p className="font-semibold text-gray-900 dark:text-gray-100">Intern Account WordPress</p>
-                    <button
-                      type="button"
-                      onClick={() => openDefaultOldDomainPasswordHistory('intern')}
-                      className="text-xs font-medium text-[#6795BE] hover:underline"
-                    >
-                      View old password history
-                    </button>
+                    <div className="relative flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openDefaultOldDomainPasswordHistory('intern')}
+                        className="text-xs font-medium text-[#6795BE] hover:underline"
+                      >
+                        View old password history
+                      </button>
+                      {permissions.canManageDomains(userRole) && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setDefaultAccountMenuOpen((prev) => (prev === 'intern' ? null : 'intern'))}
+                            className="h-6 w-6 inline-flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100"
+                            title="More actions"
+                            aria-label="More actions"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                              <circle cx="5" cy="12" r="1.8" />
+                              <circle cx="12" cy="12" r="1.8" />
+                              <circle cx="19" cy="12" r="1.8" />
+                            </svg>
+                          </button>
+                          {defaultAccountMenuOpen === 'intern' && (
+                            <div className="absolute right-0 top-7 z-20 min-w-[110px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDefaultAccountMenuOpen(null);
+                                  setEditDefaultAccount('intern');
+                                  setDefaultAccountEditForm({
+                                    username: defaultAccounts.intern?.username || '',
+                                    password: defaultAccounts.intern?.password || '',
+                                  });
+                                }}
+                                className="w-full text-left px-2 py-1.5 text-xs font-medium rounded text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                   <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
                     <span className="font-semibold text-gray-900 dark:text-gray-100 shrink-0">Admin Username:</span>
@@ -3984,36 +4041,54 @@ export default function TaskAssignmentLog() {
                       </>
                     ) : '—'}
                   </p>
-                  {permissions.canManageDomains(userRole) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditDefaultAccount('intern');
-                        setDefaultAccountEditForm({
-                          username: defaultAccounts.intern?.username || '',
-                          password: defaultAccounts.intern?.password || '',
-                        });
-                      }}
-                      className="mt-2 flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium text-white hover:opacity-90"
-                      style={{ backgroundColor: PRIMARY }}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                      </svg>
-                      Edit
-                    </button>
-                  )}
                 </div>
                 <div className="bg-white/70 dark:bg-gray-900/50 rounded-lg p-3 border border-amber-100 dark:border-amber-900/40 relative">
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <p className="font-semibold text-gray-900 dark:text-gray-100">SG Domain WordPress</p>
-                    <button
-                      type="button"
-                      onClick={() => openDefaultOldDomainPasswordHistory('sg')}
-                      className="text-xs font-medium text-amber-700 dark:text-amber-300 hover:underline"
-                    >
-                      View old password history
-                    </button>
+                    <div className="relative flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openDefaultOldDomainPasswordHistory('sg')}
+                        className="text-xs font-medium text-amber-700 dark:text-amber-300 hover:underline"
+                      >
+                        View old password history
+                      </button>
+                      {permissions.canManageDomains(userRole) && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setDefaultAccountMenuOpen((prev) => (prev === 'sg' ? null : 'sg'))}
+                            className="h-6 w-6 inline-flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100"
+                            title="More actions"
+                            aria-label="More actions"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                              <circle cx="5" cy="12" r="1.8" />
+                              <circle cx="12" cy="12" r="1.8" />
+                              <circle cx="19" cy="12" r="1.8" />
+                            </svg>
+                          </button>
+                          {defaultAccountMenuOpen === 'sg' && (
+                            <div className="absolute right-0 top-7 z-20 min-w-[110px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDefaultAccountMenuOpen(null);
+                                  setEditDefaultAccount('sg');
+                                  setDefaultAccountEditForm({
+                                    username: defaultAccounts.sg?.username || '',
+                                    password: defaultAccounts.sg?.password || '',
+                                  });
+                                }}
+                                className="w-full text-left px-2 py-1.5 text-xs font-medium rounded text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                   <p className="text-gray-800 dark:text-gray-200 flex items-center gap-1 flex-wrap">
                     <span className="font-semibold text-gray-900 dark:text-gray-100 shrink-0">Admin username:</span>
@@ -4074,24 +4149,6 @@ export default function TaskAssignmentLog() {
                       </>
                     ) : '—'}
                   </p>
-                  {permissions.canManageDomains(userRole) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditDefaultAccount('sg');
-                        setDefaultAccountEditForm({
-                          username: defaultAccounts.sg?.username || '',
-                          password: defaultAccounts.sg?.password || '',
-                        });
-                      }}
-                      className="mt-2 flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium text-white hover:opacity-90 bg-amber-600"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                      </svg>
-                      Edit
-                    </button>
-                  )}
                   <p className="mt-2 text-xs font-medium text-amber-800 dark:text-amber-200">For SG Domain DO NOT CHANGE the password unless required.</p>
                 </div>
               </div>
@@ -5061,7 +5118,12 @@ export default function TaskAssignmentLog() {
                                     <button
                                       type="button"
                                       onClick={async () => {
-                                        const ok = window.confirm('Delete this password history row? This cannot be undone.');
+                                        const ok = await confirm({
+                                          title: 'Delete password history row?',
+                                          message: 'Delete this password history row? This cannot be undone.',
+                                          intent: 'danger',
+                                          confirmText: 'Delete',
+                                        });
                                         if (!ok) return;
                                         try {
                                           await deleteDomainPasswordHistory({ id: h.id, domainId: passwordHistoryModalDomain.id });
@@ -5110,7 +5172,7 @@ export default function TaskAssignmentLog() {
               }}
             >
               <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700">
-                <div className="p-5">
+                <div className="p-5 sm:p-6">
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="font-semibold text-gray-900 dark:text-gray-100" style={{ color: PRIMARY }}>
                       Edit {editDefaultAccount === 'intern' ? 'Intern Account WordPress' : 'SG Domain WordPress'}
@@ -5128,8 +5190,8 @@ export default function TaskAssignmentLog() {
                     </button>
                   </div>
                   <form onSubmit={handleSaveDefaultAccount} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-950/30 p-3">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-1.5">
                         Admin Username
                       </label>
                       <input
@@ -5138,12 +5200,12 @@ export default function TaskAssignmentLog() {
                         onChange={(e) =>
                           setDefaultAccountEditForm((f) => ({ ...f, username: e.target.value }))
                         }
-                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#6795BE]"
-                        placeholder="Username"
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-[#6795BE] focus:border-transparent"
+                        placeholder="Enter admin username"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-950/30 p-3">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-1.5">
                         Admin Password
                       </label>
                       <div className="flex items-center gap-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 focus-within:ring-2 focus-within:ring-[#6795BE] focus-within:border-transparent">
@@ -5153,8 +5215,8 @@ export default function TaskAssignmentLog() {
                           onChange={(e) =>
                             setDefaultAccountEditForm((f) => ({ ...f, password: e.target.value }))
                           }
-                          className="flex-1 min-w-0 rounded-lg border-0 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-transparent focus:ring-0 focus:outline-none"
-                          placeholder="Password"
+                          className="flex-1 min-w-0 rounded-lg border-0 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 bg-transparent focus:ring-0 focus:outline-none"
+                          placeholder="Enter admin password"
                         />
                         <button
                           type="button"
@@ -5199,16 +5261,16 @@ export default function TaskAssignmentLog() {
                         </button>
                       </div>
                       {editDefaultAccount === 'sg' && (
-                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                        <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
                           For SG Domain DO NOT CHANGE the password unless required.
                         </p>
                       )}
                     </div>
-                    <div className="flex gap-2 pt-2">
+                    <div className="flex gap-2 pt-1">
                       <button
                         type="submit"
                         disabled={savingDefaultAccount}
-                        className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                        className="px-4 py-2.5 rounded-lg text-sm font-medium text-white disabled:opacity-50"
                         style={{ backgroundColor: PRIMARY }}
                       >
                         {savingDefaultAccount ? 'Saving...' : 'Save'}
@@ -5220,7 +5282,7 @@ export default function TaskAssignmentLog() {
                           setDefaultAccountEditForm({ username: '', password: '' });
                           setShowEditModalPassword(false);
                         }}
-                        className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                        className="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
                       >
                         Cancel
                       </button>

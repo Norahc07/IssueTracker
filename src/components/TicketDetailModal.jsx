@@ -4,6 +4,7 @@ import { useSupabase } from '../context/supabase.jsx';
 import { toast } from 'react-hot-toast';
 import { getRoleDisplayName, permissions } from '../utils/rolePermissions.js';
 import { ticketPriorityPill, ticketStatusLabel, ticketStatusPill } from '../utils/uiPills.js';
+import useConfirmDialog from '../hooks/useConfirmDialog.js';
 
 function normalizeRoleKey(role) {
   return String(role || 'intern')
@@ -37,6 +38,7 @@ function assigneeGroupLabel(roleKey) {
 
 export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate }) {
   const { supabase, userRole } = useSupabase();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [assigning, setAssigning] = useState(false);
   const [starting, setStarting] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -184,7 +186,13 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
   };
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this ticket? This action cannot be undone.')) {
+    const ok = await confirm({
+      title: 'Delete ticket?',
+      message: 'Are you sure you want to delete this ticket? This action cannot be undone.',
+      intent: 'danger',
+      confirmText: 'Delete',
+    });
+    if (!ok) {
       return;
     }
 
@@ -494,6 +502,7 @@ export default function TicketDetailModal({ isOpen, onClose, ticket, onUpdate })
               Close
             </button>
           </div>
+          {ConfirmDialog}
         </div>
       </div>
     </div>,
